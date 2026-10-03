@@ -1,10 +1,13 @@
-import type { BoardNode } from '@shared/types'
-import { actions, api, useStore } from '../state'
+import type { BoardNode, ProjectNode, SyncStatus } from '@shared/types'
+import { actions, api, projectIdOf, useStore } from '../state'
 import { openContextMenu, type MenuItem } from './ContextMenu'
 
 export function Sidebar() {
-  const tree = useStore(s => s.tree)
-  const config = useStore(s => s.config)
+  const projects = useStore(s => s.projects)
+  const activeTab = useStore(s => s.activeTab)
+
+  // "New board" lands in the project of the board in front, else the first one.
+  const currentProject = activeTab ? projectIdOf(activeTab) : projects[0]?.id
 
   return (
     <aside className="sidebar">
@@ -13,22 +16,22 @@ export function Sidebar() {
         <button
           className="icon-button"
           title="New board"
-          onClick={() => actions.setModal({ kind: 'newBoard', parent: '' })}
+          disabled={!currentProject}
+          onClick={() => currentProject && actions.setModal({ kind: 'newBoard', parent: `${currentProject}:` })}
         >
           +
         </button>
       </div>
       <div className="tree" role="tree">
-        {tree.map(node => (
-          <TreeNode key={node.path} node={node} depth={0} />
+        {projects.map(project => (
+          <ProjectRow key={project.id} project={project} />
         ))}
-        {!tree.length && <p className="muted pad">No boards yet.</p>}
+        {!projects.length && <p className="muted pad">No projects yet.</p>}
       </div>
       <footer className="sidebar-foot">
-        <button className="link repo-name" title={`${config?.boardRoot}\nClick to open another board repo`} onClick={() => void actions.pickRoot()}>
-          {config?.boardRoot.split('/').at(-1)}
+        <button className="link add-project" onClick={() => actions.setModal({ kind: 'addProject' })}>
+          + Add project
         </button>
-        <SyncLine />
         <ClaudeLine />
       </footer>
       <ResizeHandle />
@@ -36,7 +39,120 @@ export function Sidebar() {
   )
 }
 
+const time = (at?: number) => (at ? new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '')
+
+function syncText(sync: SyncStatus): string {
+  switch (sync.state) {
+    case 'idle':
+      return 'Not synced yet'
+    case 'local':
+      return 'No remote: this machine only'
+    case 'syncing':
+      return 'Syncing…'
+    case 'synced':
+      return `Synced ${time(sync.at)}${sync.pulled ? ` · ${sync.pulled} in` : ''}`
+    case 'offline':
+      return `Offline${sync.at ? ` · synced ${time(sync.at)}` : ''}`
+    case 'conflict':
+      return 'Sync stopped: conflict'
+  }
+}
+
+/** A project: one board repo, its sync state, and its boards below it. */
+function ProjectRow({ project }: { project: ProjectNode }) {
+  const folded = useStore(s => s.foldedProjects.includes(project.id))
+  const lastCommit = useStore(s => (s.lastCommit?.projectId === project.id ? s.lastCommit : null))
+  const tip = [
+    project.root,
+    project.codeRepo ? `Code folder: ${project.codeRepo}` : 'No code folder set on this machine',
+    syncText(project.sync),
+    project.sync.message,
+    lastCommit ? `Last commit ${time(lastCommit.at)}: ${lastCommit.summary}` : undefined,
+  ]
+    .filter(Boolean)
+    .join('\n')
+  const toggle = () =>
+    useStore.setState(s => ({
+      foldedProjects: folded ? s.foldedProjects.filter(p => p !== project.id) : [...s.foldedProjects, project.id],
+    }))
+
+  return (
+    <div role="treeitem" aria-expanded={!folded} className="project" data-project={project.id}>
+      <div
+        className={`project-row sync-${project.sync.state}`}
+        title={tip}
+        onClick={toggle}
+        onContextMenu={e => openContextMenu(e, projectMenu(project))}
+      >
+        <span className="twisty-mark">{folded ? '▸' : '▾'}</span>
+        <span className="project-name">{project.name}</span>
+        <span className="dot" aria-label={syncText(project.sync)} />
+        <button
+          className="icon-button small"
+          aria-label={`${project.name} actions`}
+          onClick={e => {
+            e.stopPropagation()
+            openContextMenu(e, projectMenu(project))
+          }}
+        >
+          ⋯
+        </button>
+      </div>
+      {!folded && (
+        <div role="group">
+          {project.boards.map(node => (
+            <TreeNode key={node.path} node={node} depth={1} />
+          ))}
+          {!project.boards.length && (
+            <button
+              className="link empty-project"
+              onClick={() => actions.setModal({ kind: 'newBoard', parent: `${project.id}:` })}
+            >
+              + New board
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function projectMenu(project: ProjectNode): MenuItem[] {
+  return [
+    { heading: project.name },
+    { label: 'New board…', onSelect: () => actions.setModal({ kind: 'newBoard', parent: `${project.id}:` }) },
+    {
+      label: 'Sync now',
+      hint: syncText(project.sync),
+      disabled: project.sync.state === 'local',
+      onSelect: () => void actions.syncNow(project.id),
+    },
+    {
+      label: 'Settings…',
+      hint: 'name, code folder',
+      onSelect: () => actions.setModal({ kind: 'projectSettings', id: project.id }),
+    },
+    { label: 'Open the board repo folder', onSelect: () => api.shell.openPath(project.root) },
+    'separator',
+    {
+      label: 'Remove from Corkboard…',
+      danger: true,
+      onSelect: async () => {
+        const ok = await actions.confirm(
+          `Remove “${project.name}” from Corkboard?`,
+          `Only from this app's list on this machine: the board repo at ${project.root} stays as it is, and you can add it again.`,
+          'Remove project',
+        )
+        if (ok) await actions.removeProject(project.id)
+      },
+    },
+  ]
+}
+
 function boardMenu(node: BoardNode): MenuItem[] {
+  const projects = useStore.getState().projects
+  const here = projectIdOf(node.path)
+  const others = projects.filter(p => p.id !== here)
   return [
     { label: 'Open', onSelect: () => void actions.openBoard(node.path) },
     { label: 'Open map', onSelect: () => void actions.openBoard(node.path, 'map') },
@@ -46,6 +162,29 @@ function boardMenu(node: BoardNode): MenuItem[] {
     { label: 'Settings…', onSelect: () => void openSettings(node.path) },
     { label: 'Open a terminal here', hint: 'its code repo', onSelect: () => void actions.newTerminal(node.path) },
     { label: 'Copy key', hint: node.key, onSelect: () => actions.copy(node.key) },
+    {
+      label: 'Move to project',
+      disabled: !others.length,
+      items: others.map(p => ({
+        label: p.name,
+        onSelect: async () => {
+          const ok = await actions.confirm(
+            `Move “${node.title}” to ${p.name}?`,
+            `The board folder${node.children.length ? ' and its child boards' : ''} moves to the top of ${p.name}'s board repo, cards and ids as they are. It is committed out of this repo and into that one.`,
+            'Move board',
+          )
+          if (!ok) return
+          try {
+            const key = await api.boards.moveToProject(node.path, p.id)
+            actions.closeTab(node.path)
+            await actions.refreshTree()
+            await actions.openBoard(key)
+          } catch (error) {
+            actions.toast((error as Error).message, 'error')
+          }
+        },
+      })),
+    },
     'separator',
     { label: 'Delete board…', danger: true, onSelect: () => void deleteBoard(node) },
   ]
@@ -58,7 +197,8 @@ async function openSettings(path: string) {
 
 async function deleteBoard(node: BoardNode) {
   if (node.cardCount || node.children.length) {
-    actions.toast('Only an empty board (no cards, no child boards) can be deleted.', 'error')
+    // A board with cards asks for its name to be typed (in the modal).
+    actions.setModal({ kind: 'deleteBoard', path: node.path })
     return
   }
   const ok = await actions.confirm(`Delete “${node.title}”?`, 'Its folder is removed from the board repo.', 'Delete')
@@ -85,7 +225,7 @@ function TreeNode({ node, depth }: { node: BoardNode; depth: number }) {
         style={{ paddingLeft: 8 + depth * 14 }}
         onClick={() => void actions.openBoard(node.path)}
         onContextMenu={e => openContextMenu(e, boardMenu(node))}
-        title={`${node.path} (${node.key})`}
+        title={`${node.path.slice(node.path.indexOf(':') + 1)} (${node.key})`}
       >
         <button
           className={`twisty${hasChildren ? '' : ' hidden'}`}
@@ -107,40 +247,6 @@ function TreeNode({ node, depth }: { node: BoardNode; depth: number }) {
             <TreeNode key={child.path} node={child} depth={depth + 1} />
           ))}
         </div>
-      )}
-    </div>
-  )
-}
-
-const time = (at?: number) =>
-  at ? new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
-
-/** Where the board repo stands against its remote, and a button to sync now. */
-function SyncLine() {
-  const sync = useStore(s => s.sync)
-  const lastCommit = useStore(s => s.lastCommit)
-  const text: Record<typeof sync.state, string> = {
-    idle: 'Not synced yet',
-    local: 'No remote: this machine only',
-    syncing: 'Syncing…',
-    synced: `Synced ${time(sync.at)}${sync.pulled ? ` · ${sync.pulled} in` : ''}`,
-    offline: `Offline${sync.at ? ` · synced ${time(sync.at)}` : ''}`,
-    conflict: 'Sync stopped: conflict',
-  }
-  const tip = [
-    sync.message,
-    lastCommit ? `Last commit ${time(lastCommit.at)}: ${lastCommit.summary}` : undefined,
-  ]
-    .filter(Boolean)
-    .join('\n')
-  return (
-    <div className={`foot-line sync-${sync.state}`} title={tip || undefined}>
-      <span className="dot" />
-      <span className="foot-text">{text[sync.state]}</span>
-      {sync.state !== 'local' && (
-        <button className="foot-button" disabled={sync.state === 'syncing'} onClick={() => void actions.syncNow()}>
-          Sync
-        </button>
       )}
     </div>
   )

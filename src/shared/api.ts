@@ -5,12 +5,12 @@ import type {
   BoardDelta,
   BoardMap,
   BoardMeta,
-  BoardNode,
   Card,
   CardPatch,
   ClaudeInfo,
   CodeCommit,
   LoadedBoard,
+  ProjectNode,
   PtyInfo,
   SessionRef,
   SyncStatus,
@@ -19,18 +19,30 @@ import type {
 
 export type CorkboardApi = {
   config: {
-    get(): Promise<AppConfig | null>
-    pickRoot(): Promise<AppConfig | null>
+    get(): Promise<AppConfig>
     /** This machine's code repo for a board (null clears it); answers the board as it now resolves. */
     setCodeRepo(boardPath: string, repo: string | null): Promise<LoadedBoard>
     pickFolder(title: string): Promise<string | null>
   }
+  /** One project per board repo; its boards are named `<project id>:<path>`. */
+  projects: {
+    list(): Promise<ProjectNode[]>
+    /** Adds a board repo (an empty or new folder becomes a git repo); answers its id. */
+    add(opts: { boardRoot: string; name?: string; codeRepo?: string }): Promise<string>
+    update(id: string, patch: { name?: string; codeRepo?: string | null }): Promise<void>
+    /** Takes it out of the app; its folder stays. */
+    remove(id: string): Promise<void>
+    pickFolder(title: string): Promise<string | null>
+  }
   boards: {
-    tree(): Promise<BoardNode[]>
     load(path: string): Promise<LoadedBoard>
+    /** `parent` is a board key, or `<project id>:` for a project's top level. */
     create(parent: string, title: string, key?: string): Promise<string>
     updateMeta(path: string, patch: Partial<BoardMeta>): Promise<BoardMeta>
-    remove(path: string): Promise<void>
+    /** `force` removes a board with cards and child boards too. */
+    remove(path: string, force?: boolean): Promise<void>
+    /** Moves a board (its children with it) to the top of another project; answers its new key. */
+    moveToProject(path: string, projectId: string): Promise<string>
     /** Every card id in the repo with its title and board, for link pickers. */
     index(): Promise<{ id: string; title: string; boardPath: string; boardTitle: string }[]>
   }
@@ -51,8 +63,8 @@ export type CorkboardApi = {
     move(fromPath: string, listId: string, toPath: string): Promise<string>
   }
   sync: {
-    now(): Promise<SyncStatus>
-    status(): Promise<SyncStatus>
+    /** One project, or all of them. */
+    now(projectId?: string): Promise<SyncStatus>
   }
   claude: {
     info(): Promise<ClaudeInfo>
@@ -93,8 +105,8 @@ export type CorkboardApi = {
   on: {
     delta(cb: (delta: BoardDelta) => void): () => void
     treeChanged(cb: () => void): () => void
-    boardCommitted(cb: (summary: string) => void): () => void
-    syncStatus(cb: (status: SyncStatus) => void): () => void
+    boardCommitted(cb: (projectId: string, summary: string) => void): () => void
+    syncStatus(cb: (projectId: string, status: SyncStatus) => void): () => void
     ptyCreated(cb: (info: PtyInfo) => void): () => void
     ptyData(cb: (id: string, data: string) => void): () => void
     ptyExit(cb: (id: string, code: number) => void): () => void

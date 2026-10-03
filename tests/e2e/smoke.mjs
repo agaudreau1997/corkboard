@@ -6,7 +6,7 @@
 // Screenshots go to $SHOT_DIR (default: ./test-results). Exits 1 on the first failed check.
 
 import { execFileSync } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -25,7 +25,13 @@ const codeRepo = path.join(scratch, 'code')
 // second clone of it plays the other machine.
 const remote = path.join(scratch, 'remote.git')
 const otherMachine = path.join(scratch, 'other-machine')
-execFileSync('git', ['clone', '-q', '--bare', source, remote])
+// The board repo as it was imported (its first commit), so the checks never depend on what the
+// boards hold today.
+const seed = path.join(scratch, 'seed')
+execFileSync('git', ['clone', '-q', source, seed])
+const firstCommit = execFileSync('git', ['rev-list', '--max-parents=0', 'HEAD'], { cwd: seed }).toString().trim().split('\n')[0]
+execFileSync('git', ['checkout', '-q', '-B', 'main', firstCommit], { cwd: seed })
+execFileSync('git', ['clone', '-q', '--bare', seed, remote])
 execFileSync('git', ['clone', '-q', remote, root])
 execFileSync('git', ['clone', '-q', remote, otherMachine])
 for (const dir of [root, otherMachine]) {
@@ -106,6 +112,10 @@ const app = await electron.launch({
     CORKBOARD_DESKTOP_POLL_MS: '300',
   },
 })
+// The main process's own output (git failures and the like), saved beside the screenshots.
+const mainLog = []
+app.process().stdout?.on('data', d => mainLog.push(String(d)))
+app.process().stderr?.on('data', d => mainLog.push(String(d)))
 const page = await app.firstWindow()
 page.on('pageerror', e => {
   console.log('PAGE ERROR', e.message)
@@ -142,7 +152,7 @@ try {
   await shot('02-map')
 
   // Link two ideas by dragging handle to node.
-  const nodes = page.locator('.react-flow__node')
+  const nodes = page.locator('.react-flow__node-card')
   const a = nodes.nth(0)
   const b = nodes.nth(1)
   const aId = await a.getAttribute('data-id')
@@ -180,6 +190,90 @@ try {
   const pinned = Object.keys(JSON.parse(readFileSync(path.join(root, 'robot-shooter/ideas/map.json'), 'utf8')).nodes).length
   check(pinned === (await page.locator('.map-node').count()), `the drag pinned every card on the map (${pinned})`)
   await shot('03-map-linked')
+
+  // ---- backdrops: one per list; dropping a card on another moves it there ----
+  const ideasMeta = JSON.parse(readFileSync(path.join(root, 'robot-shooter/ideas/board.json'), 'utf8'))
+  check((await page.locator('.map-area').count()) === ideasMeta.lists.length, `every list has a backdrop (${await page.locator('.map-area').count()})`)
+  await page.locator('.react-flow__controls-fitview').click()
+  await sleep(300)
+  const firstArea = page.locator('.map-area').nth(0)
+  const secondArea = page.locator('.map-area').nth(1)
+  const fromList = await firstArea.getAttribute('data-area')
+  const toList = await secondArea.getAttribute('data-area')
+  const mapMover = page.locator('.react-flow__node-card', { has: page.locator('.map-node-meta', { hasText: ideasMeta.lists.find(l => l.id === fromList).title }) }).first()
+  const mapMoverId = await mapMover.getAttribute('data-id')
+  const mb = await mapMover.boundingBox()
+  const tb2 = await secondArea.boundingBox()
+  await page.mouse.move(mb.x + mb.width / 2, mb.y + 10)
+  await page.mouse.down()
+  await page.mouse.move(tb2.x + tb2.width / 2, tb2.y + tb2.height / 2, { steps: 15 })
+  await page.mouse.up()
+  const moverFile = path.join(root, 'robot-shooter/ideas/cards', `${mapMoverId}.md`)
+  check(await until(() => readFileSync(moverFile, 'utf8').includes(`list: ${toList}`)), `dropping ${mapMoverId} on the ${toList} backdrop moved it there`)
+  const savedMap = JSON.parse(readFileSync(path.join(root, 'robot-shooter/ideas/map.json'), 'utf8'))
+  check(!!savedMap.areas?.[fromList] && !!savedMap.areas?.[toList], 'backdrops are saved in map.json')
+
+  // Right-click a backdrop: Automatically lay out puts its cards back in columns inside it.
+  await secondArea.locator('.area-head').click({ button: 'right' })
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: /Automatically lay out/ }).click()
+  const laidOut = await until(() => {
+    const map = JSON.parse(readFileSync(path.join(root, 'robot-shooter/ideas/map.json'), 'utf8'))
+    const a = map.areas[toList]
+    const p = map.nodes[mapMoverId]
+    return a && p && p.x >= a.x && p.y >= a.y && p.x + 230 <= a.x + a.w && p.y <= a.y + a.h ? map : null
+  })
+  check(!!laidOut, 'Automatically lay out keeps the cards inside their backdrop')
+  await shot('13-map-backdrops')
+
+  // Double-click empty space: an input; Escape (or nothing typed) adds no card.
+  const cardsBefore = readdirSync(path.join(root, 'robot-shooter/ideas/cards')).length
+  const pane = await page.locator('.react-flow__pane').boundingBox()
+  // A spot where the pointer meets the canvas itself (not a card, the controls or the minimap).
+  const findEmpty = () => page.evaluate(box => {
+    for (let y = box.y + 40; y < box.y + box.height - 40; y += 23) {
+      for (let x = box.x + 80; x < box.x + box.width - 260; x += 37) {
+        const el = document.elementFromPoint(x, y)
+        if (el?.classList.contains('react-flow__pane')) return { x, y }
+      }
+    }
+    return null
+  }, pane)
+  const emptyAt = await findEmpty()
+  await page.mouse.dblclick(emptyAt.x, emptyAt.y)
+  await page.locator('.map-new-card input').waitFor()
+  await page.keyboard.press('Escape')
+  await sleep(300)
+  check((await page.locator('.map-new-card').count()) === 0 && readdirSync(path.join(root, 'robot-shooter/ideas/cards')).length === cardsBefore, 'Escape on a new map card adds nothing')
+  await page.mouse.dblclick(emptyAt.x, emptyAt.y)
+  await page.locator('.map-new-card input').waitFor()
+  await page.mouse.click(pane.x + pane.width / 2, pane.y + 20)
+  await sleep(300)
+  check(readdirSync(path.join(root, 'robot-shooter/ideas/cards')).length === cardsBefore, 'an empty new card left by clicking away adds nothing')
+  await page.mouse.dblclick(emptyAt.x, emptyAt.y)
+  await page.keyboard.type('Typed on the map')
+  await page.keyboard.press('Enter')
+  check(await until(() => readdirSync(path.join(root, 'robot-shooter/ideas/cards')).length === cardsBefore + 1), 'a typed title adds the card')
+
+  // Drag a card's dot to empty space: an input for a new card linked from it.
+  const linker = page.locator('.react-flow__node-card').first()
+  const linkerId = await linker.getAttribute('data-id')
+  await linker.hover()
+  const dot = await linker.locator('.react-flow__handle-right').boundingBox()
+  await page.mouse.move(dot.x + dot.width / 2, dot.y + dot.height / 2)
+  await page.mouse.down()
+  const freeAt = await findEmpty()
+  await page.mouse.move(freeAt.x, freeAt.y, { steps: 15 })
+  await page.mouse.up()
+  await page.locator('.map-new-card input').waitFor()
+  check((await page.locator('.map-new-card', { hasText: `linked from ${linkerId}` }).count()) === 1, 'dragging a dot to empty space opens a linked new card')
+  await page.keyboard.type('Grown from a link')
+  await page.keyboard.press('Enter')
+  const grown = await until(() => {
+    const dir = path.join(root, 'robot-shooter/ideas/cards')
+    const f = readdirSync(dir).map(n => readFileSync(path.join(dir, n), 'utf8')).find(t => t.includes('title: Grown from a link'))
+    return f ? /id: (\S+)/.exec(f)[1] : null
+  })
+  check(!!grown && (await until(() => readFileSync(path.join(root, 'robot-shooter/ideas/cards', `${linkerId}.md`), 'utf8').includes(grown))), `the new card ${grown} is linked from ${linkerId}`)
 
   // ---- a new board, a card, a drag ----
   await page.locator('.sidebar-head .icon-button').click()
@@ -295,7 +389,7 @@ try {
   check(!!log, `board repo auto-committed:\n${log}`)
 
   // ---- card detail, commits and tackling ----
-  await page.locator('.tab[title="robot-shooter"]').click()
+  await page.locator('.tab[title$=":robot-shooter"]').click()
   await page.locator('.column[data-list="tofix"] .card').first().click()
   await page.locator('.drawer').waitFor()
   const openId = (await page.locator('.drawer .card-id').textContent()).trim()
@@ -440,8 +534,12 @@ try {
 
   // ---- sync: what the app committed reached the remote; the other machine's change comes in ----
   await page.locator('.sync-line, .foot-line').first().waitFor()
-  await page.locator('.sidebar-foot').getByRole('button', { name: 'Sync' }).click()
-  const synced = await until(async () => (await page.locator('.sync-synced').count()) === 1, 15000)
+  const syncNow = async () => {
+    await page.locator('.project-row').first().click({ button: 'right' })
+    await page.locator('.ctx-menu').getByRole('menuitem', { name: /Sync now/ }).click()
+  }
+  await syncNow()
+  const synced = await until(async () => (await page.locator('.project-row.sync-synced').count()) === 1, 15000)
   check(synced, 'the sync line reads Synced')
   const remoteLog = execFileSync('git', ['log', '--format=%B', '-30', 'main'], { cwd: remote }).toString()
   check(remoteLog.includes('SB-1'), 'the board commits reached the remote')
@@ -450,7 +548,7 @@ try {
   writeFileSync(otherCard, readFileSync(otherCard, 'utf8').replace(/^title: .*$/m, 'title: Renamed on the other machine').replace(/^updated: .*$/m, `updated: ${new Date().toISOString()}`))
   execFileSync('git', ['commit', '-qam', 'Rename RS-961 elsewhere'], { cwd: otherMachine })
   execFileSync('git', ['push', '-q'], { cwd: otherMachine })
-  await page.locator('.sidebar-foot').getByRole('button', { name: 'Sync' }).click()
+  await syncNow()
   const pulled = await until(async () => (await page.locator('.card[data-card="RS-961"]', { hasText: 'Renamed on the other machine' }).count()) === 1, 15000)
   check(pulled, "the other machine's rename showed up after a sync")
   await shot('11-synced')
@@ -466,8 +564,54 @@ try {
   check(echoed, 'an interactive shell runs in the terminal panel')
   await shot('06-shell')
 
+  // ---- a finished card shows no session badge; an open one does ----
+  await page.locator('.tab[title="deus-board:robot-shooter"], .tab[title$=":robot-shooter"]').first().click()
+  await page.getByRole('tab', { name: 'Board', exact: true }).click()
+  await page.locator('.filter').fill('RS-967')
+  await page.locator('.card[data-card="RS-967"]').first().waitFor()
+  check(readFileSync(cardFileOf('RS-967'), 'utf8').includes('sessions:') && (await page.locator('.card[data-card="RS-967"] .badge.session').count()) === 0, 'a card in Done keeps its sessions but shows no session badge')
+  await page.locator('.filter').fill('')
+  check((await page.locator('.column[data-list="todo"] .badge.session').count()) > 0, 'an open card with sessions shows the badge')
+
+  // ---- projects: add one, move a board into it, delete a board with cards ----
+  const second = path.join(scratch, 'second-board')
+  await page.locator('.sidebar-foot').getByRole('button', { name: '+ Add project' }).click()
+  await page.getByRole('dialog').getByLabel('Board repo folder').fill(second)
+  await page.getByRole('dialog').getByLabel('Name', { exact: true }).fill('Side project')
+  await page.getByRole('dialog').getByRole('button', { name: 'Add project' }).click()
+  await page.locator('.project-row', { hasText: 'Side project' }).waitFor()
+  check(existsSync(path.join(second, '.git')), 'a new project folder becomes a git repo')
+  check((await page.locator('.project-row').count()) === 2, 'the side panel shows both projects')
+  await page.locator('.tree-row', { hasText: 'Untitled shooter' }).click({ button: 'right' })
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Move to project' }).hover()
+  await page.getByRole('menuitem', { name: 'Side project' }).click()
+  await page.getByRole('button', { name: 'Move board' }).click()
+  const movedBoard = await until(() => existsSync(path.join(second, 'untitled-shooter/board.json')) && !existsSync(path.join(root, 'untitled-shooter')))
+  check(movedBoard, 'Untitled shooter moved into the other project, folder and cards')
+  check(readdirSync(path.join(second, 'untitled-shooter/cards')).length === 29, 'with its 29 cards')
+  await page.locator('.project[data-project] .tree-row', { hasText: 'Untitled shooter' }).waitFor()
+  const secondLogHas = text => {
+    try {
+      return execFileSync('git', ['log', '--format=%B'], { cwd: second, stdio: 'pipe' }).toString().includes(text)
+    } catch {
+      return false // no commit yet
+    }
+  }
+  check(!!(await until(() => secondLogHas('Create board untitled-shooter'), 12000)), 'the other project commits the board it received')
+  await shot('14-projects')
+  await page.locator('.tree-row', { hasText: 'Untitled shooter' }).click({ button: 'right' })
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: /Delete board/ }).click()
+  const deleteButton = page.getByRole('dialog').getByRole('button', { name: 'Delete board' })
+  check(await deleteButton.isDisabled(), 'deleting a board with cards waits for its name')
+  await page.getByRole('dialog').getByLabel(/Type the board's name/).fill('Untitled shooter')
+  await deleteButton.click()
+  check(await until(() => !existsSync(path.join(second, 'untitled-shooter'))), 'typing the name deletes the board and its cards')
+  const deleted = await until(() => secondLogHas('Delete board untitled-shooter'), 12000)
+  check(!!deleted, 'and commits the deletion')
+
   // Table view.
-  await page.getByRole('tab', { name: 'Table' }).click()
+  await page.locator('.tab[title$=":robot-shooter"]').click()
+  await page.getByRole('tab', { name: 'Table', exact: true }).click()
   check((await page.locator('tbody tr').count()) > 100, 'table lists the cards')
   await shot('07-table')
 } catch (error) {
@@ -478,6 +622,7 @@ try {
   await app.close()
 }
 
+writeFileSync(path.join(shots, 'main-process.log'), mainLog.join(''))
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed')
 console.log(`scratch: ${scratch}\nshots: ${shots}`)
 process.exit(failures ? 1 : 0)

@@ -17,6 +17,9 @@ export function Modals() {
       <div className="modal" role="dialog" aria-modal="true">
         {modal.kind === 'newBoard' && <NewBoard parent={modal.parent} />}
         {modal.kind === 'settings' && <Settings path={modal.path} />}
+        {modal.kind === 'addProject' && <AddProject />}
+        {modal.kind === 'projectSettings' && <ProjectSettings id={modal.id} />}
+        {modal.kind === 'deleteBoard' && <DeleteBoard path={modal.path} />}
         {modal.kind === 'confirm' && (
           <>
             <h2>{modal.title}</h2>
@@ -50,17 +53,21 @@ function deriveKey(title: string): string {
 
 function NewBoard({ parent }: { parent: string }) {
   const tree = useStore(s => s.tree)
+  const projects = useStore(s => s.projects)
   const [title, setTitle] = useState('')
   const [key, setKey] = useState('')
   const [keyTouched, setKeyTouched] = useState(false)
-  const parentNode = parent ? findNode(tree, parent) : undefined
+  // A parent ending in ':' is a project's top level.
+  const atTop = parent.endsWith(':')
+  const parentNode = atTop ? undefined : findNode(tree, parent)
+  const project = projects.find(p => p.id === parent.slice(0, parent.indexOf(':')))
 
   const create = async () => {
     if (!title.trim()) return
     try {
       const path = await api.boards.create(parent, title.trim(), (keyTouched ? key : deriveKey(title)) || undefined)
       actions.setModal(null)
-      if (parent && !useStore.getState().expanded.includes(parent)) actions.toggleExpanded(parent)
+      if (!atTop && !useStore.getState().expanded.includes(parent)) actions.toggleExpanded(parent)
       await actions.refreshTree()
       await actions.openBoard(path)
     } catch (error) {
@@ -75,7 +82,9 @@ function NewBoard({ parent }: { parent: string }) {
         void create()
       }}
     >
-      <h2>New board{parentNode ? ` inside “${parentNode.title}”` : ''}</h2>
+      <h2>
+        New board {parentNode ? `inside “${parentNode.title}”` : projects.length > 1 && project ? `in ${project.name}` : ''}
+      </h2>
       <label className="field">
         <span>Title</span>
         <input
@@ -315,3 +324,200 @@ function Settings({ path }: { path: string }) {
   )
 }
 
+
+function AddProject() {
+  const [root, setRoot] = useState('')
+  const [name, setName] = useState('')
+  const [codeRepo, setCodeRepo] = useState('')
+  const [busy, setBusy] = useState(false)
+  const pick = async (title: string, set: (v: string) => void, also?: (v: string) => void) => {
+    const folder = await api.projects.pickFolder(title)
+    if (folder) {
+      set(folder)
+      also?.(folder)
+    }
+  }
+  const add = async () => {
+    if (!root.trim()) return
+    setBusy(true)
+    try {
+      const id = await actions.addProject({ boardRoot: root.trim(), name: name.trim() || undefined, codeRepo: codeRepo.trim() || undefined })
+      actions.setModal(null)
+      actions.toast(`Added ${name.trim() || id}`)
+    } catch (error) {
+      actions.toast((error as Error).message, 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <form
+      onSubmit={e => {
+        e.preventDefault()
+        void add()
+      }}
+    >
+      <h2>Add project</h2>
+      <p className="muted small">
+        A project is one board repo. Pick an existing one (a clone of it on this machine), or an empty or new folder:
+        it becomes a git repo for a fresh set of boards.
+      </p>
+      <label className="field">
+        <span>Board repo folder</span>
+        <div className="input-row">
+          <input autoFocus value={root} placeholder="/path/to/my-board" onChange={e => setRoot(e.target.value)} />
+          <button
+            type="button"
+            className="small"
+            onClick={() =>
+              void pick('The board repo', setRoot, v => !name && setName(v.split(/[\\/]/).filter(Boolean).at(-1) ?? ''))
+            }
+          >
+            Browse…
+          </button>
+        </div>
+      </label>
+      <label className="field">
+        <span>Name</span>
+        <input value={name} placeholder="(the folder's name)" onChange={e => setName(e.target.value)} />
+      </label>
+      <label className="field">
+        <span>Code folder on this machine</span>
+        <div className="input-row">
+          <input value={codeRepo} placeholder="/path/to/the/code (optional)" onChange={e => setCodeRepo(e.target.value)} />
+          <button type="button" className="small" onClick={() => void pick('The code folder', setCodeRepo)}>
+            Browse…
+          </button>
+        </div>
+        <small className="muted">
+          Where its boards' Claude sessions start and their commits are read, unless a board names its own. Kept on
+          this machine only.
+        </small>
+      </label>
+      <div className="modal-actions">
+        <button type="button" className="ghost" onClick={() => actions.setModal(null)}>
+          Cancel
+        </button>
+        <button type="submit" className="accent" disabled={!root.trim() || busy}>
+          Add project
+        </button>
+      </div>
+    </form>
+  )
+}
+
+function ProjectSettings({ id }: { id: string }) {
+  const project = useStore(s => s.projects.find(p => p.id === id))
+  const [name, setName] = useState(project?.name ?? '')
+  const [codeRepo, setCodeRepo] = useState(project?.codeRepo ?? '')
+  if (!project) return <p>That project is gone.</p>
+  const save = async () => {
+    try {
+      await api.projects.update(id, { name, codeRepo: codeRepo.trim() || null })
+      await actions.refreshTree()
+      for (const key of Object.keys(useStore.getState().boards)) if (key.startsWith(`${id}:`)) await actions.loadBoard(key)
+      actions.setModal(null)
+    } catch (error) {
+      actions.toast((error as Error).message, 'error')
+    }
+  }
+  return (
+    <form
+      onSubmit={e => {
+        e.preventDefault()
+        void save()
+      }}
+    >
+      <h2>Project settings</h2>
+      <label className="field">
+        <span>Name</span>
+        <input autoFocus value={name} onChange={e => setName(e.target.value)} />
+      </label>
+      <div className="field">
+        <span>Board repo</span>
+        <code className="path">{project.root}</code>
+      </div>
+      <label className="field">
+        <span>Code folder on this machine</span>
+        <div className="input-row">
+          <input value={codeRepo} placeholder="(none)" onChange={e => setCodeRepo(e.target.value)} />
+          <button
+            type="button"
+            className="small"
+            onClick={async () => {
+              const folder = await api.projects.pickFolder('The code folder')
+              if (folder) setCodeRepo(folder)
+            }}
+          >
+            Browse…
+          </button>
+        </div>
+        <small className="muted">
+          Every board of the project uses it unless the board names a code repo of its own that exists here (board
+          settings).
+        </small>
+      </label>
+      <div className="modal-actions">
+        <button type="button" className="ghost" onClick={() => actions.setModal(null)}>
+          Cancel
+        </button>
+        <button type="submit" className="accent">
+          Save
+        </button>
+      </div>
+    </form>
+  )
+}
+
+/** A board with cards goes only once its name has been typed: it takes its child boards with it. */
+function DeleteBoard({ path }: { path: string }) {
+  const node = useStore(s => findNode(s.tree, path))
+  const [typed, setTyped] = useState('')
+  if (!node) return <p>That board is gone.</p>
+  const count = (n: typeof node): { cards: number; boards: number } =>
+    n.children.reduce(
+      (acc, child) => {
+        const c = count(child)
+        return { cards: acc.cards + c.cards, boards: acc.boards + 1 + c.boards }
+      },
+      { cards: n.cardCount, boards: 0 },
+    )
+  const { cards, boards } = count(node)
+  const remove = async () => {
+    try {
+      await api.boards.remove(path, true)
+      actions.closeTab(path)
+      actions.setModal(null)
+      actions.toast(`Deleted ${node.title}`)
+    } catch (error) {
+      actions.toast((error as Error).message, 'error')
+    }
+  }
+  return (
+    <form
+      onSubmit={e => {
+        e.preventDefault()
+        if (typed === node.title) void remove()
+      }}
+    >
+      <h2>Delete “{node.title}”?</h2>
+      <p>
+        Its {cards} card{cards === 1 ? '' : 's'}
+        {boards ? ` and ${boards} child board${boards === 1 ? '' : 's'}` : ''} leave the board repo. They stay in its git
+        history, so a <code>git revert</code> of the commit brings them back.
+      </p>
+      <label className="field">
+        <span>Type the board's name to confirm</span>
+        <input autoFocus value={typed} placeholder={node.title} onChange={e => setTyped(e.target.value)} />
+      </label>
+      <div className="modal-actions">
+        <button type="button" className="ghost" onClick={() => actions.setModal(null)}>
+          Cancel
+        </button>
+        <button type="submit" className="accent danger-fill" disabled={typed !== node.title}>
+          Delete board
+        </button>
+      </div>
+    </form>
+  )
+}

@@ -1654,3 +1654,191 @@ tr.selected td {
 .k-desktop {
   color: var(--accent);
 }
+
+.project + .project {
+  margin-top: 6px;
+}
+
+.project-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 4px 0 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 600;
+  user-select: none;
+}
+
+.project-row:hover {
+  background: var(--bg-3);
+}
+
+.twisty-mark {
+  width: 14px;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+}
+
+.project-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+
+.project-row .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex: none;
+}
+
+.project-row.sync-synced .dot {
+  background: var(--green);
+}
+
+.project-row.sync-syncing .dot {
+  background: var(--blue);
+  animation: pulse 0.9s ease-in-out infinite alternate;
+}
+
+.project-row.sync-offline .dot {
+  background: var(--accent);
+}
+
+.project-row.sync-conflict .dot {
+  background: var(--red);
+}
+
+.empty-project {
+  display: block;
+  padding: 4px 0 4px 30px;
+  font-size: 12px;
+}
+
+.add-project {
+  align-self: flex-start;
+}
+
+code.path {
+  display: block;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+button.danger-fill {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+}
+
+button.danger-fill:hover {
+  background: #e98585;
+}
+
+/* ---- map backdrops ------------------------------------------------------------------------- */
+
+/* A backdrop's body lets clicks through to the pane (pan, double-click, right-click); only its
+   header (drag) and its resize handles take the pointer. */
+.react-flow__node-area {
+  pointer-events: none !important;
+}
+
+.react-flow__node-area .area-head,
+.react-flow__node-area .react-flow__resize-control {
+  pointer-events: all;
+}
+
+.map-area {
+  width: 100%;
+  height: 100%;
+  border: 1.5px dashed;
+  border-radius: 14px;
+  position: relative;
+}
+
+.map-area.over {
+  border-style: solid;
+  box-shadow: 0 0 0 3px rgb(240 198 116 / 35%);
+}
+
+.area-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 8px 0 14px;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: grab;
+  border-radius: 14px 14px 0 0;
+}
+
+.area-head:active {
+  cursor: grabbing;
+}
+
+.area-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.area-count {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.react-flow__resize-control.area-handle {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  opacity: 0.35;
+}
+
+.react-flow__resize-control.area-handle:hover {
+  opacity: 1;
+}
+
+.react-flow__resize-control.area-line {
+  border-color: transparent;
+}
+
+.map-new-card {
+  position: absolute;
+  z-index: 30;
+  width: 260px;
+  transform: translate(-50%, -18px);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 9px;
+  box-shadow: 0 10px 28px rgb(0 0 0 / 50%);
+}
+
+.map-new-card input {
+  width: 100%;
+}
+
+.map-new-card small {
+  color: var(--muted);
+  font-size: 11px;
+}

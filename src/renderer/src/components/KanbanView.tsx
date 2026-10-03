@@ -582,7 +582,9 @@ export function CardFace({
     )
   }
   const linked = commitsFor(commits, card.id).length
-  const running = card.sessions.length
+  // Sessions are worth a badge while the work is open; a finished card keeps them in its drawer.
+  const finished = card.complete || (!!board.meta.flow?.done && card.list === board.meta.flow.done)
+  const running = finished ? 0 : card.sessions.length
   return (
     <div
       className={`card${selected ? ' selected' : ''}${open ? ' open' : ''}${dragging ? ' dragging' : ''}${card.complete ? ' complete' : ''}`}

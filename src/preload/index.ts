@@ -12,16 +12,22 @@ function subscribe<A extends unknown[]>(channel: string, cb: (...args: A) => voi
 const api: CorkboardApi = {
   config: {
     get: () => invoke('config:get'),
-    pickRoot: () => invoke('config:pickRoot'),
     setCodeRepo: (boardPath, repo) => invoke('config:setCodeRepo', boardPath, repo),
     pickFolder: title => invoke('config:pickFolder', title),
   },
+  projects: {
+    list: () => invoke('projects:list'),
+    add: opts => invoke('projects:add', opts),
+    update: (id, patch) => invoke('projects:update', id, patch),
+    remove: id => invoke('projects:remove', id),
+    pickFolder: title => invoke('projects:pickFolder', title),
+  },
   boards: {
-    tree: () => invoke('boards:tree'),
     load: path => invoke('boards:load', path),
     create: (parent, title, key) => invoke('boards:create', parent, title, key),
     updateMeta: (path, patch) => invoke('boards:updateMeta', path, patch),
-    remove: path => invoke('boards:remove', path),
+    remove: (path, force) => invoke('boards:remove', path, force),
+    moveToProject: (path, projectId) => invoke('boards:moveToProject', path, projectId),
     index: () => invoke('boards:index'),
   },
   cards: {
@@ -36,8 +42,7 @@ const api: CorkboardApi = {
     move: (fromPath, listId, toPath) => invoke('lists:move', fromPath, listId, toPath),
   },
   sync: {
-    now: () => invoke('sync:now'),
-    status: () => invoke('sync:status'),
+    now: projectId => invoke('sync:now', projectId),
   },
   claude: {
     info: () => invoke('claude:info'),

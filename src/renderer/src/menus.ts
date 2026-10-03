@@ -4,16 +4,20 @@ import { between, cardNumber, isDivider, reorderLists, sortCards } from '@shared
 import type { BoardNode, Card, ListDef, LoadedBoard, TackleMode } from '@shared/types'
 import type { MenuItem } from './components/ContextMenu'
 import { tackleCards } from './tackle'
-import { actions, api, findNode, flatten, useStore } from './state'
+import { actions, api, findNode, flatten, projectIdOf, useStore } from './state'
 
-/** Every other board as "Parent / Child", with its live lists. */
+/** Every other board as "Parent / Child" (behind its project's name when there are several). */
 function otherBoards(current: string): { node: BoardNode; label: string; lists: ListDef[] }[] {
-  const tree = useStore.getState().tree
+  const { tree, projects } = useStore.getState()
   return flatten(tree)
     .filter(n => n.path !== current)
     .map(node => {
       const parts = node.path.split('/')
-      const label = parts.map((_, i) => findNode(tree, parts.slice(0, i + 1).join('/'))?.title ?? parts[i]).join(' / ')
+      let label = parts.map((_, i) => findNode(tree, parts.slice(0, i + 1).join('/'))?.title ?? parts[i]).join(' / ')
+      if (projects.length > 1) {
+        const project = projects.find(p => p.id === projectIdOf(node.path))
+        if (project) label = `${project.name} › ${label}`
+      }
       return { node, label, lists: node.lists.filter(l => !l.archived) }
     })
 }

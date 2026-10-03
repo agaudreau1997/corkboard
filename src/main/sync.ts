@@ -216,7 +216,8 @@ export function mergeMaps(remote: string, local: string): string | undefined {
   try {
     const r = JSON.parse(remote) as BoardMap
     const l = JSON.parse(local) as BoardMap
-    return `${JSON.stringify({ ...r, ...l, nodes: { ...r.nodes, ...l.nodes } }, null, 2)}\n`
+    const areas = r.areas || l.areas ? { areas: { ...r.areas, ...l.areas } } : {}
+    return `${JSON.stringify({ ...r, ...l, nodes: { ...r.nodes, ...l.nodes }, ...areas }, null, 2)}\n`
   } catch {
     return undefined
   }

@@ -4,6 +4,7 @@ export function TabBar() {
   const tabs = useStore(s => s.tabs)
   const activeTab = useStore(s => s.activeTab)
   const tree = useStore(s => s.tree)
+  const projects = useStore(s => s.projects)
 
   return (
     <div className="tabbar" role="tablist">
@@ -20,6 +21,9 @@ export function TabBar() {
             onAuxClick={e => e.button === 1 && actions.closeTab(tab.path)}
             title={tab.path}
           >
+            {projects.length > 1 && (
+              <span className="tab-parent">{projects.find(p => tab.path.startsWith(`${p.id}:`))?.name} ›</span>
+            )}
             {parent && <span className="tab-parent">{parent.title} /</span>}
             <span>{node?.title ?? tab.path}</span>
             <button

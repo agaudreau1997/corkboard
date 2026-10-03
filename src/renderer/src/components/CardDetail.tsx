@@ -9,9 +9,11 @@ type IndexEntry = { id: string; title: string; boardPath: string; boardTitle: st
 
 export function CardDetail() {
   const open = useStore(s => s.openCard)
+  const activeTab = useStore(s => s.activeTab)
   const board = useStore(s => (s.openCard ? s.boards[s.openCard.boardPath] : undefined))
   const card = board?.cards.find(c => c.id === open?.id)
-  if (!open || !board || !card) return null
+  // The drawer belongs to the board in front; switching tabs hides it.
+  if (!open || !board || !card || open.boardPath !== activeTab) return null
   return <Drawer key={`${board.path}:${card.id}`} board={board} card={card} />
 }
 

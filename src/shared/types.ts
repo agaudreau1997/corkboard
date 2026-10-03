@@ -71,8 +71,13 @@ export type Card = {
 
 export type MapNodePos = { x: number; y: number }
 
+/** A list's backdrop on the map: its cards sit on it; dropping a card on it moves it there. */
+export type MapArea = { x: number; y: number; w: number; h: number }
+
 export type BoardMap = {
   nodes: Record<string, MapNodePos>
+  /** Backdrops by list id. */
+  areas?: Record<string, MapArea>
   /** List ids whose cards the map leaves out. */
   hiddenLists?: string[]
   /** Show cards with no list ("ideas"). Default true. */
@@ -138,10 +143,32 @@ export type TackleRequest = {
 
 export type PtyInfo = { id: string; title: string; cwd: string; cardIds?: string[] }
 
-export type AppConfig = {
+/** One board repo the app shows, as this machine knows it (app config, never synced). */
+export type ProjectConfig = {
+  id: string
+  name: string
+  /** The board repo's folder. */
   boardRoot: string
-  /** This machine's code repo for a board (by board path), overriding board.json's codeRepo. */
+  /** The code folder on this machine its boards' sessions start in, unless a board names its own. */
+  codeRepo?: string
+}
+
+export type AppConfig = {
+  projects: ProjectConfig[]
+  /** This machine's code repo for a board (by board key), overriding board.json's codeRepo. */
   codeRepos?: Record<string, string>
+  /** Before projects: the one board repo. Read once, as the first project. */
+  boardRoot?: string
+}
+
+/** A project in the side panel: its boards' paths are board keys (`<project id>:<path>`). */
+export type ProjectNode = {
+  id: string
+  name: string
+  root: string
+  codeRepo?: string
+  sync: SyncStatus
+  boards: BoardNode[]
 }
 
 export type SyncStatus = {

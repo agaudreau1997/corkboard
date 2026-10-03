@@ -10,8 +10,8 @@ import type {
   CodeCommit,
   ListDef,
   LoadedBoard,
+  ProjectNode,
   PtyInfo,
-  SyncStatus,
 } from '@shared/types'
 import type { MenuItem } from './components/ContextMenu'
 
@@ -26,6 +26,8 @@ type UiPrefs = {
   sidebarWidth: number
   terminalHeight: number
   expanded: string[]
+  /** Projects folded shut in the side panel. */
+  foldedProjects: string[]
   /** Collapsed list ids, per board path. */
   collapsed: Record<string, string[]>
 }
@@ -39,6 +41,7 @@ function loadPrefs(): UiPrefs {
     sidebarWidth: 260,
     terminalHeight: 300,
     expanded: [],
+    foldedProjects: [],
     collapsed: {},
   }
   try {
@@ -49,12 +52,19 @@ function loadPrefs(): UiPrefs {
 }
 
 type Modal =
+  /** `parent` is a board key, or `<project id>:` for a project's top level. */
   | { kind: 'newBoard'; parent: string }
   | { kind: 'settings'; path: string }
+  | { kind: 'addProject' }
+  | { kind: 'projectSettings'; id: string }
+  | { kind: 'deleteBoard'; path: string }
   | { kind: 'confirm'; title: string; body: string; confirm: string; onConfirm: () => void }
 
 type State = UiPrefs & {
-  config: AppConfig | null | undefined
+  config: AppConfig | undefined
+  /** One per board repo, with its boards. */
+  projects: ProjectNode[]
+  /** Every project's top-level boards, for lookups by board key. */
   tree: BoardNode[]
   boards: Record<string, LoadedBoard>
   commits: Record<string, CodeCommit[]>
@@ -66,8 +76,7 @@ type State = UiPrefs & {
   terminalOpen: boolean
   modal: Modal | null
   toast: { text: string; tone: 'info' | 'error' } | null
-  lastCommit: { summary: string; at: number } | null
-  sync: SyncStatus
+  lastCommit: { projectId: string; summary: string; at: number } | null
   claude: ClaudeInfo | null
   /** Whether claude:// links reach the Claude desktop app on this machine. */
   desktop: boolean
@@ -79,6 +88,7 @@ type State = UiPrefs & {
 export const useStore = create<State>(() => ({
   ...loadPrefs(),
   config: undefined,
+  projects: [],
   tree: [],
   boards: {},
   commits: {},
@@ -91,7 +101,6 @@ export const useStore = create<State>(() => ({
   modal: null,
   toast: null,
   lastCommit: null,
-  sync: { state: 'idle' },
   claude: null,
   desktop: false,
   contextMenu: null,
@@ -108,6 +117,7 @@ useStore.subscribe(state => {
     sidebarWidth: state.sidebarWidth,
     terminalHeight: state.terminalHeight,
     expanded: state.expanded,
+    foldedProjects: state.foldedProjects,
     collapsed: state.collapsed,
   }
   try {
@@ -137,7 +147,7 @@ export const actions = {
   async boot() {
     api.on.delta(applyDelta)
     api.on.treeChanged(() => void actions.refreshTree())
-    api.on.boardCommitted(summary => set({ lastCommit: { summary, at: Date.now() } }))
+    api.on.boardCommitted((projectId, summary) => set({ lastCommit: { projectId, summary, at: Date.now() } }))
     api.on.ptyCreated(info => {
       set(s => ({
         terminals: s.terminals.some(t => t.id === info.id) ? s.terminals : [...s.terminals, info],
@@ -159,24 +169,27 @@ export const actions = {
       // `claude update` finished: show the version it left.
       if (get().terminals.find(t => t.id === id)?.title === 'claude update') void actions.refreshClaude()
     })
-    api.on.syncStatus(sync => set({ sync }))
-    void api.sync.status().then(sync => set({ sync }))
+    api.on.syncStatus((projectId, sync) =>
+      set(s => ({ projects: s.projects.map(p => (p.id === projectId ? { ...p, sync } : p)) })),
+    )
     void actions.refreshClaude()
     void api.claude.desktopAvailable().then(desktop => set({ desktop }))
     const config = await api.config.get()
     set({ config })
-    if (config) await actions.afterRootOpened()
+    await actions.afterProjectsLoaded()
   },
 
-  async pickRoot() {
-    const config = await api.config.pickRoot()
-    if (!config) return
-    set({ config, boards: {}, commits: {}, tabs: [], activeTab: null, openCard: null })
-    await actions.afterRootOpened()
-  },
-
-  async afterRootOpened() {
+  async afterProjectsLoaded() {
     await actions.refreshTree()
+    // Tabs saved before projects named boards by their path alone: they were the first project's.
+    const first = get().projects[0]?.id
+    const migrate = (p: string) => (p.includes(':') || !first ? p : `${first}:${p}`)
+    set(s => ({
+      tabs: s.tabs.map(t => ({ ...t, path: migrate(t.path) })),
+      activeTab: s.activeTab ? migrate(s.activeTab) : null,
+      expanded: s.expanded.map(migrate),
+      collapsed: Object.fromEntries(Object.entries(s.collapsed).map(([k, v]) => [migrate(k), v])),
+    }))
     const known = new Set(flatten(get().tree).map(n => n.path))
     const tabs = get().tabs.filter(t => known.has(t.path))
     let activeTab = get().activeTab
@@ -185,9 +198,29 @@ export const actions = {
     for (const tab of tabs) await actions.loadBoard(tab.path)
   },
 
+  async addProject(opts: { boardRoot: string; name?: string; codeRepo?: string }) {
+    const id = await api.projects.add(opts)
+    set({ config: await api.config.get() })
+    await actions.refreshTree()
+    set(s => ({ foldedProjects: s.foldedProjects.filter(p => p !== id) }))
+    return id
+  },
+
+  async removeProject(id: string) {
+    await api.projects.remove(id)
+    set(s => ({
+      tabs: s.tabs.filter(t => !t.path.startsWith(`${id}:`)),
+      activeTab: s.activeTab?.startsWith(`${id}:`) ? null : s.activeTab,
+      openCard: s.openCard?.boardPath.startsWith(`${id}:`) ? null : s.openCard,
+    }))
+    set({ config: await api.config.get() })
+    await actions.refreshTree()
+  },
+
   async refreshTree() {
-    const tree = await api.boards.tree()
-    set({ tree })
+    const projects = await api.projects.list()
+    const tree = projects.flatMap(p => p.boards)
+    set({ projects, tree })
     // A board renamed or edited on disk: reload the open ones.
     for (const path of Object.keys(get().boards)) {
       if (!flatten(tree).some(n => n.path === path)) {
@@ -300,10 +333,11 @@ export const actions = {
     await api.claude.update(get().activeTab ?? undefined)
   },
 
-  async syncNow() {
-    set(s => ({ sync: { ...s.sync, state: 'syncing' } }))
-    const status = await api.sync.now()
-    set({ sync: status })
+  async syncNow(projectId: string) {
+    set(s => ({
+      projects: s.projects.map(p => (p.id === projectId ? { ...p, sync: { ...p.sync, state: 'syncing' } } : p)),
+    }))
+    const status = await api.sync.now(projectId)
     if (status.state === 'conflict' || status.state === 'offline') actions.toast(status.message ?? status.state, 'error')
   },
 
@@ -461,4 +495,9 @@ export function localTime(iso: string | undefined, withTime = true): string {
   return withTime
     ? date.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
     : date.toLocaleDateString([], { dateStyle: 'medium' })
+}
+
+/** The project a board key belongs to. */
+export function projectIdOf(key: string): string {
+  return key.slice(0, key.indexOf(':'))
 }

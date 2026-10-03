@@ -28,14 +28,15 @@ export function App() {
   }, [])
 
   if (config === undefined) return <div className="splash">Loading…</div>
-  if (config === null) {
+  if (!config.projects.length) {
     return (
       <div className="splash">
         <h1>Corkboard</h1>
-        <p>Choose the folder of your board repo (a git repo of board folders).</p>
-        <button className="primary" onClick={() => void actions.pickRoot()}>
-          Choose board repo…
+        <p>Add a project: a board repo (a git repo of board folders), new or existing.</p>
+        <button className="primary" onClick={() => actions.setModal({ kind: 'addProject' })}>
+          Add project…
         </button>
+        <Modals />
       </div>
     )
   }

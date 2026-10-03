@@ -35,7 +35,8 @@ describe('BoardStore', () => {
     const store = new BoardStore(root)
     await store.init()
     const parent = await store.createBoard('', 'Robot shooter', 'RS')
-    await store.updateMeta(parent, { codeRepo: '/code' })
+    const code = os.tmpdir()
+    await store.updateMeta(parent, { codeRepo: code })
     const child = await store.createBoard(parent, 'Ideas')
     const other = await store.createBoard('', 'Robot shooter', 'RS')
 
@@ -43,14 +44,14 @@ describe('BoardStore', () => {
     expect(child).toBe('robot-shooter/ideas')
     expect(other).toBe('robot-shooter-2')
     expect(store.board(other).meta.key).toBe('RS2')
-    expect(store.board(child).codeRepo).toBe('/code')
+    expect(store.board(child).codeRepo).toBe(code)
 
     const fresh = new BoardStore(root)
     await fresh.init()
     const tree = fresh.tree()
     expect(tree.map(n => n.path)).toEqual(['robot-shooter', 'robot-shooter-2'])
     expect(tree[0].children.map(n => n.path)).toEqual(['robot-shooter/ideas'])
-    expect(fresh.board('robot-shooter/ideas').codeRepo).toBe('/code')
+    expect(fresh.board('robot-shooter/ideas').codeRepo).toBe(code)
   })
 
   it('resolves code repos: this machine first, then board.json, relative to the repo', async () => {
@@ -58,13 +59,16 @@ describe('BoardStore', () => {
     await store.init()
     const parent = await store.createBoard('', 'Game', 'G')
     const child = await store.createBoard(parent, 'Ideas', 'I')
-    await store.updateMeta(parent, { codeRepo: '../game-code' })
-    expect(store.board(child).codeRepo).toBe(path.resolve(root, '../game-code'))
+    const sibling = mkdtempSync(path.join(path.dirname(root), 'game-code-'))
+    const relative = path.relative(root, sibling)
+    await store.updateMeta(parent, { codeRepo: relative })
+    expect(store.board(child).codeRepo).toBe(sibling)
+    rmSync(sibling, { recursive: true })
     store.setLocalRepos({ [parent]: '/elsewhere/game' })
     expect(store.board(child).codeRepo).toBe('/elsewhere/game')
     expect(store.board(child).codeRepoLocal).toBe(true)
     store.setLocalRepos({})
-    expect(store.board(parent).codeRepoLocal).toBe(false)
+    expect(store.board(parent).codeRepoLocal).toBeFalsy()
   })
 
   it('numbers cards per board and writes them as files', async () => {
@@ -105,6 +109,46 @@ describe('BoardStore', () => {
     expect(store.board(a).meta.lists.map(l => l.id)).toEqual(['todo', 'done'])
     expect(store.board(b).cards.filter(c => c.list === 'doing-2').map(c => c.id)).toEqual(['A-2', 'A-3'])
     expect(store.board(a).cards).toEqual([])
+  })
+
+  it('deletes a board with cards and children when forced', async () => {
+    const store = new BoardStore(root)
+    await store.init()
+    const p = await store.createBoard('', 'Old game', 'OG')
+    const child = await store.createBoard(p, 'Old ideas', 'OI')
+    await store.createCard(p, { title: 'x', list: 'todo' })
+    await store.createCard(child, { title: 'y', list: 'todo' })
+    await expect(store.deleteBoard(p)).rejects.toThrow()
+    await store.deleteBoard(p, true)
+    expect(store.tree()).toEqual([])
+    expect(() => readFileSync(path.join(root, p, 'board.json'))).toThrow()
+  })
+
+  it('hands a card to another repo and takes it back out (ids kept)', async () => {
+    const a = new BoardStore(root)
+    await a.init()
+    const otherRoot = mkdtempSync(path.join(os.tmpdir(), 'corkboard-other-'))
+    const b = new BoardStore(otherRoot)
+    await b.init()
+    const pa = await a.createBoard('', 'Alpha', 'A')
+    const pb = await b.createBoard('', 'Beta', 'B')
+    const card = await a.createCard(pa, { title: 'Travels', list: 'todo' })
+    await b.adoptCard(pb, { ...card, list: 'done' })
+    await a.dropCard(pa, card.id)
+    expect(parseCard(readFileSync(b.cardFile(pb, 'A-1'), 'utf8'))).toMatchObject({ id: 'A-1', list: 'done' })
+    expect(a.board(pa).cards).toEqual([])
+    rmSync(otherRoot, { recursive: true, force: true })
+  })
+
+  it('falls back to the project code folder, and prefers a board.json repo that exists here', async () => {
+    const store = new BoardStore(root, {}, '/project/code')
+    await store.init()
+    const p = await store.createBoard('', 'Game', 'G')
+    expect(store.board(p).codeRepo).toBe('/project/code')
+    await store.updateMeta(p, { codeRepo: '/does/not/exist/here' })
+    expect(store.board(p).codeRepo).toBe('/project/code')
+    await store.updateMeta(p, { codeRepo: root })
+    expect(store.board(p).codeRepo).toBe(root)
   })
 
   it('refuses to delete a board that still has cards', async () => {

@@ -2,7 +2,7 @@
 // recursive watch on the repo (so a Claude session editing a card file moves it on screen),
 // and every write goes through here.
 
-import { promises as fs, watch, type FSWatcher } from 'node:fs'
+import { existsSync, promises as fs, watch, type FSWatcher } from 'node:fs'
 import path from 'node:path'
 import { between, cardNumber, parseCard, serializeCard, slugify, sortCards } from '@shared/cardfile'
 import type {
@@ -39,15 +39,26 @@ export class BoardStore {
   private events?: StoreEvents
   /** This machine's own code repo paths, by board path (app config, never in the repo). */
   private localRepos: Record<string, string> = {}
+  /** The project's code folder on this machine: every board's fallback. */
+  private projectRepo?: string
 
-  constructor(root: string, localRepos: Record<string, string> = {}) {
+  constructor(root: string, localRepos: Record<string, string> = {}, projectRepo?: string) {
     this.root = path.resolve(root)
     this.localRepos = localRepos
+    this.projectRepo = projectRepo
   }
 
-  setLocalRepos(localRepos: Record<string, string>): void {
+  setLocalRepos(localRepos: Record<string, string>, projectRepo?: string): void {
     this.localRepos = localRepos
+    this.projectRepo = projectRepo
     this.resolveInheritance()
+  }
+
+  /** Reads everything again (a board folder copied in or taken out) and watches what is there now. */
+  async reload(): Promise<void> {
+    await this.init()
+    if (this.events) this.rewatch()
+    this.events?.onTreeChanged()
   }
 
   // ---- reading -------------------------------------------------------------------------------
@@ -124,9 +135,10 @@ export class BoardStore {
   }
 
   /**
-   * codeRepo comes down from the nearest board that sets it, this machine's own path first (the
-   * same repo sits at different paths on different machines), then board.json's, which may be
-   * relative to the board repo (`../godot-shooter`).
+   * A board's code repo, from the nearest board that names one: this machine's own path for it
+   * first (the same repo sits at different paths on different machines), then board.json's
+   * (relative to the board repo, or absolute) when that folder exists here. Failing both, the
+   * project's code folder on this machine.
    */
   private resolveInheritance(): void {
     for (const board of this.boards.values()) {
@@ -135,14 +147,16 @@ export class BoardStore {
       board.codeRepoLocal = undefined
       while (at !== undefined) {
         const local = this.localRepos[at]
-        const shared = this.boards.get(at)?.meta.codeRepo
-        if (local || shared) {
-          board.codeRepo = local || path.resolve(this.root, shared!)
+        const sharedRaw = this.boards.get(at)?.meta.codeRepo
+        const shared = sharedRaw ? path.resolve(this.root, sharedRaw) : undefined
+        if (local || (shared && existsSync(shared))) {
+          board.codeRepo = local || shared
           board.codeRepoLocal = !!local
           break
         }
         at = parentPath(at)
       }
+      if (!board.codeRepo && this.projectRepo) board.codeRepo = this.projectRepo
     }
   }
 
@@ -249,14 +263,43 @@ export class BoardStore {
     return meta
   }
 
-  /** Removes a board folder that holds no cards and no child boards. */
-  async deleteBoard(boardPath: string): Promise<void> {
+  /**
+   * Removes a board's folder. One with cards or child boards goes only with `force`: its child
+   * boards go with it (all of it stays in the repo's git history).
+   */
+  async deleteBoard(boardPath: string, force = false): Promise<void> {
     const board = this.board(boardPath)
-    if (board.cards.length) throw new Error('The board still has cards; archive or move them first.')
-    if ([...this.boards.keys()].some(p => p.startsWith(`${boardPath}/`)))
-      throw new Error('The board still has child boards.')
+    const children = [...this.boards.keys()].filter(p => p.startsWith(`${boardPath}/`))
+    if (!force && board.cards.length) throw new Error('The board still has cards; archive or move them first.')
+    if (!force && children.length) throw new Error('The board still has child boards.')
     await fs.rm(path.join(this.root, boardPath), { recursive: true })
-    this.boards.delete(boardPath)
+    for (const p of [boardPath, ...children]) this.boards.delete(p)
+    this.resolveInheritance()
+    this.events?.onTreeChanged()
+  }
+
+  /** Card keys a board folder (its children included) uses, for a move between repos. */
+  keysUnder(boardPath: string): string[] {
+    return [...this.boards.entries()]
+      .filter(([p]) => p === boardPath || p.startsWith(`${boardPath}/`))
+      .map(([, b]) => b.meta.key)
+  }
+
+  /** Writes a card that comes from another repo, as it is (its id kept). */
+  async adoptCard(boardPath: string, card: Card): Promise<Card> {
+    const adopted = { ...card, updated: new Date().toISOString() }
+    await this.writeCard(boardPath, adopted)
+    return adopted
+  }
+
+  /** Takes a card's file away (it moved to another repo). */
+  async dropCard(boardPath: string, id: string): Promise<void> {
+    const board = this.board(boardPath)
+    const file = this.cardFile(boardPath, id)
+    this.texts.delete(file)
+    await fs.rm(file, { force: true })
+    board.cards = board.cards.filter(c => c.id !== id)
+    this.events?.onDelta({ path: boardPath, cards: [], removed: [id] })
     this.events?.onTreeChanged()
   }
 
@@ -365,7 +408,11 @@ export class BoardStore {
     for (const id of Object.keys(map.nodes).sort((a, b) => cardNumber(a) - cardNumber(b))) {
       nodes[id] = { x: Math.round(map.nodes[id].x), y: Math.round(map.nodes[id].y) }
     }
-    board.map = { ...map, nodes }
+    const areas: NonNullable<BoardMap['areas']> = {}
+    for (const [id, a] of Object.entries(map.areas ?? {})) {
+      areas[id] = { x: Math.round(a.x), y: Math.round(a.y), w: Math.round(a.w), h: Math.round(a.h) }
+    }
+    board.map = { ...map, nodes, ...(map.areas ? { areas } : {}) }
     await this.writeText(this.mapFile(boardPath), formatJson(board.map))
   }
 
