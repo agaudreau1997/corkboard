@@ -233,6 +233,30 @@ try {
   check((await page.locator('.column.collapsed[data-list="bugs"]').count()) === 1, 'the list menu collapses a list')
   await page.locator('.column.collapsed[data-list="bugs"]').click()
 
+  // ---- drag a list by its header to reorder the board ----
+  await sleep(120)
+  const scrollBefore = await page.locator('.kanban').evaluate(el => el.scrollLeft)
+  const todoHead = await page.locator('.column[data-list="todo"] .column-head').boundingBox()
+  const doingHead = await page.locator('.column[data-list="doing"] .column-head').boundingBox()
+  await page.mouse.move(doingHead.x + 40, doingHead.y + doingHead.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(doingHead.x + 30, doingHead.y + 20, { steps: 4 })
+  await page.locator('.column-preview').waitFor()
+  check((await page.locator('.drag-tray.up').count()) === 0, 'a list drag raises no card tray')
+  await page.mouse.move(todoHead.x + 20, todoHead.y + 20, { steps: 20 })
+  await sleep(150)
+  await shot('12-list-drag')
+  await page.mouse.up()
+  await sleep(150)
+  const order = await until(() => {
+    const ids = JSON.parse(readFileSync(path.join(root, 'scratch-board/board.json'), 'utf8')).lists.map(l => l.id)
+    return ids[0] === 'doing' ? ids : null
+  })
+  check(!!order, `dragging Doing's header before To do reorders board.json (${order?.join(', ')})`)
+  const onScreen = await page.locator('.kanban > .column[data-list]').evaluateAll(els => els.map(e => e.dataset.list))
+  check(onScreen.slice(0, 2).join() === 'doing,todo', `and the board shows it (${onScreen.join(', ')})`)
+  check((await page.locator('.kanban').evaluate(el => el.scrollLeft)) === scrollBefore, 'a header drag does not pan the board')
+
   // ---- a change made on disk shows up live (what a Claude session does) ----
   const file = path.join(root, 'scratch-board/cards/SB-1.md')
   writeFileSync(file, readFileSync(file, 'utf8').replace('list: done', 'list: doing'))

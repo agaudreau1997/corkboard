@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { sortCards } from '@shared/cardfile'
+import { listColorAt, sortCards } from '@shared/cardfile'
 import type { CorkboardApi } from '@shared/api'
 import type {
   AppConfig,
@@ -8,6 +8,7 @@ import type {
   Card,
   ClaudeInfo,
   CodeCommit,
+  ListDef,
   LoadedBoard,
   PtyInfo,
   SyncStatus,
@@ -319,6 +320,20 @@ export const actions = {
     })
   },
 
+  /** New list order (or titles) for a board: on screen at once, then written. */
+  async setLists(boardPath: string, lists: ListDef[]) {
+    set(s => {
+      const board = s.boards[boardPath]
+      return board ? { boards: { ...s.boards, [boardPath]: { ...board, meta: { ...board.meta, lists } } } } : s
+    })
+    try {
+      await api.boards.updateMeta(boardPath, { lists })
+    } catch (error) {
+      actions.toast((error as Error).message, 'error')
+      await actions.loadBoard(boardPath)
+    }
+  },
+
   /** Moves a card to a list on this board or another one; follows it to its new board. */
   async moveCard(fromPath: string, id: string, toPath: string, list: string | null, pos?: number) {
     try {
@@ -420,13 +435,11 @@ export function findNode(nodes: BoardNode[], path: string): BoardNode | undefine
   return flatten(nodes).find(n => n.path === path)
 }
 
-/** Stable colour per list position, for strips and map nodes. */
-export const LIST_COLORS = ['#5b8def', '#e0a93b', '#4cb782', '#d9645b', '#a77bdb', '#3fb5c4', '#d77fb1', '#8f9bb3']
-
+/** A list's colour (its own once lists have been moved, else its place's); ideas are gold. */
 export function listColor(board: LoadedBoard, listId: string | null): string {
   if (listId === null) return '#c9b458'
   const index = board.meta.lists.findIndex(l => l.id === listId)
-  return index < 0 ? '#6b7280' : LIST_COLORS[index % LIST_COLORS.length]
+  return index < 0 ? '#6b7280' : listColorAt(board.meta.lists, index)
 }
 
 export function commitsFor(commits: CodeCommit[] | undefined, id: string): CodeCommit[] {

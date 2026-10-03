@@ -1626,3 +1626,27 @@ tr.selected td {
   flex: 1;
   min-width: 0;
 }
+
+.column-head.draggable {
+  cursor: grab;
+}
+
+.column-head.draggable:active {
+  cursor: grabbing;
+}
+
+.column.lifted {
+  opacity: 0.35;
+}
+
+.column-preview {
+  max-height: 340px;
+  overflow: hidden;
+  transform: rotate(2deg);
+  box-shadow: 0 16px 36px rgb(0 0 0 / 55%);
+  cursor: grabbing;
+}
+
+.preview-more {
+  padding: 2px 4px 4px;
+}

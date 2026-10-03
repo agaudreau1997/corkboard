@@ -1,4 +1,5 @@
 import {
+  closestCenter,
   closestCorners,
   DndContext,
   DragOverlay,
@@ -12,10 +13,16 @@ import {
   type DragOverEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
-import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import {
+  arrayMove,
+  horizontalListSortingStrategy,
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
-import { between, isDivider, slugify } from '@shared/cardfile'
+import { between, freezeListColors, isDivider, reorderLists, slugify } from '@shared/cardfile'
 import type { Card, CodeCommit, ListDef, LoadedBoard } from '@shared/types'
 import { useGrabScroll } from '../grabScroll'
 import { cardMenu, listMenu } from '../menus'
@@ -28,15 +35,27 @@ const COLUMN_LIMIT = 60
 /** Drop zones in the tray that slides up while a card is dragged. */
 const ZONE_UNLIST = 'zone:unlist'
 const ZONE_ARCHIVE = 'zone:archive'
+/** A list is dragged by its header; its sortable id is `col:<list id>`. */
+const COL = 'col:'
 
 type Columns = Record<string, string[]>
 
-/** Zones win when the pointer is inside one; otherwise the nearest card or column. */
+/**
+ * A dragged list only meets other lists. A dragged card meets the tray's zones when the pointer
+ * is inside one, otherwise the nearest card or list body.
+ */
 const collision: CollisionDetection = args => {
   const isZone = (id: unknown) => String(id).startsWith('zone:')
+  const isColumn = (id: unknown) => String(id).startsWith(COL)
+  if (isColumn(args.active.id)) {
+    return closestCenter({ ...args, droppableContainers: args.droppableContainers.filter(c => isColumn(c.id)) })
+  }
   const zones = pointerWithin({ ...args, droppableContainers: args.droppableContainers.filter(c => isZone(c.id)) })
   if (zones.length) return zones
-  return closestCorners({ ...args, droppableContainers: args.droppableContainers.filter(c => !isZone(c.id)) })
+  return closestCorners({
+    ...args,
+    droppableContainers: args.droppableContainers.filter(c => !isZone(c.id) && !isColumn(c.id)),
+  })
 }
 
 export function KanbanView({ board, matches }: { board: LoadedBoard; matches: (c: Card) => boolean }) {
@@ -44,7 +63,10 @@ export function KanbanView({ board, matches }: { board: LoadedBoard; matches: (c
   const selected = useStore(s => s.selected[board.path] ?? NONE)
   const collapsed = useStore(s => s.collapsed[board.path] ?? NONE)
   const [draft, setDraft] = useState<Columns | null>(null)
+  /** The card being dragged. */
   const [activeId, setActiveId] = useState<string | null>(null)
+  /** The list being dragged by its header. */
+  const [activeColumn, setActiveColumn] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [adding, setAdding] = useState<string | null>(null)
   const [renaming, setRenaming] = useState<string | null>(null)
@@ -71,12 +93,17 @@ export function KanbanView({ board, matches }: { board: LoadedBoard; matches: (c
   }
 
   const onDragStart = (e: DragStartEvent) => {
-    setActiveId(String(e.active.id))
+    const id = String(e.active.id)
+    if (id.startsWith(COL)) {
+      setActiveColumn(id.slice(COL.length))
+      return
+    }
+    setActiveId(id)
     setDraft(structuredClone(columns))
   }
 
   const onDragOver = ({ active, over }: DragOverEvent) => {
-    if (!over || !draft || String(over.id).startsWith('zone:')) return
+    if (!over || !draft || String(over.id).startsWith('zone:') || String(active.id).startsWith(COL)) return
     const from = containerOf(draft, String(active.id))
     const to = containerOf(draft, String(over.id))
     if (!from || !to || from === to) return
@@ -90,6 +117,11 @@ export function KanbanView({ board, matches }: { board: LoadedBoard; matches: (c
   }
 
   const onDragEnd = ({ active, over }: DragEndEvent) => {
+    if (String(active.id).startsWith(COL)) {
+      setActiveColumn(null)
+      if (over && String(over.id).startsWith(COL)) reorderList(String(active.id).slice(COL.length), String(over.id).slice(COL.length))
+      return
+    }
     const cols = draft
     setActiveId(null)
     setDraft(null)
@@ -121,11 +153,19 @@ export function KanbanView({ board, matches }: { board: LoadedBoard; matches: (c
     void actions.updateCard(board.path, id, { list: targetList, pos: between(prev, next) })
   }
 
+  /** Moves a list to where another one stood (archived lists keep their places in board.json). */
+  const reorderList = (from: string, to: string) => {
+    const lists = reorderLists(board.meta.lists, from, to)
+    if (lists) void actions.setLists(board.path, lists)
+  }
+
   // Ideas get a column only when there are some: it must never appear mid-drag and shift the board.
   const lists: (ListDef & { unlisted?: boolean })[] = [
     ...(columns[UNLISTED].length ? [{ id: UNLISTED, title: 'Map only (ideas)', unlisted: true }] : []),
     ...board.meta.lists.filter(l => !l.archived),
   ]
+  const columnIds = lists.filter(l => !l.unlisted).map(l => `${COL}${l.id}`)
+  const draggedList = activeColumn ? lists.find(l => l.id === activeColumn) : undefined
 
   return (
     <DndContext
@@ -137,10 +177,11 @@ export function KanbanView({ board, matches }: { board: LoadedBoard; matches: (c
       onDragStart={onDragStart}
       onDragOver={onDragOver}
       onDragEnd={onDragEnd}
-      onDragCancel={() => (setActiveId(null), setDraft(null))}
+      onDragCancel={() => (setActiveId(null), setActiveColumn(null), setDraft(null))}
     >
       <div className="kanban-wrap">
         <div className={`kanban${grab.grabbing ? ' grabbing' : ''}`} ref={scroller} {...grab.handlers}>
+          <SortableContext items={columnIds} strategy={horizontalListSortingStrategy}>
           {lists.map(list => {
             const ids = shown[list.id] ?? []
             if (collapsed.includes(list.id) && !activeId) {
@@ -156,8 +197,9 @@ export function KanbanView({ board, matches }: { board: LoadedBoard; matches: (c
             }
             const limited = ids.length > COLUMN_LIMIT && !expanded.has(list.id) && !activeId
             const visible = limited ? ids.slice(0, COLUMN_LIMIT) : ids
+            const ColumnKind = list.unlisted ? Column : SortableColumn
             return (
-              <Column
+              <ColumnKind
                 key={list.id}
                 board={board}
                 list={list}
@@ -181,9 +223,10 @@ export function KanbanView({ board, matches }: { board: LoadedBoard; matches: (c
                     Show all {ids.length}
                   </button>
                 )}
-              </Column>
+              </ColumnKind>
             )
           })}
+          </SortableContext>
           <AddListColumn board={board} />
         </div>
         <DragTray active={!!activeId} />
@@ -191,6 +234,12 @@ export function KanbanView({ board, matches }: { board: LoadedBoard; matches: (c
       <DragOverlay dropAnimation={null}>
         {activeId && byId.get(activeId) ? (
           <CardFace board={board} card={byId.get(activeId)!} commits={commits} selected={false} dragging />
+        ) : draggedList ? (
+          <ColumnPreview
+            title={draggedList.title}
+            color={listColor(board, draggedList.id)}
+            cards={(columns[draggedList.id] ?? []).map(id => byId.get(id)).filter((c): c is Card => !!c)}
+          />
         ) : null}
       </DragOverlay>
     </DndContext>
@@ -220,6 +269,44 @@ function TrayZone({ id, label, hint, icon, danger }: { id: string; label: string
   )
 }
 
+type ColumnProps = {
+  board: LoadedBoard
+  list: ListDef & { unlisted?: boolean }
+  ids: string[]
+  color: string
+  adding: boolean
+  setAdding: (on: boolean) => void
+  renaming: boolean
+  setRenaming: (on: boolean) => void
+  children: React.ReactNode
+}
+
+type DragHandle = {
+  setNodeRef: (node: HTMLElement | null) => void
+  setActivatorNodeRef: (node: HTMLElement | null) => void
+  listeners: ReturnType<typeof useSortable>['listeners']
+  attributes: ReturnType<typeof useSortable>['attributes']
+  style: React.CSSProperties
+  isDragging: boolean
+}
+
+/** A list column that moves when its header is dragged (not while its title is being edited). */
+function SortableColumn(props: ColumnProps) {
+  const { setNodeRef, setActivatorNodeRef, listeners, attributes, transform, transition, isDragging } = useSortable({
+    id: `${COL}${props.list.id}`,
+    disabled: props.renaming,
+  })
+  const drag: DragHandle = {
+    setNodeRef,
+    setActivatorNodeRef,
+    listeners,
+    attributes,
+    style: { transform: CSS.Translate.toString(transform), transition },
+    isDragging,
+  }
+  return <Column {...props} drag={drag} />
+}
+
 function Column({
   board,
   list,
@@ -230,17 +317,8 @@ function Column({
   renaming,
   setRenaming,
   children,
-}: {
-  board: LoadedBoard
-  list: ListDef & { unlisted?: boolean }
-  ids: string[]
-  color: string
-  adding: boolean
-  setAdding: (on: boolean) => void
-  renaming: boolean
-  setRenaming: (on: boolean) => void
-  children: React.ReactNode
-}) {
+  drag,
+}: ColumnProps & { drag?: DragHandle }) {
   const { setNodeRef, isOver } = useDroppable({ id: `list:${list.id}` })
   const work = ids.filter(id => {
     const card = board.cards.find(c => c.id === id)
@@ -252,10 +330,19 @@ function Column({
   }
 
   return (
-    <div className={`column${isOver ? ' over' : ''}`} data-list={list.id}>
+    <div
+      ref={drag?.setNodeRef}
+      style={drag?.style}
+      className={`column${isOver ? ' over' : ''}${drag?.isDragging ? ' lifted' : ''}`}
+      data-list={list.id}
+    >
       <div
-        className="column-head"
+        ref={drag?.setActivatorNodeRef}
+        {...drag?.attributes}
+        {...drag?.listeners}
+        className={`column-head${drag ? ' draggable' : ''}`}
         style={{ borderTopColor: color }}
+        title={drag && !renaming ? 'Drag to move the list; double-click the title to rename it' : undefined}
         onContextMenu={menu}
         onDoubleClick={e => {
           if (!list.unlisted && (e.target as HTMLElement).closest('.column-title')) setRenaming(true)
@@ -290,12 +377,18 @@ function Column({
 }
 
 function CollapsedColumn({ board, list, count, color }: { board: LoadedBoard; list: ListDef; count: number; color: string }) {
-  const { setNodeRef } = useDroppable({ id: `list:${list.id}` })
+  const { setNodeRef: setDropRef } = useDroppable({ id: `list:${list.id}` })
+  const { setNodeRef, listeners, attributes, transform, transition, isDragging } = useSortable({ id: `${COL}${list.id}` })
   return (
     <button
-      ref={setNodeRef}
-      className="column collapsed"
-      style={{ borderTopColor: color }}
+      ref={node => {
+        setDropRef(node)
+        setNodeRef(node)
+      }}
+      {...attributes}
+      {...listeners}
+      className={`column collapsed${isDragging ? ' lifted' : ''}`}
+      style={{ borderTopColor: color, transform: CSS.Translate.toString(transform), transition }}
       data-list={list.id}
       title={`Expand “${list.title}”`}
       onClick={() => actions.toggleCollapsed(board.path, list.id)}
@@ -304,6 +397,27 @@ function CollapsedColumn({ board, list, count, color }: { board: LoadedBoard; li
       <span className="collapsed-count">{count}</span>
       <span className="collapsed-title">{list.title}</span>
     </button>
+  )
+}
+
+/** What follows the pointer while a list is dragged: its header and its first cards. */
+function ColumnPreview({ title, color, cards }: { title: string; color: string; cards: Card[] }) {
+  const work = cards.filter(c => !isDivider(c))
+  return (
+    <div className="column column-preview">
+      <div className="column-head" style={{ borderTopColor: color }}>
+        <span className="column-title">{title}</span>
+        <span className="column-count">{work.length}</span>
+      </div>
+      <div className="column-body">
+        {work.slice(0, 4).map(card => (
+          <div key={card.id} className="card">
+            <div className="card-title">{card.title}</div>
+          </div>
+        ))}
+        {work.length > 4 && <div className="muted small preview-more">+ {work.length - 4} more</div>}
+      </div>
+    </div>
   )
 }
 
@@ -352,7 +466,9 @@ function AddListColumn({ board }: { board: LoadedBoard }) {
     let id = base
     for (let n = 2; board.meta.lists.some(l => l.id === id); n++) id = `${base}-${n}`
     setTitle('')
-    await api.boards.updateMeta(board.path, { lists: [...board.meta.lists, { id, title: text }] })
+    // Its colour is written down with it, so later moves never change it.
+    const lists = freezeListColors([...board.meta.lists, { id, title: text }])
+    await api.boards.updateMeta(board.path, { lists })
     await actions.loadBoard(board.path)
   }
 

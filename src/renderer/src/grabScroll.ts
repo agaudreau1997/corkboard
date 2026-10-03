@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 
-const INTERACTIVE = '.card, .divider-card, button, input, textarea, select, a, [contenteditable], .ctx-menu'
+// A list's header drags the list, so it never pans the board.
+const INTERACTIVE = '.card, .divider-card, .column-head, button, input, textarea, select, a, [contenteditable], .ctx-menu'
 
 /**
  * Drag the empty parts of a scroller to pan it, with a little momentum on release: sideways

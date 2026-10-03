@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { between, isDivider, parseCard, serializeCard, slugify, sortCards } from '@shared/cardfile'
+import { between, isDivider, LIST_COLORS, parseCard, reorderLists, serializeCard, slugify, sortCards } from '@shared/cardfile'
 import { tacklePrompt, sessionName } from '@shared/prompts'
 import type { BoardMeta, Card } from '@shared/types'
 
@@ -71,6 +71,24 @@ describe('helpers', () => {
       { ...base, id: 'RS-1', pos: 2 },
     ]
     expect(sortCards(cards).map(c => c.id)).toEqual(['RS-2', 'RS-1', 'RS-3'])
+  })
+
+  it('reorders lists around the archived ones, which keep their places', () => {
+    const lists = [
+      { id: 'a', title: 'A' },
+      { id: 'old', title: 'Old', archived: true },
+      { id: 'b', title: 'B' },
+      { id: 'c', title: 'C' },
+    ]
+    const moved = reorderLists(lists, 'c', 'a')!
+    expect(moved.map(l => l.id)).toEqual(['c', 'old', 'a', 'b'])
+    // Each list keeps the colour it had at its old place.
+    expect(moved.find(l => l.id === 'c')?.color).toBe(LIST_COLORS[3])
+    expect(moved.find(l => l.id === 'a')?.color).toBe(LIST_COLORS[0])
+    expect(reorderLists(moved, 'a', 'c')?.find(l => l.id === 'a')?.color).toBe(LIST_COLORS[0])
+    expect(reorderLists(lists, 'a', 'c')?.map(l => l.id)).toEqual(['b', 'old', 'c', 'a'])
+    expect(reorderLists(lists, 'b', 'b')).toBeNull()
+    expect(reorderLists(lists, 'old', 'a')).toBeNull()
   })
 
   it('knows dividers and slugs', () => {

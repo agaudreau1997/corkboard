@@ -1,6 +1,6 @@
 // The right-click menus of cards and lists, shared by the board, map and table views.
 
-import { between, cardNumber, isDivider, sortCards } from '@shared/cardfile'
+import { between, cardNumber, isDivider, reorderLists, sortCards } from '@shared/cardfile'
 import type { BoardNode, Card, ListDef, LoadedBoard, TackleMode } from '@shared/types'
 import type { MenuItem } from './components/ContextMenu'
 import { tackleCards } from './tackle'
@@ -164,7 +164,6 @@ export type ListMenuHooks = { addCard: () => void; rename: () => void }
 export function listMenu(board: LoadedBoard, list: ListDef, hooks: ListMenuHooks): MenuItem[] {
   const cards = sortCards(board.cards.filter(c => c.list === list.id && !c.archived))
   const work = cards.filter(c => !isDivider(c))
-  const index = board.meta.lists.findIndex(l => l.id === list.id)
   const collapsed = (useStore.getState().collapsed[board.path] ?? []).includes(list.id)
   const visible = listsOf(board)
   const visibleIndex = visible.findIndex(l => l.id === list.id)
@@ -172,13 +171,10 @@ export function listMenu(board: LoadedBoard, list: ListDef, hooks: ListMenuHooks
   const setLists = (lists: ListDef[]) =>
     void api.boards.updateMeta(board.path, { lists }).then(() => actions.loadBoard(board.path))
   const moveBy = (by: number) => {
-    // Swap with the next visible list, archived ones staying where they are.
+    // Next to the neighbouring visible list, archived ones staying where they are.
     const other = visible[visibleIndex + by]
-    if (!other) return
-    const lists = [...board.meta.lists]
-    const j = lists.findIndex(l => l.id === other.id)
-    ;[lists[index], lists[j]] = [lists[j], lists[index]]
-    setLists(lists)
+    const lists = other ? reorderLists(board.meta.lists, list.id, other.id) : null
+    if (lists) void actions.setLists(board.path, lists)
   }
   const sortBy = (compare: (a: Card, b: Card) => number) => () => {
     const ordered = [...cards].sort(compare)

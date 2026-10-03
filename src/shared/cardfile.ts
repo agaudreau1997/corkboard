@@ -3,7 +3,7 @@
 // one-line diff and a hand edit by a person or a Claude session round-trips unchanged.
 
 import YAML from 'yaml'
-import type { Card, SessionRef } from './types'
+import type { Card, ListDef, SessionRef } from './types'
 
 const KNOWN = [
   'id',
@@ -116,4 +116,36 @@ export function sortCards(cards: Card[]): Card[] {
 /** A card titled with a run of dashes is a divider inside its list, not work. */
 export function isDivider(card: Pick<Card, 'title'>): boolean {
   return /^\s*-{3,}\s*$/.test(card.title)
+}
+
+/** The list colours, for strips and map nodes. */
+export const LIST_COLORS = ['#5b8def', '#e0a93b', '#4cb782', '#d9645b', '#a77bdb', '#3fb5c4', '#d77fb1', '#8f9bb3']
+
+/** A list's colour: its own, else the one of its place. */
+export function listColorAt(lists: ListDef[], index: number): string {
+  return lists[index]?.color ?? LIST_COLORS[index % LIST_COLORS.length]
+}
+
+/** Every list gets the colour it shows now written down, so moving lists never repaints them. */
+export function freezeListColors(lists: ListDef[]): ListDef[] {
+  return lists.map((l, i) => (l.color ? l : { ...l, color: listColorAt(lists, i) }))
+}
+
+/**
+ * Moves list `from` to where list `to` stands, among the visible lists. Archived lists keep their
+ * places: the visible ones are reordered within the slots they occupy. Colours are frozen first,
+ * so each list keeps its own. null when nothing moves.
+ */
+export function reorderLists(original: ListDef[], from: string, to: string): ListDef[] | null {
+  const lists = freezeListColors(original)
+  const visible = lists.filter(l => !l.archived)
+  const a = visible.findIndex(l => l.id === from)
+  const b = visible.findIndex(l => l.id === to)
+  if (a < 0 || b < 0 || a === b) return null
+  const moved = [...visible]
+  moved.splice(b, 0, ...moved.splice(a, 1))
+  const slots = lists.flatMap((l, i) => (l.archived ? [] : [i]))
+  const out = [...lists]
+  moved.forEach((list, k) => (out[slots[k]] = list))
+  return out
 }

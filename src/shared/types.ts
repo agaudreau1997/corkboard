@@ -10,6 +10,8 @@ export type ListDef = {
   title: string
   /** Hidden from the board view; its cards keep their list. */
   archived?: boolean
+  /** Its colour; unset, the colour of its place in the board's palette. */
+  color?: string
 }
 
 export type BoardMeta = {
