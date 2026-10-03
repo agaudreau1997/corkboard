@@ -1,0 +1,129 @@
+// The board repo's data model, shared by the main process, the renderer and the importer.
+//
+// On disk a board is a folder holding `board.json`, a `cards/` folder of one Markdown file per
+// card (`cards/<ID>.md`, YAML front matter + a Markdown body) and an optional `map.json` (the
+// map view's node positions). Any other sub-folder holding a `board.json` is a child board.
+
+export type ListDef = {
+  /** Stable id a card's `list` field names (a slug of the first title). */
+  id: string
+  title: string
+}
+
+export type BoardMeta = {
+  /** Card id prefix, unique in the repo: cards of this board are `<key>-<n>`. */
+  key: string
+  title: string
+  lists: ListDef[]
+  /** Absolute path of the code repo the cards' commits live in; inherited by child boards. */
+  codeRepo?: string
+  /** Lists the tackle buttons move cards to; unset means "leave the card where it is". */
+  flow?: { doing?: string; done?: string }
+  /** Extra instructions appended to every prompt a tackle button sends. */
+  promptNotes?: string
+  created?: string
+  trello?: { url: string; id?: string }
+}
+
+export type SessionRef = {
+  /** Claude Code session id (a UUID we mint for local runs; cloud runs record the one it prints). */
+  id?: string
+  kind: 'local' | 'local-worktree' | 'cloud'
+  started: string
+  /** Where the session runs, needed to resume it (a worktree has its own folder). */
+  cwd?: string
+  /** claude.ai/code URL of a cloud session, when it printed one. */
+  url?: string
+  /** Every card the session was given (a list tackle shares one session). */
+  cards?: string[]
+}
+
+export type Card = {
+  id: string
+  title: string
+  /** A list id of the board, or null for a card that only lives on the map (an idea). */
+  list: string | null
+  /** Order inside its list, smaller first. */
+  pos: number
+  created?: string
+  updated?: string
+  due?: string
+  complete?: boolean
+  archived?: boolean
+  labels: string[]
+  /** Ids of related cards (any board): the map view's edges. */
+  links: string[]
+  trello?: string
+  sessions: SessionRef[]
+  /** Markdown body: the description. */
+  body: string
+  /** Front-matter keys this app does not know, kept verbatim on write. */
+  extra: Record<string, unknown>
+}
+
+export type MapNodePos = { x: number; y: number }
+
+export type BoardMap = {
+  nodes: Record<string, MapNodePos>
+  /** List ids whose cards the map leaves out. */
+  hiddenLists?: string[]
+  /** Show cards with no list ("ideas"). Default true. */
+  showUnlisted?: boolean
+}
+
+/** One node of the sidebar's tree. `path` is relative to the board root, '/'-separated. */
+export type BoardNode = {
+  path: string
+  title: string
+  key: string
+  listCount: number
+  cardCount: number
+  children: BoardNode[]
+}
+
+export type LoadedBoard = {
+  path: string
+  meta: BoardMeta
+  /** codeRepo after inheritance from parent boards. */
+  codeRepo?: string
+  cards: Card[]
+  map: BoardMap
+}
+
+export type CodeCommit = {
+  sha: string
+  short: string
+  author: string
+  date: string
+  subject: string
+  /** Card ids from the commit's `Card:` trailers. */
+  cards: string[]
+}
+
+export type CardPatch = Partial<Omit<Card, 'id' | 'extra'>>
+
+export type BoardDelta = {
+  path: string
+  /** Cards whose file changed (or appeared), parsed fresh. */
+  cards: Card[]
+  /** Ids whose file went away. */
+  removed: string[]
+  meta?: BoardMeta
+  map?: BoardMap
+}
+
+export type TackleMode = 'local' | 'local-worktree' | 'cloud'
+
+export type TackleRequest = {
+  boardPath: string
+  cardIds: string[]
+  mode: TackleMode
+  /** For several cards: one session for all, or one per card. */
+  split?: 'together' | 'each'
+  /** Title of the list, when the cards are a whole list. */
+  listTitle?: string
+}
+
+export type PtyInfo = { id: string; title: string; cwd: string; cardIds?: string[] }
+
+export type AppConfig = { boardRoot: string }
