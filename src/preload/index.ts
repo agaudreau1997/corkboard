@@ -42,6 +42,7 @@ const api: CorkboardApi = {
   claude: {
     info: () => invoke('claude:info'),
     update: boardPath => invoke('claude:update', boardPath),
+    desktopAvailable: () => invoke('claude:desktopAvailable'),
   },
   clipboard: {
     write: text => ipcRenderer.send('clipboard:write', text),
@@ -64,6 +65,7 @@ const api: CorkboardApi = {
   tackle: {
     start: req => invoke('tackle:start', req),
     resume: (boardPath, ref) => invoke('tackle:resume', boardPath, ref),
+    openInDesktop: ref => invoke('tackle:openInDesktop', ref),
   },
   shell: {
     openExternal: url => ipcRenderer.send('shell:openExternal', url),

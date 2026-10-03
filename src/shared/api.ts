@@ -58,6 +58,8 @@ export type CorkboardApi = {
     info(): Promise<ClaudeInfo>
     /** Runs `claude update` in a terminal tab. */
     update(boardPath?: string): Promise<PtyInfo>
+    /** Whether claude:// links open the Claude desktop app here. */
+    desktopAvailable(): Promise<boolean>
   }
   clipboard: {
     write(text: string): void
@@ -79,7 +81,10 @@ export type CorkboardApi = {
   }
   tackle: {
     start(req: TackleRequest): Promise<PtyInfo[]>
-    resume(boardPath: string, ref: SessionRef): Promise<PtyInfo>
+    /** Opens a recorded session again; null when the desktop app took it. */
+    resume(boardPath: string, ref: SessionRef): Promise<PtyInfo | null>
+    /** Opens a terminal session in the Claude desktop app. */
+    openInDesktop(ref: SessionRef): Promise<void>
   }
   shell: {
     openExternal(url: string): void

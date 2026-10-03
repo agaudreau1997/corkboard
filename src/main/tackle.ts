@@ -7,6 +7,13 @@ import path from 'node:path'
 import { isDivider, slugify } from '@shared/cardfile'
 import { sessionName, tacklePrompt } from '@shared/prompts'
 import type { Card, PtyInfo, SessionRef, TackleRequest } from '@shared/types'
+import {
+  continueUrl,
+  findDesktopSession,
+  importUrl,
+  newSessionUrl,
+  openUrl,
+} from './desktop'
 import type { PtyManager } from './pty'
 import type { BoardStore } from './store'
 
@@ -14,7 +21,14 @@ import type { BoardStore } from './store'
 export const CLAUDE = process.env.CORKBOARD_CLAUDE_BIN || 'claude'
 const CLOUD_URL = /https:\/\/claude\.ai\/code\/[A-Za-z0-9_\-/]+/
 
-export async function tackle(req: TackleRequest, store: BoardStore, ptys: PtyManager): Promise<PtyInfo[]> {
+export type OpenExternal = (url: string) => Promise<void>
+
+export async function tackle(
+  req: TackleRequest,
+  store: BoardStore,
+  ptys: PtyManager,
+  open: OpenExternal,
+): Promise<PtyInfo[]> {
   const board = store.board(req.boardPath)
   const cards = req.cardIds
     .map(id => board.cards.find(c => c.id === id))
@@ -39,6 +53,16 @@ export async function tackle(req: TackleRequest, store: BoardStore, ptys: PtyMan
     const started = new Date().toISOString()
     let ref: SessionRef
     let command: string[]
+
+    if (req.mode === 'desktop') {
+      // A new session in the Claude desktop app, in the code repo with the board repo beside it.
+      const folders = store.root === cwd ? [cwd] : [cwd, store.root]
+      const { url, marker } = newSessionUrl(prompt, folders)
+      await recordSession(store, req.boardPath, group, { kind: 'desktop', started, cwd, cards: ids, name })
+      await openUrl(url, open)
+      watchForDesktopSession(store, req.boardPath, ids, started, cwd, marker)
+      continue
+    }
 
     if (cloud) {
       ref = { kind: 'cloud', started, cwd, cards: ids, name }
@@ -89,8 +113,23 @@ export function localCommand(opts: {
   return command
 }
 
-/** Opens a terminal that resumes a recorded session. */
-export function resume(store: BoardStore, ptys: PtyManager, boardPath: string, ref: SessionRef): PtyInfo {
+/**
+ * Opens a recorded session again: a desktop one in the desktop app, the others in a terminal.
+ * Answers the terminal it opened, or null when the desktop app took it.
+ */
+export async function resume(
+  store: BoardStore,
+  ptys: PtyManager,
+  boardPath: string,
+  ref: SessionRef,
+  open: OpenExternal,
+): Promise<PtyInfo | null> {
+  if (ref.kind === 'desktop') {
+    if (ref.desktopId) await openUrl(continueUrl(ref.desktopId), open)
+    else if (ref.id) await openUrl(importUrl(ref.id), open)
+    else throw new Error('The desktop app has not shown this session yet: send its prompt there first.')
+    return null
+  }
   const board = store.board(boardPath)
   const fallback = board.codeRepo && existsSync(board.codeRepo) ? board.codeRepo : store.root
   const cwd = ref.cwd && existsSync(ref.cwd) ? ref.cwd : fallback
@@ -102,6 +141,63 @@ export function resume(store: BoardStore, ptys: PtyManager, boardPath: string, r
   }
   if (!ref.id) throw new Error('No session id recorded.')
   return ptys.create({ title: `↻ ${label}`, cwd, command: [CLAUDE, '--resume', ref.id], cardIds: ref.cards })
+}
+
+/** Opens a terminal session in the Claude desktop app (it imports the CLI session by id). */
+export async function openInDesktop(ref: SessionRef, open: OpenExternal): Promise<void> {
+  if (!ref.id) throw new Error('No session id recorded.')
+  await openUrl(ref.desktopId ? continueUrl(ref.desktopId) : importUrl(ref.id), open)
+}
+
+const watchers = new Set<NodeJS.Timeout>()
+const DESKTOP_WATCH_MS = 30 * 60_000
+
+/**
+ * The desktop app writes its index entry and transcript once the prompt is sent; poll for them
+ * and put the session's ids on the cards, so the card can open it again later.
+ */
+function watchForDesktopSession(
+  store: BoardStore,
+  boardPath: string,
+  ids: string[],
+  started: string,
+  cwd: string,
+  marker: string,
+): void {
+  const since = Date.parse(started)
+  const timer = setInterval(async () => {
+    if (Date.now() - since > DESKTOP_WATCH_MS) return stopWatch(timer)
+    const known = new Set(
+      store
+        .allBoards()
+        .flatMap(b => b.cards.flatMap(c => c.sessions.map(s => s.desktopId)))
+        .filter((x): x is string => !!x),
+    )
+    const found = await findDesktopSession({ cwd, since, marker, skip: known }).catch(() => undefined)
+    if (!found) return
+    stopWatch(timer)
+    const board = store.board(boardPath)
+    for (const id of ids) {
+      const card = board.cards.find(c => c.id === id)
+      if (!card) continue
+      const sessions = card.sessions.map(s =>
+        s.kind === 'desktop' && s.started === started ? { ...s, id: found.cliSessionId, desktopId: found.desktopId } : s,
+      )
+      await store.updateCard(boardPath, id, { sessions })
+    }
+  }, Number(process.env.CORKBOARD_DESKTOP_POLL_MS ?? 3000))
+  timer.unref?.()
+  watchers.add(timer)
+}
+
+function stopWatch(timer: NodeJS.Timeout): void {
+  clearInterval(timer)
+  watchers.delete(timer)
+}
+
+export function stopDesktopWatches(): void {
+  for (const timer of watchers) clearInterval(timer)
+  watchers.clear()
 }
 
 async function recordSession(store: BoardStore, boardPath: string, cards: Card[], ref: SessionRef): Promise<void> {

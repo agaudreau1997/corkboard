@@ -30,6 +30,13 @@ export async function tackleCards(
       sessions > 1 ? `Start ${sessions} cloud sessions` : 'Start cloud session',
     )
     if (!ok) return
+  } else if (mode === 'desktop' && opts.split === 'each' && count > 1) {
+    const ok = await actions.confirm(
+      `Open ${count} sessions in Claude desktop?`,
+      'Each card gets its own new Code session in the desktop app, its prompt filled in.',
+      `Open ${count} sessions`,
+    )
+    if (!ok) return
   } else if (opts.split === 'each' && count > 1) {
     const ok = await actions.confirm(
       `Start ${count} parallel sessions?`,
@@ -41,6 +48,9 @@ export async function tackleCards(
   try {
     await api.tackle.start({ boardPath, cardIds: cards.map(c => c!.id), mode, ...opts })
     actions.clearSelection(boardPath)
+    if (mode === 'desktop') {
+      actions.toast('Opened in Claude desktop; the card links to the session once its prompt is sent.')
+    }
   } catch (error) {
     actions.toast((error as Error).message, 'error')
   }

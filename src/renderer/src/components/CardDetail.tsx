@@ -17,6 +17,7 @@ export function CardDetail() {
 
 function Drawer({ board, card }: { board: LoadedBoard; card: Card }) {
   const allCommits = useStore(s => s.commits[board.path])
+  const desktop = useStore(s => s.desktop)
   const commits = useMemo(() => commitsFor(allCommits, card.id), [allCommits, card.id])
   const [title, setTitle] = useState(card.title)
   const [body, setBody] = useState(card.body)
@@ -84,11 +85,24 @@ function Drawer({ board, card }: { board: LoadedBoard; card: Card }) {
       </div>
 
       <div className="tackle-row">
-        <button className="accent" onClick={() => void tackleCards(board.path, [card.id], 'local')}>
-          Tackle locally
+        {desktop && (
+          <button className="accent" title="A new Code session in the Claude desktop app" onClick={() => void tackleCards(board.path, [card.id], 'desktop')}>
+            Claude desktop
+          </button>
+        )}
+        <button
+          className={desktop ? '' : 'accent'}
+          title="A Claude Code session in the terminal panel"
+          onClick={() => void tackleCards(board.path, [card.id], 'local')}
+        >
+          Terminal
         </button>
-        <button onClick={() => void tackleCards(board.path, [card.id], 'local-worktree')}>In a worktree</button>
-        <button onClick={() => void tackleCards(board.path, [card.id], 'cloud')}>Claude Cloud</button>
+        <button title="A terminal session in its own git worktree" onClick={() => void tackleCards(board.path, [card.id], 'local-worktree')}>
+          Worktree
+        </button>
+        <button title="A claude.ai/code session on the pushed branch" onClick={() => void tackleCards(board.path, [card.id], 'cloud')}>
+          Cloud
+        </button>
       </div>
 
       <section>
@@ -307,7 +321,16 @@ function SessionRow({
   session: SessionRef
   onForget: () => void
 }) {
-  const kind = session.kind === 'cloud' ? 'Cloud' : session.kind === 'local-worktree' ? 'Worktree' : 'Local'
+  const desktop = useStore(s => s.desktop)
+  const kind =
+    session.kind === 'cloud'
+      ? 'Cloud'
+      : session.kind === 'desktop'
+        ? 'Desktop'
+        : session.kind === 'local-worktree'
+          ? 'Worktree'
+          : 'Terminal'
+  const fail = (e: unknown) => actions.toast((e as Error).message, 'error')
   const others = (session.cards ?? []).length > 1 ? ` · with ${session.cards!.length - 1} more` : ''
   const detail = [session.name, session.id && `session ${session.id}`, session.cwd].filter(Boolean).join('\n')
   return (
@@ -321,15 +344,29 @@ function SessionRow({
           Open
         </button>
       )}
-      {(session.id || session.url) && (
-        <button
-          className="small"
-          onClick={() =>
-            void api.tackle.resume(boardPath, session).catch(e => actions.toast((e as Error).message, 'error'))
-          }
-        >
-          Resume
-        </button>
+      {session.kind === 'desktop' ? (
+        session.desktopId || session.id ? (
+          <button className="small" title="Open it in the Claude desktop app" onClick={() => void api.tackle.resume(boardPath, session).catch(fail)}>
+            Open
+          </button>
+        ) : (
+          <span className="muted small" title="The card links to it once its prompt has been sent in the desktop app">
+            waiting
+          </span>
+        )
+      ) : (
+        <>
+          {desktop && session.id && session.kind !== 'cloud' && (
+            <button className="small" title="Open this session in the Claude desktop app" onClick={() => void api.tackle.openInDesktop(session).catch(fail)}>
+              Desktop
+            </button>
+          )}
+          {(session.id || session.url) && (
+            <button className="small" title="Resume it in a terminal tab" onClick={() => void api.tackle.resume(boardPath, session).catch(fail)}>
+              Resume
+            </button>
+          )}
+        </>
       )}
       <button
         className="icon-button small"

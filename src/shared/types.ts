@@ -32,7 +32,7 @@ export type BoardMeta = {
 export type SessionRef = {
   /** Claude Code session id (a UUID we mint for local runs; cloud runs record the one it prints). */
   id?: string
-  kind: 'local' | 'local-worktree' | 'cloud'
+  kind: 'local' | 'local-worktree' | 'cloud' | 'desktop'
   started: string
   /** Where the session runs, needed to resume it (a worktree has its own folder). */
   cwd?: string
@@ -42,6 +42,8 @@ export type SessionRef = {
   cards?: string[]
   /** The name it was started under (`claude -n`), shown on the card. */
   name?: string
+  /** The Claude desktop app's own id for the session (`local_…`), once found in its index. */
+  desktopId?: string
 }
 
 export type Card = {
@@ -122,7 +124,7 @@ export type BoardDelta = {
   map?: BoardMap
 }
 
-export type TackleMode = 'local' | 'local-worktree' | 'cloud'
+export type TackleMode = 'desktop' | 'local' | 'local-worktree' | 'cloud'
 
 export type TackleRequest = {
   boardPath: string

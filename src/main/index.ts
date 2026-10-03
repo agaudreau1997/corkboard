@@ -9,7 +9,8 @@ import { PtyManager } from './pty'
 import { BoardStore } from './store'
 import { shellProbe } from './shell'
 import { BoardSync } from './sync'
-import { CLAUDE, resume, tackle } from './tackle'
+import { desktopAvailable } from './desktop'
+import { CLAUDE, openInDesktop, resume, stopDesktopWatches, tackle } from './tackle'
 
 // Test seams: a scratch profile, a board root, a hidden window, a short commit delay.
 if (process.env.CORKBOARD_USER_DATA) app.setPath('userData', process.env.CORKBOARD_USER_DATA)
@@ -199,8 +200,11 @@ function registerIpc(): void {
   ipcMain.on('pty:kill', (_e, id: string) => ptys.kill(id))
   ipcMain.handle('pty:list', () => ptys.list())
 
-  ipcMain.handle('tackle:start', (_e, req: TackleRequest) => tackle(req, requireStore(), ptys))
-  ipcMain.handle('tackle:resume', (_e, p: string, ref: SessionRef) => resume(requireStore(), ptys, p, ref))
+  const open = (url: string) => shell.openExternal(url)
+  ipcMain.handle('tackle:start', (_e, req: TackleRequest) => tackle(req, requireStore(), ptys, open))
+  ipcMain.handle('tackle:resume', (_e, p: string, ref: SessionRef) => resume(requireStore(), ptys, p, ref, open))
+  ipcMain.handle('tackle:openInDesktop', (_e, ref: SessionRef) => openInDesktop(ref, open))
+  ipcMain.handle('claude:desktopAvailable', () => desktopAvailable())
 
   ipcMain.on('shell:openExternal', (_e, url: string) => {
     if (/^https?:\/\//.test(url)) void shell.openExternal(url)
@@ -279,6 +283,7 @@ app.on('before-quit', event => {
   event.preventDefault()
   quitting = true
   ptys.killAll()
+  stopDesktopWatches()
   store?.close()
   sync?.stop()
   // Commit and push what is pending, but never hold the quit for long.

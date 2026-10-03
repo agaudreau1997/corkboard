@@ -69,6 +69,8 @@ type State = UiPrefs & {
   lastCommit: { summary: string; at: number } | null
   sync: SyncStatus
   claude: ClaudeInfo | null
+  /** Whether claude:// links reach the Claude desktop app on this machine. */
+  desktop: boolean
   contextMenu: { x: number; y: number; items: MenuItem[] } | null
   /** Set to open the card drawer with its link picker focused. */
   focusLinks: number
@@ -91,6 +93,7 @@ export const useStore = create<State>(() => ({
   lastCommit: null,
   sync: { state: 'idle' },
   claude: null,
+  desktop: false,
   contextMenu: null,
   focusLinks: 0,
 }))
@@ -159,6 +162,7 @@ export const actions = {
     api.on.syncStatus(sync => set({ sync }))
     void api.sync.status().then(sync => set({ sync }))
     void actions.refreshClaude()
+    void api.claude.desktopAvailable().then(desktop => set({ desktop }))
     const config = await api.config.get()
     set({ config })
     if (config) await actions.afterRootOpened()

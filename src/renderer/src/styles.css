@@ -1650,3 +1650,7 @@ tr.selected td {
 .preview-more {
   padding: 2px 4px 4px;
 }
+
+.k-desktop {
+  color: var(--accent);
+}

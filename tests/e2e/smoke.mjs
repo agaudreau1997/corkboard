@@ -42,6 +42,8 @@ writeFileSync(path.join(root, 'robot-shooter/board.json'), `${JSON.stringify(rsM
 execFileSync('git', ['commit', '-qam', 'e2e: point at the scratch code repo'], { cwd: root })
 
 const fakeLog = path.join(scratch, 'claude-calls.txt')
+const urlLog = path.join(scratch, 'opened-urls.txt')
+const openedUrls = () => (existsSync(urlLog) ? readFileSync(urlLog, 'utf8').split('\n').filter(Boolean) : [])
 /** The stand-in's calls that started sessions (the app also asks it for --version). */
 const sessionCalls = () =>
   existsSync(fakeLog) ? readFileSync(fakeLog, 'utf8').split('\n--\n').filter(c => c && !c.startsWith('--version')) : []
@@ -97,6 +99,11 @@ const app = await electron.launch({
     CORKBOARD_COMMIT_DELAY_MS: '600',
     CORKBOARD_SYNC_INTERVAL_MS: '0',
     CORKBOARD_CLAUDE_BIN: fakeClaude,
+    // claude:// links are written to a file, and the desktop app's session index is a scratch one.
+    CORKBOARD_OPEN_URL_LOG: urlLog,
+    CORKBOARD_DESKTOP_SESSIONS_DIR: path.join(scratch, 'desktop-sessions'),
+    CORKBOARD_CLAUDE_PROJECTS_DIR: path.join(scratch, 'claude-projects'),
+    CORKBOARD_DESKTOP_POLL_MS: '300',
   },
 })
 const page = await app.firstWindow()
@@ -303,7 +310,7 @@ try {
   await page.locator('.filter').fill('')
 
   const tackleId = (await page.locator('.drawer .card-id').textContent()).trim()
-  await page.locator('.drawer').getByRole('button', { name: 'Tackle locally' }).click()
+  await page.locator('.drawer').getByRole('button', { name: 'Terminal', exact: true }).click()
   await page.locator('.terminal-tab').first().waitFor()
   const termText = await until(async () => {
     const t = await page.locator('.xterm-rows').first().textContent()
@@ -324,26 +331,63 @@ try {
   const forgotten = await until(() => !readFileSync(path.join(root, 'robot-shooter/cards', `${tackleId}.md`), 'utf8').includes('sessions:'))
   check(forgotten, 'forgetting the session takes it off the card')
   check((await page.locator('.drawer .sessions li').count()) === 0, 'and off the drawer')
+
+  // ---- Claude desktop: a claude://code/new link, then the session found in its index ----
+  const cardFileOf = id => path.join(root, 'robot-shooter/cards', `${id}.md`)
+  await page.locator('.drawer').getByRole('button', { name: 'Claude desktop' }).click()
+  const newLink = await until(() => openedUrls().find(u => u.startsWith('claude://code/new?')))
+  check(!!newLink, 'Claude desktop opened a claude://code/new link')
+  const linkParams = new URL(newLink).searchParams
+  check(linkParams.get('q')?.startsWith(`Tackle card ${tackleId}`) ?? false, 'the link carries the prompt')
+  check(linkParams.getAll('folder').join() === [codeRepo, root].join(), `with the code repo and the board repo as folders`)
+  check(await until(() => readFileSync(cardFileOf(tackleId), 'utf8').includes('kind: desktop')), 'the desktop session is recorded')
+  check((await page.locator('.drawer .sessions li', { hasText: 'waiting' }).count()) === 1, 'waiting until its prompt is sent')
+  // The desktop app indexes the session and writes its transcript once the prompt is sent.
+  const desktopIndex = path.join(scratch, 'desktop-sessions', 'account', 'org')
+  mkdirSync(desktopIndex, { recursive: true })
+  writeFileSync(
+    path.join(desktopIndex, 'local_e2e-1.json'),
+    JSON.stringify({ sessionId: 'local_e2e-1', cliSessionId: 'cli-e2e-1', cwd: codeRepo, createdAt: Date.now() }),
+  )
+  const transcriptDir = path.join(scratch, 'claude-projects', codeRepo.replace(/[^A-Za-z0-9]/g, '-'))
+  mkdirSync(transcriptDir, { recursive: true })
+  writeFileSync(
+    path.join(transcriptDir, 'cli-e2e-1.jsonl'),
+    JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'text', text: linkParams.get('q') }] } }) + '\n',
+  )
+  check(await until(() => readFileSync(cardFileOf(tackleId), 'utf8').includes('desktopId: local_e2e-1')), 'the card links the session the desktop app opened')
+  await page.locator('.drawer .sessions').getByRole('button', { name: 'Open', exact: true }).click()
+  check(!!(await until(() => openedUrls().includes('claude://code/continue?session=local_e2e-1'))), 'Open reopens it in the desktop app')
+
+  // A terminal session opens in the desktop app too (it imports the CLI session).
+  const callsBeforeTerminal = sessionCalls().length
+  await page.locator('.drawer').getByRole('button', { name: 'Terminal', exact: true }).click()
+  await until(() => readFileSync(cardFileOf(tackleId), 'utf8').includes('kind: local'))
+  await until(() => sessionCalls().length > callsBeforeTerminal, 15000)
+  await page.locator('.drawer .sessions li', { hasText: 'Terminal' }).getByRole('button', { name: 'Desktop' }).click()
+  const imported = await until(() => openedUrls().find(u => u.startsWith('claude://resume?session=')))
+  check(!!imported && /session=[0-9a-f-]{36}$/.test(imported), `a terminal session opens in the desktop app (${imported})`)
   await shot('05-terminal')
 
   // Tackle a whole list in parallel: one terminal per card.
   const before = await page.locator('.terminal-tab').count()
+  const callsBeforeParallel = sessionCalls().length
   const prime = page.locator('.column[data-list="todo"]')
   const primeCount = await prime.locator('.card').count()
   await prime.locator('.column-head').click({ button: 'right' })
   await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Tackle all' }).hover()
-  await page.getByRole('menuitem', { name: /Locally, in parallel/ }).click()
+  await page.getByRole('menuitem', { name: /In terminals, in parallel/ }).click()
   await page.getByRole('button', { name: /Start \d+ sessions/ }).click()
   const after = await until(async () => ((await page.locator('.terminal-tab').count()) === before + primeCount ? true : false), 15000)
   check(after, `parallel tackle opened ${primeCount} terminals`)
   await sleep(1500)
-  const worktreeCalls = sessionCalls().slice(1)
+  const worktreeCalls = sessionCalls().slice(callsBeforeParallel)
   check(worktreeCalls.every(c => c.split('\0').includes('-w')), 'each parallel session runs in a worktree')
 
   // Cloud: asks first, then records the printed URL.
   await page.locator('.column[data-list="tofix"] .card').first().click()
   const cloudId = (await page.locator('.drawer .card-id').textContent()).trim()
-  await page.locator('.drawer').getByRole('button', { name: 'Claude Cloud' }).click()
+  await page.locator('.drawer').getByRole('button', { name: 'Cloud', exact: true }).click()
   check((await page.getByRole('dialog').count()) === 1, 'cloud tackle asks for confirmation')
   await page.getByRole('button', { name: 'Start cloud session' }).click()
   const cloudUrl = await until(() => readFileSync(path.join(root, 'robot-shooter/cards', `${cloudId}.md`), 'utf8').includes('claude.ai/code/session_fake123'), 15000)
@@ -353,7 +397,7 @@ try {
   const callsBefore = sessionCalls().length
   await prime.locator('.column-head').click({ button: 'right' })
   await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Tackle all' }).hover()
-  await page.getByRole('menuitem', { name: /one session per card/ }).click()
+  await page.getByRole('menuitem', { name: /Claude Cloud, one session per card/ }).click()
   await page.getByRole('button', { name: new RegExp(`Start ${primeCount} cloud sessions`) }).click()
   const cloudEach = await until(() => {
     const calls = sessionCalls().slice(callsBefore)

@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react'
 import type { Card } from '@shared/types'
-import { tackleCards } from '../tackle'
 import { actions, useStore, type ViewMode, NONE } from '../state'
 import { KanbanView } from './KanbanView'
 import { MapView } from './MapView'
 import { TableView } from './TableView'
-import { TackleMenu } from './TackleMenu'
+import { tackleAllItems } from '../menus'
+import { openContextMenu } from './ContextMenu'
 
 const VIEWS: { id: ViewMode; label: string }[] = [
   { id: 'board', label: 'Board' },
@@ -59,11 +59,18 @@ export function BoardPane({ path }: { path: string }) {
         {selected.length > 0 && (
           <div className="selection-bar">
             <span>{selected.length} selected</span>
-            <TackleMenu
-              label="Tackle"
-              many={selected.length > 1}
-              onPick={(mode, split) => void tackleCards(path, selected, mode, { split })}
-            />
+            <button
+              className="accent"
+              onClick={e => {
+                const r = e.currentTarget.getBoundingClientRect()
+                openContextMenu(
+                  { clientX: r.left, clientY: r.bottom + 4, preventDefault() {}, stopPropagation() {} },
+                  tackleAllItems(board, selected),
+                )
+              }}
+            >
+              Tackle ▾
+            </button>
             <button className="ghost" onClick={() => actions.clearSelection(path)}>
               Clear
             </button>

@@ -33,14 +33,7 @@ export function cardMenu(board: LoadedBoard, card: Card): MenuItem[] {
     { label: 'Open', onSelect: () => actions.openCard(board.path, card.id) },
   ]
   if (!divider && !card.archived) {
-    items.push({
-      label: 'Tackle',
-      items: [
-        { label: 'Locally', hint: 'in the code repo', onSelect: tackle('local') },
-        { label: 'Locally, in a worktree', onSelect: tackle('local-worktree') },
-        { label: 'In Claude Cloud', onSelect: tackle('cloud') },
-      ],
-    })
+    items.push({ label: 'Tackle', items: cardTackleItems(board, card.id) })
     if (selected.length > 1 && isSelected) {
       items.push({
         label: `Tackle the ${selected.length} selected`,
@@ -143,12 +136,34 @@ export function cardMenu(board: LoadedBoard, card: Card): MenuItem[] {
   return items
 }
 
-function tackleAllItems(board: LoadedBoard, ids: string[], listTitle?: string): MenuItem[] {
+/** Where one card can be tackled. */
+export function cardTackleItems(board: LoadedBoard, id: string): MenuItem[] {
+  const go = (mode: TackleMode) => () => void tackleCards(board.path, [id], mode)
+  const desktop = useStore.getState().desktop
+  return [
+    ...(desktop ? [{ label: 'In Claude desktop', hint: 'a new Code session', onSelect: go('desktop') }] : []),
+    { label: 'In a terminal', hint: 'here, in the code repo', onSelect: go('local') },
+    { label: 'In a terminal, in a worktree', onSelect: go('local-worktree') },
+    { label: 'In Claude Cloud', onSelect: go('cloud') },
+  ]
+}
+
+/** Where several cards (a list, a selection) can be tackled: together or one session each. */
+export function tackleAllItems(board: LoadedBoard, ids: string[], listTitle?: string): MenuItem[] {
   const go = (mode: TackleMode, split: 'together' | 'each') => () =>
     void tackleCards(board.path, ids, mode, { split, listTitle })
+  const desktop = useStore.getState().desktop
   return [
-    { label: 'Locally, one session', hint: 'in order', onSelect: go('local', 'together') },
-    { label: 'Locally, in parallel', hint: 'a worktree each', onSelect: go('local-worktree', 'each') },
+    ...(desktop
+      ? [
+          { label: 'In Claude desktop, one session', hint: 'in order', onSelect: go('desktop', 'together') },
+          { label: 'In Claude desktop, one session per card', onSelect: go('desktop', 'each') },
+          'separator' as const,
+        ]
+      : []),
+    { label: 'In a terminal, one session', hint: 'in order', onSelect: go('local', 'together') },
+    { label: 'In terminals, in parallel', hint: 'a worktree each', onSelect: go('local-worktree', 'each') },
+    'separator',
     { label: 'In Claude Cloud, one session', onSelect: go('cloud', 'together') },
     { label: 'In Claude Cloud, one session per card', onSelect: go('cloud', 'each') },
   ]
