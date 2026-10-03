@@ -164,11 +164,30 @@ function Drawer({ board, card }: { board: LoadedBoard; card: Card }) {
 
       {card.sessions.length > 0 && (
         <section>
-          <h3>Claude sessions</h3>
+          <div className="section-head">
+            <h3>Claude sessions</h3>
+            {card.sessions.length > 1 && (
+              <button
+                className="link"
+                title="Take every session off this card; the conversations themselves stay in Claude Code"
+                onClick={() => save({ sessions: [] })}
+              >
+                Forget all
+              </button>
+            )}
+          </div>
           <ul className="sessions">
-            {[...card.sessions].reverse().map((s, i) => (
-              <SessionRow key={`${s.started}-${i}`} boardPath={board.path} session={s} />
-            ))}
+            {card.sessions
+              .map((s, index) => ({ s, index }))
+              .reverse()
+              .map(({ s, index }) => (
+                <SessionRow
+                  key={`${s.started}-${index}`}
+                  boardPath={board.path}
+                  session={s}
+                  onForget={() => save({ sessions: card.sessions.filter((_, i) => i !== index) })}
+                />
+              ))}
           </ul>
         </section>
       )}
@@ -279,11 +298,20 @@ function CommitRow({ boardPath, commit }: { boardPath: string; commit: CodeCommi
   )
 }
 
-function SessionRow({ boardPath, session }: { boardPath: string; session: SessionRef }) {
+function SessionRow({
+  boardPath,
+  session,
+  onForget,
+}: {
+  boardPath: string
+  session: SessionRef
+  onForget: () => void
+}) {
   const kind = session.kind === 'cloud' ? 'Cloud' : session.kind === 'local-worktree' ? 'Worktree' : 'Local'
   const others = (session.cards ?? []).length > 1 ? ` · with ${session.cards!.length - 1} more` : ''
+  const detail = [session.name, session.id && `session ${session.id}`, session.cwd].filter(Boolean).join('\n')
   return (
-    <li className="session">
+    <li className="session" title={detail || undefined}>
       <span className={`kind k-${session.kind}`}>{kind}</span>
       <span className="muted">{localTime(session.started)}</span>
       <span className="muted">{others}</span>
@@ -303,6 +331,14 @@ function SessionRow({ boardPath, session }: { boardPath: string; session: Sessio
           Resume
         </button>
       )}
+      <button
+        className="icon-button small"
+        aria-label="Forget this session"
+        title="Take it off this card (the conversation itself stays in Claude Code)"
+        onClick={onForget}
+      >
+        ×
+      </button>
     </li>
   )
 }

@@ -41,19 +41,14 @@ export async function tackle(req: TackleRequest, store: BoardStore, ptys: PtyMan
     let command: string[]
 
     if (cloud) {
-      ref = { kind: 'cloud', started, cwd, cards: ids }
+      ref = { kind: 'cloud', started, cwd, cards: ids, name }
       command = [CLAUDE, '--cloud', prompt]
     } else {
       const id = randomUUID()
-      command = [CLAUDE, '-n', name, '--session-id', id, '--add-dir', store.root]
-      let sessionCwd = cwd
-      if (req.mode === 'local-worktree') {
-        const worktree = worktreeName(group, req.listTitle)
-        command.push('-w', worktree)
-        sessionCwd = path.join(cwd, '.claude', 'worktrees', worktree)
-      }
-      command.push(prompt)
-      ref = { id, kind: req.mode, started, cwd: sessionCwd, cards: ids }
+      const worktree = req.mode === 'local-worktree' ? worktreeName(group, req.listTitle) : undefined
+      command = localCommand({ claude: CLAUDE, boardRoot: store.root, name, sessionId: id, worktree, prompt })
+      const sessionCwd = worktree ? path.join(cwd, '.claude', 'worktrees', worktree) : cwd
+      ref = { id, kind: req.mode, started, cwd: sessionCwd, cards: ids, name }
     }
 
     const info = ptys.create({ title: cloud ? `☁ ${name}` : name, cwd, command, cardIds: ids })
@@ -73,6 +68,25 @@ export async function tackle(req: TackleRequest, store: BoardStore, ptys: PtyMan
     }
   }
   return opened
+}
+
+/**
+ * The argv of a local session. `--add-dir` takes a list of folders and swallows every argument up
+ * to the next option, so it comes first: placed last it ate the prompt, and Claude started with
+ * no prompt at all. The prompt is last, after options that take exactly one value.
+ */
+export function localCommand(opts: {
+  claude: string
+  boardRoot: string
+  name: string
+  sessionId: string
+  worktree?: string
+  prompt: string
+}): string[] {
+  const command = [opts.claude, '--add-dir', opts.boardRoot, '-n', opts.name, '--session-id', opts.sessionId]
+  if (opts.worktree) command.push('-w', opts.worktree)
+  command.push(opts.prompt)
+  return command
 }
 
 /** Opens a terminal that resumes a recorded session. */

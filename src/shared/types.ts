@@ -40,6 +40,8 @@ export type SessionRef = {
   url?: string
   /** Every card the session was given (a list tackle shares one session). */
   cards?: string[]
+  /** The name it was started under (`claude -n`), shown on the card. */
+  name?: string
 }
 
 export type Card = {

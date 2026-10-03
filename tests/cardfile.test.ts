@@ -154,3 +154,32 @@ describe('tackle prompts', () => {
     expect(prompt.endsWith('Use opus-xhigh.')).toBe(true)
   })
 })
+
+describe('the local session command', () => {
+  /** Claude Code's grammar for these flags: --add-dir is variadic, the others take one value. */
+  function parse(argv: string[]) {
+    const out: { dirs: string[]; prompt?: string; opts: Record<string, string> } = { dirs: [], opts: {} }
+    for (let i = 1; i < argv.length; i++) {
+      const arg = argv[i]
+      if (arg === '--add-dir') {
+        while (i + 1 < argv.length && !argv[i + 1].startsWith('-')) out.dirs.push(argv[++i])
+      } else if (['-n', '--session-id', '-w'].includes(arg)) {
+        out.opts[arg] = argv[++i]
+      } else {
+        out.prompt = arg
+      }
+    }
+    return out
+  }
+
+  it('keeps the prompt out of --add-dir, with and without a worktree', async () => {
+    const { localCommand } = await import('../src/main/tackle')
+    for (const worktree of [undefined, 'card-rs-961']) {
+      const argv = localCommand({ claude: 'claude', boardRoot: '/b', name: 'RS-961 x', sessionId: 'id', worktree, prompt: 'Tackle card RS-961' })
+      const parsed = parse(argv)
+      expect(parsed.prompt).toBe('Tackle card RS-961')
+      expect(parsed.dirs).toEqual(['/b'])
+      expect(parsed.opts['-w']).toBe(worktree)
+    }
+  })
+})

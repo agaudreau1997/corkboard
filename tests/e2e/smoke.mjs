@@ -46,10 +46,27 @@ const fakeLog = path.join(scratch, 'claude-calls.txt')
 const sessionCalls = () =>
   existsSync(fakeLog) ? readFileSync(fakeLog, 'utf8').split('\n--\n').filter(c => c && !c.startsWith('--version')) : []
 const fakeClaude = path.join(scratch, 'fake-claude')
+// Records its argv, then parses it the way Claude Code does (--add-dir takes every argument up to
+// the next option), so a prompt an option swallowed shows up on screen as "prompt=none".
 writeFileSync(
   fakeClaude,
-  `#!/bin/bash\nprintf '%s\\0' "$@" >> ${JSON.stringify(fakeLog)}\nprintf '\\n--\\n' >> ${JSON.stringify(fakeLog)}\n` +
-    `echo "FAKE CLAUDE in $PWD"\nif [ "$1" = "--cloud" ]; then echo "Created https://claude.ai/code/session_fake123"; fi\n`,
+  [
+    '#!/bin/bash',
+    `printf '%s\\0' "$@" >> ${JSON.stringify(fakeLog)}`,
+    `printf '\\n--\\n' >> ${JSON.stringify(fakeLog)}`,
+    'cloud=no; [ "$1" = "--cloud" ] && cloud=yes',
+    'prompt=none',
+    'while [ $# -gt 0 ]; do case "$1" in',
+    '  --add-dir) shift; while [ $# -gt 0 ] && [ "${1#-}" = "$1" ]; do shift; done ;;',
+    '  -n|--session-id|-w|--resume) shift 2 ;;',
+    '  --cloud) [ $# -gt 1 ] && prompt=given; shift 2 ;;',
+    '  --version|update) shift ;;',
+    '  *) prompt=given; shift ;;',
+    'esac; done',
+    'echo "FAKE CLAUDE in $PWD prompt=$prompt"',
+    'if [ $cloud = yes ]; then echo "Created https://claude.ai/code/session_fake123"; fi',
+    '',
+  ].join('\n'),
 )
 chmodSync(fakeClaude, 0o755)
 
@@ -293,12 +310,20 @@ try {
     return t?.includes('FAKE CLAUDE') ? t : ''
   }, 15000)
   check(!!termText, 'tackle opened a terminal running claude')
+  check(termText.includes('prompt=given'), 'claude received the prompt (no option swallowed it)')
   const calls = sessionCalls()
   const args = calls[0].split('\0')
   check(args.includes('--session-id') && args.includes('--add-dir') && args.includes('-n'), `claude args: ${args.slice(0, 7).join(' ')}`)
   check(args.at(-2)?.includes(`Tackle card ${tackleId}`) ?? false, `the prompt names ${tackleId}`)
   const tackled = readFileSync(path.join(root, 'robot-shooter/cards', `${tackleId}.md`), 'utf8')
   check(tackled.includes('sessions:') && tackled.includes('kind: local'), 'the session is recorded on the card')
+
+  // Forget it again from the drawer.
+  await page.locator('.drawer .sessions li').first().waitFor()
+  await page.locator('.drawer').getByRole('button', { name: 'Forget this session' }).first().click()
+  const forgotten = await until(() => !readFileSync(path.join(root, 'robot-shooter/cards', `${tackleId}.md`), 'utf8').includes('sessions:'))
+  check(forgotten, 'forgetting the session takes it off the card')
+  check((await page.locator('.drawer .sessions li').count()) === 0, 'and off the drawer')
   await shot('05-terminal')
 
   // Tackle a whole list in parallel: one terminal per card.
