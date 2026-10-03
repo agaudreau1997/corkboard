@@ -7,18 +7,24 @@ import path from 'node:path'
 import { parseCard } from '@shared/cardfile'
 import type { CodeCommit } from '@shared/types'
 
-export function git(cwd: string, args: string[], input?: string): Promise<string> {
+export function git(cwd: string, args: string[], timeoutMs = 0): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = execFile(
+    execFile(
       'git',
       args,
-      { cwd, maxBuffer: 64 * 1024 * 1024, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } },
+      {
+        cwd,
+        maxBuffer: 64 * 1024 * 1024,
+        timeout: timeoutMs,
+        // Never wait on a prompt or an editor: a credential the helper lacks or a rebase that
+        // wants a message fails instead of hanging the app.
+        env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_EDITOR: 'true', GIT_SEQUENCE_EDITOR: 'true' },
+      },
       (error, stdout, stderr) => {
         if (error) reject(new Error(stderr.trim() || error.message))
         else resolve(stdout)
       },
     )
-    if (input !== undefined) child.stdin?.end(input)
   })
 }
 

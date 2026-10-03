@@ -21,8 +21,14 @@ mkdirSync(shots, { recursive: true })
 const scratch = mkdtempSync(path.join(os.tmpdir(), 'corkboard-e2e-'))
 const root = path.join(scratch, 'board')
 const codeRepo = path.join(scratch, 'code')
-execFileSync('git', ['clone', '-q', source, root])
-for (const dir of [root]) {
+// A scratch bare remote, so the app's sync pushes there and never to the real board repo; a
+// second clone of it plays the other machine.
+const remote = path.join(scratch, 'remote.git')
+const otherMachine = path.join(scratch, 'other-machine')
+execFileSync('git', ['clone', '-q', '--bare', source, remote])
+execFileSync('git', ['clone', '-q', remote, root])
+execFileSync('git', ['clone', '-q', remote, otherMachine])
+for (const dir of [root, otherMachine]) {
   execFileSync('git', ['config', 'user.email', 'e2e@example.com'], { cwd: dir })
   execFileSync('git', ['config', 'user.name', 'E2E'], { cwd: dir })
 }
@@ -36,6 +42,9 @@ writeFileSync(path.join(root, 'robot-shooter/board.json'), `${JSON.stringify(rsM
 execFileSync('git', ['commit', '-qam', 'e2e: point at the scratch code repo'], { cwd: root })
 
 const fakeLog = path.join(scratch, 'claude-calls.txt')
+/** The stand-in's calls that started sessions (the app also asks it for --version). */
+const sessionCalls = () =>
+  existsSync(fakeLog) ? readFileSync(fakeLog, 'utf8').split('\n--\n').filter(c => c && !c.startsWith('--version')) : []
 const fakeClaude = path.join(scratch, 'fake-claude')
 writeFileSync(
   fakeClaude,
@@ -69,6 +78,7 @@ const app = await electron.launch({
     CORKBOARD_USER_DATA: path.join(scratch, 'profile'),
     CORKBOARD_HIDDEN: process.env.CORKBOARD_HIDDEN ?? '1',
     CORKBOARD_COMMIT_DELAY_MS: '600',
+    CORKBOARD_SYNC_INTERVAL_MS: '0',
     CORKBOARD_CLAUDE_BIN: fakeClaude,
   },
 })
@@ -174,6 +184,55 @@ try {
   check(moved, 'dragging the card to Done rewrote its list')
   check((await page.locator('.column[data-list="done"] .card', { hasText: 'Drag me to done' }).count()) === 1, 'the card shows in Done')
 
+  // ---- the drag tray: no column appears mid-drag; the Archive zone archives ----
+  // dnd-kit swallows clicks for 50 ms after a drop; a person never clicks that fast.
+  await sleep(120)
+  await todo.getByText('+ Add a card').click()
+  await todo.locator('textarea').waitFor()
+  await page.keyboard.type('Archive me by dragging')
+  await page.keyboard.press('Enter')
+  await page.keyboard.press('Escape')
+  const victim = page.locator('.card', { hasText: 'Archive me by dragging' })
+  await victim.waitFor()
+  const columnsBefore = await page.locator('.column').count()
+  const vb = await victim.boundingBox()
+  await page.mouse.move(vb.x + 40, vb.y + 12)
+  await page.mouse.down()
+  await page.mouse.move(vb.x + 60, vb.y + 30, { steps: 5 })
+  await page.locator('.drag-tray.up').waitFor()
+  check((await page.locator('.column').count()) === columnsBefore, 'dragging adds no column (the board does not shift)')
+  await sleep(250)
+  await shot('08-drag-tray')
+  const zone = await page.locator('[data-zone="zone:archive"]').boundingBox()
+  await page.mouse.move(zone.x + zone.width / 2, zone.y + zone.height / 2, { steps: 20 })
+  await page.mouse.up()
+  await sleep(120)
+  const archivedId = await until(() => {
+    for (const name of ['SB-2.md', 'SB-3.md']) {
+      const f = path.join(root, 'scratch-board/cards', name)
+      if (existsSync(f) && readFileSync(f, 'utf8').includes('Archive me') && readFileSync(f, 'utf8').includes('archived: true')) return name
+    }
+    return ''
+  })
+  check(!!archivedId, `dropping on the tray's Archive zone archived the card (${archivedId})`)
+  check((await page.locator('.card', { hasText: 'Archive me by dragging' }).count()) === 0, 'the archived card left the board')
+
+  // ---- lists from the board: add one, rename it, collapse it ----
+  await page.getByRole('button', { name: '+ Add a list' }).click()
+  await page.keyboard.type('Bugs')
+  await page.keyboard.press('Enter')
+  await page.locator('.column[data-list="bugs"]').waitFor()
+  check(readFileSync(path.join(root, 'scratch-board/board.json'), 'utf8').includes('"Bugs"'), 'a list added from the board lands in board.json')
+  await page.keyboard.press('Escape')
+  await page.locator('.column[data-list="bugs"] .column-title').dblclick()
+  await page.keyboard.press('Control+a')
+  await page.keyboard.type('Known bugs\n')
+  check(await until(() => readFileSync(path.join(root, 'scratch-board/board.json'), 'utf8').includes('"Known bugs"')), 'double-clicking a list title renames it')
+  await page.locator('.column[data-list="bugs"] .column-head').click({ button: 'right' })
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Collapse list' }).click()
+  check((await page.locator('.column.collapsed[data-list="bugs"]').count()) === 1, 'the list menu collapses a list')
+  await page.locator('.column.collapsed[data-list="bugs"]').click()
+
   // ---- a change made on disk shows up live (what a Claude session does) ----
   const file = path.join(root, 'scratch-board/cards/SB-1.md')
   writeFileSync(file, readFileSync(file, 'utf8').replace('list: done', 'list: doing'))
@@ -210,7 +269,7 @@ try {
     return t?.includes('FAKE CLAUDE') ? t : ''
   }, 15000)
   check(!!termText, 'tackle opened a terminal running claude')
-  const calls = readFileSync(fakeLog, 'utf8').split('\n--\n').filter(Boolean)
+  const calls = sessionCalls()
   const args = calls[0].split('\0')
   check(args.includes('--session-id') && args.includes('--add-dir') && args.includes('-n'), `claude args: ${args.slice(0, 7).join(' ')}`)
   check(args.at(-2)?.includes(`Tackle card ${tackleId}`) ?? false, `the prompt names ${tackleId}`)
@@ -222,13 +281,14 @@ try {
   const before = await page.locator('.terminal-tab').count()
   const prime = page.locator('.column[data-list="todo"]')
   const primeCount = await prime.locator('.card').count()
-  await prime.getByRole('button', { name: /Tackle all/ }).click()
-  await page.getByRole('menuitem', { name: /in parallel/ }).click()
+  await prime.locator('.column-head').click({ button: 'right' })
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Tackle all' }).hover()
+  await page.getByRole('menuitem', { name: /Locally, in parallel/ }).click()
   await page.getByRole('button', { name: /Start \d+ sessions/ }).click()
   const after = await until(async () => ((await page.locator('.terminal-tab').count()) === before + primeCount ? true : false), 15000)
   check(after, `parallel tackle opened ${primeCount} terminals`)
   await sleep(1500)
-  const worktreeCalls = readFileSync(fakeLog, 'utf8').split('\n--\n').filter(Boolean).slice(1)
+  const worktreeCalls = sessionCalls().slice(1)
   check(worktreeCalls.every(c => c.split('\0').includes('-w')), 'each parallel session runs in a worktree')
 
   // Cloud: asks first, then records the printed URL.
@@ -239,6 +299,68 @@ try {
   await page.getByRole('button', { name: 'Start cloud session' }).click()
   const cloudUrl = await until(() => readFileSync(path.join(root, 'robot-shooter/cards', `${cloudId}.md`), 'utf8').includes('claude.ai/code/session_fake123'), 15000)
   check(cloudUrl, 'the cloud session URL printed by claude is saved on the card')
+
+  // Cloud, one session per card, from the list menu.
+  const callsBefore = sessionCalls().length
+  await prime.locator('.column-head').click({ button: 'right' })
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Tackle all' }).hover()
+  await page.getByRole('menuitem', { name: /one session per card/ }).click()
+  await page.getByRole('button', { name: new RegExp(`Start ${primeCount} cloud sessions`) }).click()
+  const cloudEach = await until(() => {
+    const calls = sessionCalls().slice(callsBefore)
+    return calls.length === primeCount && calls.every(c => c.startsWith('--cloud')) ? calls : null
+  }, 15000)
+  check(!!cloudEach, `cloud one-per-card started ${primeCount} cloud sessions`)
+
+  // ---- card menu: copy the id, move the card to another board ----
+  const mover = page.locator('.column[data-list="todo"] .card').first()
+  const moverId = await mover.getAttribute('data-card')
+  await mover.click({ button: 'right' })
+  await shot('09-card-menu')
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Copy' }).hover()
+  await page.getByRole('menuitem', { name: /Identifier/ }).click()
+  const copied = await app.evaluate(({ clipboard }) => clipboard.readText())
+  check(copied === moverId, `Copy › Identifier put ${copied} on the clipboard`)
+
+  await page.locator(`.card[data-card="${moverId}"]`).click({ button: 'right' })
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Move to board' }).hover()
+  await page.getByRole('menuitem', { name: 'Robot shooter / Ideas' }).hover()
+  await sleep(150)
+  await shot('10-move-to-board')
+  await page.getByRole('menuitem', { name: 'Considering' }).click()
+  const movedFile = path.join(root, 'robot-shooter/ideas/cards', `${moverId}.md`)
+  const movedOver = await until(() => existsSync(movedFile) && !existsSync(path.join(root, 'robot-shooter/cards', `${moverId}.md`)))
+  check(movedOver, `${moverId} moved to the Ideas board, keeping its id`)
+  check(readFileSync(movedFile, 'utf8').includes('list: considering'), 'into the chosen list')
+
+  // ---- grab scrolling ----
+  const kanban = page.locator('.kanban')
+  await kanban.evaluate(el => (el.scrollLeft = 0))
+  const kb = await kanban.boundingBox()
+  const emptyY = kb.y + 6 // the board's top padding, above the columns
+  await page.mouse.move(kb.x + kb.width - 120, emptyY)
+  await page.mouse.down()
+  await page.mouse.move(kb.x + 200, emptyY, { steps: 12 })
+  await page.mouse.up()
+  const scrolled = await kanban.evaluate(el => el.scrollLeft)
+  check(scrolled > 300, `dragging the board's background scrolls it (scrollLeft ${Math.round(scrolled)})`)
+
+  // ---- sync: what the app committed reached the remote; the other machine's change comes in ----
+  await page.locator('.sync-line, .foot-line').first().waitFor()
+  await page.locator('.sidebar-foot').getByRole('button', { name: 'Sync' }).click()
+  const synced = await until(async () => (await page.locator('.sync-synced').count()) === 1, 15000)
+  check(synced, 'the sync line reads Synced')
+  const remoteLog = execFileSync('git', ['log', '--format=%B', '-30', 'main'], { cwd: remote }).toString()
+  check(remoteLog.includes('SB-1'), 'the board commits reached the remote')
+  execFileSync('git', ['pull', '-q'], { cwd: otherMachine })
+  const otherCard = path.join(otherMachine, 'robot-shooter/cards/RS-961.md')
+  writeFileSync(otherCard, readFileSync(otherCard, 'utf8').replace(/^title: .*$/m, 'title: Renamed on the other machine').replace(/^updated: .*$/m, `updated: ${new Date().toISOString()}`))
+  execFileSync('git', ['commit', '-qam', 'Rename RS-961 elsewhere'], { cwd: otherMachine })
+  execFileSync('git', ['push', '-q'], { cwd: otherMachine })
+  await page.locator('.sidebar-foot').getByRole('button', { name: 'Sync' }).click()
+  const pulled = await until(async () => (await page.locator('.card[data-card="RS-961"]', { hasText: 'Renamed on the other machine' }).count()) === 1, 15000)
+  check(pulled, "the other machine's rename showed up after a sync")
+  await shot('11-synced')
 
   // A plain shell in the panel.
   await page.locator('.terminal-tabs').getByTitle('New shell').click()

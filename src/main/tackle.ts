@@ -11,7 +11,7 @@ import type { PtyManager } from './pty'
 import type { BoardStore } from './store'
 
 /** Test seam: a stand-in for the `claude` executable. */
-const CLAUDE = process.env.CORKBOARD_CLAUDE_BIN || 'claude'
+export const CLAUDE = process.env.CORKBOARD_CLAUDE_BIN || 'claude'
 const CLOUD_URL = /https:\/\/claude\.ai\/code\/[A-Za-z0-9_\-/]+/
 
 export async function tackle(req: TackleRequest, store: BoardStore, ptys: PtyManager): Promise<PtyInfo[]> {

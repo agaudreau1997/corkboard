@@ -1,25 +1,10 @@
-import { useEffect, useState } from 'react'
 import type { BoardNode } from '@shared/types'
 import { actions, api, useStore } from '../state'
-
-type Menu = { node: BoardNode; x: number; y: number }
+import { openContextMenu, type MenuItem } from './ContextMenu'
 
 export function Sidebar() {
   const tree = useStore(s => s.tree)
   const config = useStore(s => s.config)
-  const lastCommit = useStore(s => s.lastCommit)
-  const [menu, setMenu] = useState<Menu | null>(null)
-
-  useEffect(() => {
-    if (!menu) return
-    const close = () => setMenu(null)
-    window.addEventListener('click', close)
-    window.addEventListener('blur', close)
-    return () => {
-      window.removeEventListener('click', close)
-      window.removeEventListener('blur', close)
-    }
-  }, [menu])
 
   return (
     <aside className="sidebar">
@@ -35,46 +20,35 @@ export function Sidebar() {
       </div>
       <div className="tree" role="tree">
         {tree.map(node => (
-          <TreeNode key={node.path} node={node} depth={0} onMenu={setMenu} />
+          <TreeNode key={node.path} node={node} depth={0} />
         ))}
         {!tree.length && <p className="muted pad">No boards yet.</p>}
       </div>
-      <div className="sidebar-foot" title={config?.boardRoot}>
-        <button className="link" onClick={() => void actions.pickRoot()}>
+      <footer className="sidebar-foot">
+        <button className="link repo-name" title={`${config?.boardRoot}\nClick to open another board repo`} onClick={() => void actions.pickRoot()}>
           {config?.boardRoot.split('/').at(-1)}
         </button>
-        {lastCommit && (
-          <span className="commit-status" title={lastCommit.summary}>
-            Committed {new Date(lastCommit.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}:{' '}
-            {lastCommit.summary}
-          </span>
-        )}
-      </div>
+        <SyncLine />
+        <ClaudeLine />
+      </footer>
       <ResizeHandle />
-      {menu && (
-        <div className="context-menu" style={{ left: menu.x, top: menu.y }} onClick={e => e.stopPropagation()}>
-          <button onClick={() => (setMenu(null), void actions.openBoard(menu.node.path))}>Open</button>
-          <button onClick={() => (setMenu(null), void actions.openBoard(menu.node.path, 'map'))}>Open map</button>
-          <button
-            onClick={() => (setMenu(null), actions.setModal({ kind: 'newBoard', parent: menu.node.path }))}
-          >
-            New board inside…
-          </button>
-          <button onClick={() => (setMenu(null), void openSettings(menu.node.path))}>Settings…</button>
-          <hr />
-          <button
-            className="danger"
-            onClick={() => {
-              setMenu(null)
-              void deleteBoard(menu.node)
-            }}
-          >
-            Delete board…
-          </button>
-        </div>
-      )}
     </aside>
   )
+}
+
+function boardMenu(node: BoardNode): MenuItem[] {
+  return [
+    { label: 'Open', onSelect: () => void actions.openBoard(node.path) },
+    { label: 'Open map', onSelect: () => void actions.openBoard(node.path, 'map') },
+    { label: 'Open table', onSelect: () => void actions.openBoard(node.path, 'table') },
+    'separator',
+    { label: 'New board inside…', onSelect: () => actions.setModal({ kind: 'newBoard', parent: node.path }) },
+    { label: 'Settings…', onSelect: () => void openSettings(node.path) },
+    { label: 'Open a terminal here', hint: 'its code repo', onSelect: () => void actions.newTerminal(node.path) },
+    { label: 'Copy key', hint: node.key, onSelect: () => actions.copy(node.key) },
+    'separator',
+    { label: 'Delete board…', danger: true, onSelect: () => void deleteBoard(node) },
+  ]
 }
 
 async function openSettings(path: string) {
@@ -97,7 +71,7 @@ async function deleteBoard(node: BoardNode) {
   }
 }
 
-function TreeNode({ node, depth, onMenu }: { node: BoardNode; depth: number; onMenu: (m: Menu) => void }) {
+function TreeNode({ node, depth }: { node: BoardNode; depth: number }) {
   const expanded = useStore(s => s.expanded.includes(node.path))
   const active = useStore(s => s.activeTab === node.path)
   const open = useStore(s => s.tabs.some(t => t.path === node.path))
@@ -110,11 +84,7 @@ function TreeNode({ node, depth, onMenu }: { node: BoardNode; depth: number; onM
         className={`tree-row${active ? ' active' : ''}${open ? ' open' : ''}`}
         style={{ paddingLeft: 8 + depth * 14 }}
         onClick={() => void actions.openBoard(node.path)}
-        onContextMenu={e => {
-          e.preventDefault()
-          e.stopPropagation()
-          onMenu({ node, x: e.clientX, y: e.clientY })
-        }}
+        onContextMenu={e => openContextMenu(e, boardMenu(node))}
         title={`${node.path} (${node.key})`}
       >
         <button
@@ -134,10 +104,59 @@ function TreeNode({ node, depth, onMenu }: { node: BoardNode; depth: number; onM
       {hasChildren && expanded && (
         <div role="group">
           {node.children.map(child => (
-            <TreeNode key={child.path} node={child} depth={depth + 1} onMenu={onMenu} />
+            <TreeNode key={child.path} node={child} depth={depth + 1} />
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+const time = (at?: number) =>
+  at ? new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
+
+/** Where the board repo stands against its remote, and a button to sync now. */
+function SyncLine() {
+  const sync = useStore(s => s.sync)
+  const lastCommit = useStore(s => s.lastCommit)
+  const text: Record<typeof sync.state, string> = {
+    idle: 'Not synced yet',
+    local: 'No remote: this machine only',
+    syncing: 'Syncing…',
+    synced: `Synced ${time(sync.at)}${sync.pulled ? ` · ${sync.pulled} in` : ''}`,
+    offline: `Offline${sync.at ? ` · synced ${time(sync.at)}` : ''}`,
+    conflict: 'Sync stopped: conflict',
+  }
+  const tip = [
+    sync.message,
+    lastCommit ? `Last commit ${time(lastCommit.at)}: ${lastCommit.summary}` : undefined,
+  ]
+    .filter(Boolean)
+    .join('\n')
+  return (
+    <div className={`foot-line sync-${sync.state}`} title={tip || undefined}>
+      <span className="dot" />
+      <span className="foot-text">{text[sync.state]}</span>
+      {sync.state !== 'local' && (
+        <button className="foot-button" disabled={sync.state === 'syncing'} onClick={() => void actions.syncNow()}>
+          Sync
+        </button>
+      )}
+    </div>
+  )
+}
+
+/** The Claude Code the terminals run, and a button that updates it in a terminal tab. */
+function ClaudeLine() {
+  const claude = useStore(s => s.claude)
+  return (
+    <div className="foot-line" title={claude?.path ?? claude?.error}>
+      <span className="foot-text">
+        {claude ? (claude.version ? `Claude Code ${claude.version}` : 'Claude Code not found') : 'Claude Code…'}
+      </span>
+      <button className="foot-button" onClick={() => void actions.updateClaude()} title="Runs `claude update` in a terminal tab">
+        Update
+      </button>
     </div>
   )
 }

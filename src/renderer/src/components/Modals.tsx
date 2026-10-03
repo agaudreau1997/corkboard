@@ -116,6 +116,8 @@ function Settings({ path }: { path: string }) {
   const board = useStore(s => s.boards[path])
   const [meta, setMeta] = useState<BoardMeta | undefined>(board?.meta)
   const [repoInherited] = useState(board?.codeRepo && !board.meta.codeRepo ? board.codeRepo : undefined)
+  const savedLocal = useStore(s => s.config?.codeRepos?.[path] ?? '')
+  const [localRepo, setLocalRepo] = useState(savedLocal)
   if (!board || !meta) return <p>Loading…</p>
   const counts = new Map<string, number>()
   for (const card of board.cards) if (card.list && !card.archived) counts.set(card.list, (counts.get(card.list) ?? 0) + 1)
@@ -148,9 +150,13 @@ function Settings({ path }: { path: string }) {
         id = base
         for (let n = 2; lists.some(l => l.id === id) || known.has(id); n++) id = `${base}-${n}`
       }
-      lists.push({ id, title: list.title.trim() || id })
+      lists.push({ id, title: list.title.trim() || id, ...(list.archived ? { archived: true } : {}) })
     }
     try {
+      if (localRepo.trim() !== savedLocal) {
+        await api.config.setCodeRepo(path, localRepo.trim() || null)
+        useStore.setState({ config: await api.config.get() })
+      }
       await api.boards.updateMeta(path, {
         title: meta.title,
         lists,
@@ -182,7 +188,34 @@ function Settings({ path }: { path: string }) {
           placeholder={repoInherited ? `${repoInherited} (inherited)` : '/path/to/the/repo the cards are about'}
           onChange={e => setMeta({ ...meta, codeRepo: e.target.value })}
         />
-        <small className="muted">Tackled sessions start here, and its commits with Card: trailers show on the cards.</small>
+        <small className="muted">
+          Shared through the repo; may be relative to the board repo (<code>../godot-shooter</code>). Tackled sessions start
+          there, and its commits with Card: trailers show on the cards.
+        </small>
+      </label>
+      <label className="field">
+        <span>Code repo on this machine</span>
+        <div className="input-row">
+          <input
+            value={localRepo}
+            placeholder="(use the shared path above)"
+            onChange={e => setLocalRepo(e.target.value)}
+          />
+          <button
+            type="button"
+            className="small"
+            onClick={async () => {
+              const picked = await api.config.pickFolder('The code repo on this machine')
+              if (picked) setLocalRepo(picked)
+            }}
+          >
+            Browse…
+          </button>
+        </div>
+        <small className="muted">
+          This computer only, never synced: for a repo that sits at another path on your other machine. Child boards
+          inherit it. Now: <code>{board.codeRepo ?? 'none'}</code>
+        </small>
       </label>
       <div className="field-grid">
         <label className="field">
@@ -227,15 +260,21 @@ function Settings({ path }: { path: string }) {
         <span>Lists</span>
         <ul className="list-editor">
           {meta.lists.map((list, i) => (
-            <li key={list.id}>
+            <li key={list.id} className={list.archived ? 'archived' : ''}>
               <input
                 value={list.title}
                 onChange={e => setList(i, { ...list, title: e.target.value })}
                 aria-label={`List ${i + 1} title`}
               />
-              <span className="muted mono small" title="The id cards store; fixed once created">
-                {list.id}
-              </span>
+              {list.archived ? (
+                <button className="small" onClick={() => setList(i, { ...list, archived: undefined })}>
+                  Restore
+                </button>
+              ) : (
+                <span className="muted mono small" title="The id cards store; fixed once created">
+                  {list.id}
+                </span>
+              )}
               <span className="muted small">{counts.get(list.id) ?? 0}</span>
               <button className="icon-button small" disabled={i === 0} onClick={() => moveList(i, -1)} aria-label="Move up">
                 ↑

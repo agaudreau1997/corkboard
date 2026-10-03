@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { BoardPane } from './components/BoardPane'
 import { CardDetail } from './components/CardDetail'
+import { ContextMenuHost } from './components/ContextMenu'
 import { Modals } from './components/Modals'
 import { Sidebar } from './components/Sidebar'
 import { TabBar } from './components/TabBar'
@@ -18,7 +19,7 @@ export function App() {
       if (e.ctrlKey && e.key === '`') {
         e.preventDefault()
         useStore.setState(s => ({ terminalOpen: !s.terminalOpen }))
-      } else if (e.key === 'Escape' && !useStore.getState().modal) {
+      } else if (e.key === 'Escape' && !useStore.getState().modal && !useStore.getState().contextMenu) {
         actions.closeCard()
       }
     }
@@ -51,6 +52,7 @@ export function App() {
         <TerminalPanel />
       </main>
       <Modals />
+      <ContextMenuHost />
       {toast && <div className={`toast ${toast.tone}`}>{toast.text}</div>}
     </div>
   )

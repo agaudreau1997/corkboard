@@ -1,22 +1,27 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
+import { execFile } from 'node:child_process'
 import { existsSync, promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { AppConfig, BoardMap, BoardMeta, CardPatch, SessionRef, TackleRequest } from '@shared/types'
+import type { AppConfig, BoardMap, BoardMeta, CardPatch, ClaudeInfo, SessionRef, SyncStatus, TackleRequest } from '@shared/types'
 import { AutoCommitter, codeCommits, commitFiles } from './git'
 import { PtyManager } from './pty'
 import { BoardStore } from './store'
-import { resume, tackle } from './tackle'
+import { shellProbe } from './shell'
+import { BoardSync } from './sync'
+import { CLAUDE, resume, tackle } from './tackle'
 
 // Test seams: a scratch profile, a board root, a hidden window, a short commit delay.
 if (process.env.CORKBOARD_USER_DATA) app.setPath('userData', process.env.CORKBOARD_USER_DATA)
 const HIDDEN = process.env.CORKBOARD_HIDDEN === '1'
 const COMMIT_DELAY_MS = Number(process.env.CORKBOARD_COMMIT_DELAY_MS ?? 8000)
+const SYNC_INTERVAL_MS = Number(process.env.CORKBOARD_SYNC_INTERVAL_MS ?? 60_000)
 const DEFAULT_ROOT = path.join(os.homedir(), 'Documents/Godot/Projects/deus-board')
 
 let win: BrowserWindow | undefined
 let store: BoardStore | undefined
 let committer: AutoCommitter | undefined
+let sync: BoardSync | undefined
 const commitCache = new Map<string, { at: number; commits: Awaited<ReturnType<typeof codeCommits>> }>()
 
 const send = (channel: string, ...args: unknown[]) => {
@@ -33,15 +38,19 @@ const ptys = new PtyManager({
 
 const configFile = () => path.join(app.getPath('userData'), 'config.json')
 
-async function readConfig(): Promise<AppConfig | null> {
-  if (process.env.CORKBOARD_ROOT) return { boardRoot: process.env.CORKBOARD_ROOT }
+async function readSavedConfig(): Promise<Partial<AppConfig>> {
   try {
-    const config = JSON.parse(await fs.readFile(configFile(), 'utf8')) as AppConfig
-    if (config.boardRoot && existsSync(config.boardRoot)) return config
+    return JSON.parse(await fs.readFile(configFile(), 'utf8')) as AppConfig
   } catch {
-    /* first run */
+    return {} // first run
   }
-  return existsSync(DEFAULT_ROOT) ? { boardRoot: DEFAULT_ROOT } : null
+}
+
+async function readConfig(): Promise<AppConfig | null> {
+  const saved = await readSavedConfig()
+  if (process.env.CORKBOARD_ROOT) return { ...saved, boardRoot: process.env.CORKBOARD_ROOT }
+  if (saved.boardRoot && existsSync(saved.boardRoot)) return saved as AppConfig
+  return existsSync(DEFAULT_ROOT) ? { ...saved, boardRoot: DEFAULT_ROOT } : null
 }
 
 async function writeConfig(config: AppConfig): Promise<void> {
@@ -51,10 +60,16 @@ async function writeConfig(config: AppConfig): Promise<void> {
 
 async function openRoot(root: string): Promise<void> {
   store?.close()
+  sync?.stop()
   await committer?.flush()
-  store = new BoardStore(root)
+  store = new BoardStore(root, (await readConfig())?.codeRepos ?? {})
   await store.init()
-  committer = new AutoCommitter(root, COMMIT_DELAY_MS, summary => send('git:boardCommitted', summary))
+  committer = new AutoCommitter(root, COMMIT_DELAY_MS, summary => {
+    send('git:boardCommitted', summary)
+    sync?.schedulePush()
+  })
+  sync = new BoardSync(root, committer, status => send('sync:status', status), SYNC_INTERVAL_MS)
+  sync.start()
   store.watch({
     onDelta: delta => {
       send('board:delta', delta)
@@ -86,10 +101,25 @@ function registerIpc(): void {
       properties: ['openDirectory', 'createDirectory'],
     })
     if (result.canceled || !result.filePaths[0]) return null
-    const config = { boardRoot: result.filePaths[0] }
+    const config = { ...(await readSavedConfig()), boardRoot: result.filePaths[0] }
     await writeConfig(config)
     await openRoot(config.boardRoot)
     return config
+  })
+
+  ipcMain.handle('config:setCodeRepo', async (_e, boardPath: string, repo: string | null) => {
+    const saved = await readSavedConfig()
+    const codeRepos = { ...(saved.codeRepos ?? {}) }
+    if (repo) codeRepos[boardPath] = repo
+    else delete codeRepos[boardPath]
+    await writeConfig({ ...saved, boardRoot: saved.boardRoot ?? requireStore().root, codeRepos })
+    requireStore().setLocalRepos(codeRepos)
+    commitCache.clear()
+    return requireStore().board(boardPath)
+  })
+  ipcMain.handle('config:pickFolder', async (_e, title: string) => {
+    const result = await dialog.showOpenDialog(win!, { title, properties: ['openDirectory'] })
+    return result.canceled ? null : (result.filePaths[0] ?? null)
   })
 
   ipcMain.handle('boards:tree', () => requireStore().tree())
@@ -132,6 +162,31 @@ function registerIpc(): void {
     return repo ? commitFiles(repo, sha) : []
   })
   ipcMain.handle('git:commitBoardNow', () => committer?.flush())
+  ipcMain.handle('sync:now', () => sync?.sync() ?? ({ state: 'local' } as SyncStatus))
+  ipcMain.handle('sync:status', () => sync?.status ?? ({ state: 'idle' } as SyncStatus))
+
+  ipcMain.handle('cards:updateMany', (_e, p: string, patches: { id: string; patch: CardPatch }[]) =>
+    requireStore().updateCards(p, patches),
+  )
+  ipcMain.handle('cards:move', (_e, from: string, id: string, to: string, list: string | null, pos?: number) =>
+    requireStore().moveCard(from, id, to, list, pos),
+  )
+  ipcMain.handle('cards:duplicate', (_e, p: string, id: string) => requireStore().duplicateCard(p, id))
+  ipcMain.handle('lists:move', (_e, from: string, listId: string, to: string) =>
+    requireStore().moveList(from, listId, to),
+  )
+  ipcMain.on('clipboard:write', (_e, text: string) => clipboard.writeText(String(text)))
+
+  ipcMain.handle('claude:info', () => claudeInfo())
+  ipcMain.handle('claude:update', (_e, boardPath?: string) => {
+    const s = requireStore()
+    const repo = boardPath ? s.board(boardPath).codeRepo : undefined
+    return ptys.create({
+      title: 'claude update',
+      cwd: repo && existsSync(repo) ? repo : s.root,
+      command: [CLAUDE, 'update'],
+    })
+  })
 
   ipcMain.handle('pty:create', (_e, opts: { title: string; boardPath?: string; cwd?: string }) => {
     const s = requireStore()
@@ -155,6 +210,27 @@ function registerIpc(): void {
   })
 }
 
+/** `claude --version` as the terminals would run it: through a login shell, for nvm's PATH. */
+function claudeInfo(): Promise<ClaudeInfo> {
+  return new Promise(resolve => {
+    const probe = shellProbe({
+      unix: `command -v ${CLAUDE} && ${CLAUDE} --version`,
+      windows: `(Get-Command ${CLAUDE}).Source; & ${CLAUDE} --version`,
+    })
+    execFile(
+      probe.file,
+      probe.args,
+      { timeout: 20_000, env: process.env, windowsHide: true },
+      (error, stdout) => {
+        const lines = stdout.split('\n').map(l => l.trim()).filter(Boolean)
+        const version = /(\d+\.\d+\.\d+)/.exec(lines.find(l => /Claude Code/i.test(l)) ?? lines.at(-1) ?? '')?.[1]
+        const where = lines.find(l => l.startsWith('/') || /^[A-Za-z]:\\/.test(l))
+        resolve(version ? { version, path: where } : { error: error?.message ?? 'claude not found' })
+      },
+    )
+  })
+}
+
 // ---- window ----------------------------------------------------------------------------------
 
 function createWindow(): void {
@@ -167,6 +243,7 @@ function createWindow(): void {
     title: 'Corkboard',
     backgroundColor: '#15171c',
     autoHideMenuBar: true,
+    icon: path.join(__dirname, '../../build/icon.png'),
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -180,6 +257,8 @@ function createWindow(): void {
   win.on('ready-to-show', () => {
     if (!HIDDEN) win?.show()
   })
+  // Coming back to the window is when the other machine's changes matter.
+  win.on('focus', () => sync?.syncIfStale())
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//.test(url)) void shell.openExternal(url)
     return { action: 'deny' }
@@ -201,7 +280,10 @@ app.on('before-quit', event => {
   quitting = true
   ptys.killAll()
   store?.close()
-  void (committer?.flush() ?? Promise.resolve()).finally(() => app.quit())
+  sync?.stop()
+  // Commit and push what is pending, but never hold the quit for long.
+  const pushed = (sync?.sync() ?? committer?.flush() ?? Promise.resolve()) as Promise<unknown>
+  void Promise.race([pushed, new Promise(r => setTimeout(r, 10_000))]).finally(() => app.quit())
 })
 
 app.on('window-all-closed', () => app.quit())

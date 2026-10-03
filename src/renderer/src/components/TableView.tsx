@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
 import { cardNumber, isDivider } from '@shared/cardfile'
 import type { Card, LoadedBoard } from '@shared/types'
+import { cardMenu } from '../menus'
 import { actions, commitsFor, listColor, localTime, useStore, NONE } from '../state'
+import { openContextMenu } from './ContextMenu'
 
 type SortKey = 'id' | 'title' | 'list' | 'updated' | 'commits'
 
@@ -77,6 +79,7 @@ export function TableView({ board, matches }: { board: LoadedBoard; matches: (c:
                   if (e.ctrlKey || e.metaKey || e.shiftKey) actions.toggleSelected(board.path, card.id)
                   else actions.openCard(board.path, card.id)
                 }}
+                onContextMenu={e => openContextMenu(e, cardMenu(board, card))}
               >
                 <td className="mono">{card.id}</td>
                 <td>{card.title}</td>

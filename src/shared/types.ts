@@ -8,6 +8,8 @@ export type ListDef = {
   /** Stable id a card's `list` field names (a slug of the first title). */
   id: string
   title: string
+  /** Hidden from the board view; its cards keep their list. */
+  archived?: boolean
 }
 
 export type BoardMeta = {
@@ -78,14 +80,18 @@ export type BoardNode = {
   key: string
   listCount: number
   cardCount: number
+  /** Its lists (archived ones included), for "move to" menus. */
+  lists: ListDef[]
   children: BoardNode[]
 }
 
 export type LoadedBoard = {
   path: string
   meta: BoardMeta
-  /** codeRepo after inheritance from parent boards. */
+  /** codeRepo after this machine's override and inheritance from parent boards, absolute. */
   codeRepo?: string
+  /** True when codeRepo is this machine's own setting rather than board.json's. */
+  codeRepoLocal?: boolean
   cards: Card[]
   map: BoardMap
 }
@@ -126,4 +132,20 @@ export type TackleRequest = {
 
 export type PtyInfo = { id: string; title: string; cwd: string; cardIds?: string[] }
 
-export type AppConfig = { boardRoot: string }
+export type AppConfig = {
+  boardRoot: string
+  /** This machine's code repo for a board (by board path), overriding board.json's codeRepo. */
+  codeRepos?: Record<string, string>
+}
+
+export type SyncStatus = {
+  state: 'idle' | 'local' | 'syncing' | 'synced' | 'offline' | 'conflict'
+  /** When the last sync went through. */
+  at?: number
+  message?: string
+  /** Commits the last sync brought in and sent out. */
+  pulled?: number
+  pushed?: number
+}
+
+export type ClaudeInfo = { version?: string; path?: string; error?: string }

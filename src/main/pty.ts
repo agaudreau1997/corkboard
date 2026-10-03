@@ -5,6 +5,7 @@
 import { randomUUID } from 'node:crypto'
 import * as pty from 'node-pty'
 import type { PtyInfo } from '@shared/types'
+import { shellLaunch } from './shell'
 
 type Entry = { proc: pty.IPty; info: PtyInfo; listeners: ((data: string) => void)[] }
 
@@ -24,19 +25,8 @@ export class PtyManager {
    * by a shell, so a prompt needs no quoting) and then stays open.
    */
   create(opts: { title: string; cwd: string; command?: string[]; cardIds?: string[] }): PtyInfo {
-    const userShell = process.env.SHELL || '/bin/bash'
-    const file = opts.command ? '/bin/bash' : userShell
-    // bash -c 'script' name args...: the args are "$@" inside the script.
-    const args = opts.command
-      ? ['-l', '-i', '-c', `"$@"; exec "${userShell}" -l -i`, 'corkboard', ...opts.command]
-      : ['-l', '-i']
-    const proc = pty.spawn(file, args, {
-      name: 'xterm-256color',
-      cols: 120,
-      rows: 30,
-      cwd: opts.cwd,
-      env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' } as Record<string, string>,
-    })
+    const { file, args, env } = shellLaunch(opts.command)
+    const proc = pty.spawn(file, args, { name: 'xterm-256color', cols: 120, rows: 30, cwd: opts.cwd, env })
     const info: PtyInfo = { id: randomUUID(), title: opts.title, cwd: opts.cwd, cardIds: opts.cardIds }
     const entry: Entry = { proc, info, listeners: [] }
     this.ptys.set(info.id, entry)

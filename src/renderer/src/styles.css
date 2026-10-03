@@ -289,23 +289,89 @@ code,
 
 .sidebar-foot {
   border-top: 1px solid var(--line);
-  padding: 8px 14px;
+  padding: 8px 10px 8px 14px;
   font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.repo-name {
+  align-self: flex-start;
+  font-weight: 600;
+}
+
+.foot-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 20px;
+  color: var(--muted);
+}
+
+.foot-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.foot-line .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex: none;
+}
+
+.sync-synced .dot {
+  background: var(--green);
+}
+
+.sync-syncing .dot {
+  background: var(--blue);
+  animation: pulse 0.9s ease-in-out infinite alternate;
+}
+
+.sync-offline .dot {
+  background: var(--accent);
+}
+
+.sync-offline .foot-text {
+  color: var(--accent);
+}
+
+.sync-conflict .dot {
+  background: var(--red);
+}
+
+.sync-conflict .foot-text {
+  color: var(--red);
+}
+
+@keyframes pulse {
+  from {
+    opacity: 0.3;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.foot-button {
+  flex: none;
+  font-size: 11px;
+  padding: 1px 7px;
+  background: transparent;
+  color: var(--text-2);
 }
 
 .sidebar-foot .link {
   color: var(--muted);
 }
 
-.commit-status {
-  display: block;
-  margin-top: 2px;
-  font-size: 11px;
-  color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+
 
 .resize-x {
   position: absolute;
@@ -516,13 +582,181 @@ code,
 
 /* ---- kanban ------------------------------------------------------------------------------ */
 
+.kanban-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
 .kanban {
   flex: 1;
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 12px 14px;
+  padding: 12px 14px 18px;
   overflow: auto;
+  cursor: grab;
+}
+
+.kanban.grabbing {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.kanban .card,
+.kanban button,
+.kanban input,
+.kanban textarea {
+  cursor: pointer;
+}
+
+.kanban input,
+.kanban textarea {
+  cursor: text;
+}
+
+.column.collapsed {
+  width: 40px;
+  min-height: 160px;
+  padding: 10px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  border-top: 3px solid transparent;
+  color: var(--text-2);
+}
+
+.column.collapsed:hover {
+  background: var(--bg-3);
+}
+
+.collapsed-title {
+  writing-mode: vertical-rl;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.collapsed-count {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.column-menu {
+  flex: none;
+  color: var(--muted);
+}
+
+.rename-list {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  padding: 2px 6px;
+}
+
+.column.add-list {
+  background: transparent;
+  border: 1px dashed var(--line-2);
+  flex: none;
+}
+
+.add-list-button {
+  background: none;
+  border: none;
+  text-align: left;
+  padding: 10px 12px;
+  color: var(--muted);
+  width: 100%;
+}
+
+.add-list-button:hover {
+  color: var(--text);
+  background: var(--bg-3);
+}
+
+.add-list-form {
+  padding: 8px;
+}
+
+.add-list-form input {
+  width: 100%;
+}
+
+/* The tray that slides up while a card is dragged. */
+.drag-tray {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  z-index: 20;
+  display: flex;
+  gap: 10px;
+  padding: 8px;
+  background: rgb(23 26 32 / 92%);
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  box-shadow: 0 12px 30px rgb(0 0 0 / 50%);
+  /* Stays in place while hidden: dnd-kit measures the drop zones when a drag starts, so a tray
+     parked off-screen would be measured off-screen. */
+  transform: translate(-50%, 16px);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    transform 0.18s ease-out,
+    opacity 0.18s ease-out,
+    visibility 0s linear 0.18s;
+  pointer-events: none;
+}
+
+.drag-tray.up {
+  transform: translate(-50%, 0);
+  opacity: 1;
+  visibility: visible;
+  transition:
+    transform 0.18s ease-out,
+    opacity 0.18s ease-out;
+  pointer-events: auto;
+}
+
+.tray-zone {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 250px;
+  padding: 12px 14px;
+  border: 1px dashed var(--line-2);
+  border-radius: 9px;
+  color: var(--text-2);
+}
+
+.tray-zone strong {
+  display: block;
+  color: var(--text);
+}
+
+.tray-zone small {
+  color: var(--muted);
+}
+
+.tray-icon {
+  font-size: 20px;
+  color: #c9b458;
+}
+
+.tray-zone.danger .tray-icon {
+  color: var(--red);
+}
+
+.tray-zone.over {
+  border-style: solid;
+  border-color: #c9b458;
+  background: #2c2a20;
+}
+
+.tray-zone.danger.over {
+  border-color: var(--red);
+  background: #2e1f22;
 }
 
 .column {
@@ -675,6 +909,89 @@ code,
   background: none;
   border: 1px dashed var(--line-2);
   color: var(--text-2);
+}
+
+/* ---- context menu ------------------------------------------------------------------------ */
+
+.ctx-menu {
+  position: fixed;
+  z-index: 70;
+  min-width: 220px;
+  max-width: 360px;
+  max-height: calc(100vh - 12px);
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  padding: 4px;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 50%);
+  display: flex;
+  flex-direction: column;
+}
+
+.ctx-menu button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  text-align: left;
+  padding: 5px 8px 5px 4px;
+  border-radius: 5px;
+  white-space: nowrap;
+}
+
+.ctx-menu button:hover:not(:disabled),
+.ctx-menu button.hot {
+  background: var(--bg-3);
+}
+
+.ctx-check {
+  width: 14px;
+  flex: none;
+  text-align: center;
+  color: var(--accent);
+}
+
+.ctx-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ctx-hint {
+  color: var(--muted);
+  font-size: 11px;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ctx-arrow {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.ctx-heading {
+  padding: 4px 8px 6px 22px;
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ctx-menu hr {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 4px 2px;
+}
+
+.list-editor li.archived input {
+  color: var(--muted);
+  text-decoration: line-through;
 }
 
 /* ---- map --------------------------------------------------------------------------------- */
@@ -1298,4 +1615,14 @@ tr.selected td {
 
 .nowrap {
   white-space: nowrap;
+}
+
+.input-row {
+  display: flex;
+  gap: 6px;
+}
+
+.input-row input {
+  flex: 1;
+  min-width: 0;
 }

@@ -20,11 +20,14 @@ export async function tackleCards(
   }
   const count = cards.length
   if (mode === 'cloud') {
+    const sessions = opts.split === 'each' ? count : 1
     const ok = await actions.confirm(
-      `Tackle ${count === 1 ? cards[0]!.id : `${count} cards`} in Claude Cloud?`,
+      sessions > 1
+        ? `Start ${sessions} Claude Cloud sessions, one per card?`
+        : `Tackle ${count === 1 ? cards[0]!.id : `${count} cards`} in Claude Cloud?`,
       'A cloud session clones the code repo from GitHub at your current branch, so it only sees pushed commits. ' +
         'It runs on claude.ai and is billed like any session. The card gets the session link once it prints one.',
-      'Start cloud session',
+      sessions > 1 ? `Start ${sessions} cloud sessions` : 'Start cloud session',
     )
     if (!ok) return
   } else if (opts.split === 'each' && count > 1) {

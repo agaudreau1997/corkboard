@@ -3,34 +3,53 @@ import {
   DndContext,
   DragOverlay,
   PointerSensor,
+  pointerWithin,
   useDroppable,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { memo, useMemo, useState } from 'react'
-import { between, isDivider } from '@shared/cardfile'
-import type { Card, CodeCommit, LoadedBoard } from '@shared/types'
-import { tackleCards } from '../tackle'
-import { actions, api, commitsFor, listColor, useStore, NONE } from '../state'
-import { TackleMenu } from './TackleMenu'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { between, isDivider, slugify } from '@shared/cardfile'
+import type { Card, CodeCommit, ListDef, LoadedBoard } from '@shared/types'
+import { useGrabScroll } from '../grabScroll'
+import { cardMenu, listMenu } from '../menus'
+import { actions, api, commitsFor, listColor, NONE, useStore } from '../state'
+import { openContextMenu } from './ContextMenu'
 
-/** The column of cards with no list: ideas that only live on the map. Dropping a card here unlists it. */
+/** The column of cards with no list: ideas that only live on the map. Shown when it has any. */
 const UNLISTED = '__unlisted__'
 const COLUMN_LIMIT = 60
+/** Drop zones in the tray that slides up while a card is dragged. */
+const ZONE_UNLIST = 'zone:unlist'
+const ZONE_ARCHIVE = 'zone:archive'
 
 type Columns = Record<string, string[]>
+
+/** Zones win when the pointer is inside one; otherwise the nearest card or column. */
+const collision: CollisionDetection = args => {
+  const isZone = (id: unknown) => String(id).startsWith('zone:')
+  const zones = pointerWithin({ ...args, droppableContainers: args.droppableContainers.filter(c => isZone(c.id)) })
+  if (zones.length) return zones
+  return closestCorners({ ...args, droppableContainers: args.droppableContainers.filter(c => !isZone(c.id)) })
+}
 
 export function KanbanView({ board, matches }: { board: LoadedBoard; matches: (c: Card) => boolean }) {
   const commits = useStore(s => s.commits[board.path])
   const selected = useStore(s => s.selected[board.path] ?? NONE)
+  const collapsed = useStore(s => s.collapsed[board.path] ?? NONE)
   const [draft, setDraft] = useState<Columns | null>(null)
   const [activeId, setActiveId] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [adding, setAdding] = useState<string | null>(null)
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const scroller = useRef<HTMLDivElement>(null)
+  const grab = useGrabScroll(scroller)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
   const byId = useMemo(() => new Map(board.cards.map(c => [c.id, c])), [board.cards])
@@ -57,7 +76,7 @@ export function KanbanView({ board, matches }: { board: LoadedBoard; matches: (c
   }
 
   const onDragOver = ({ active, over }: DragOverEvent) => {
-    if (!over || !draft) return
+    if (!over || !draft || String(over.id).startsWith('zone:')) return
     const from = containerOf(draft, String(active.id))
     const to = containerOf(draft, String(over.id))
     if (!from || !to || from === to) return
@@ -76,6 +95,17 @@ export function KanbanView({ board, matches }: { board: LoadedBoard; matches: (c
     setDraft(null)
     if (!cols || !over) return
     const id = String(active.id)
+    const card = byId.get(id)
+    if (!card) return
+    if (over.id === ZONE_UNLIST) {
+      if (card.list !== null) void actions.updateCard(board.path, id, { list: null })
+      return
+    }
+    if (over.id === ZONE_ARCHIVE) {
+      void actions.updateCard(board.path, id, { archived: true })
+      actions.toast(`Archived ${id}`)
+      return
+    }
     const to = containerOf(cols, id)
     if (!to) return
     let list = cols[to]
@@ -84,68 +114,79 @@ export function KanbanView({ board, matches }: { board: LoadedBoard; matches: (c
       list = arrayMove(list, list.indexOf(id), list.indexOf(overId))
     }
     const index = list.indexOf(id)
-    const card = byId.get(id)
-    if (!card) return
     const prev = index > 0 ? byId.get(list[index - 1])?.pos : undefined
     const next = index < list.length - 1 ? byId.get(list[index + 1])?.pos : undefined
     const targetList = to === UNLISTED ? null : to
-    const sameSpot =
-      card.list === targetList &&
-      columns[to]?.indexOf(id) === index
-    if (sameSpot) return
+    if (card.list === targetList && columns[to]?.indexOf(id) === index) return
     void actions.updateCard(board.path, id, { list: targetList, pos: between(prev, next) })
   }
 
-  const lists = [
-    ...(shown[UNLISTED].length || activeId ? [{ id: UNLISTED, title: 'Map only (ideas)' }] : []),
-    ...board.meta.lists,
+  // Ideas get a column only when there are some: it must never appear mid-drag and shift the board.
+  const lists: (ListDef & { unlisted?: boolean })[] = [
+    ...(columns[UNLISTED].length ? [{ id: UNLISTED, title: 'Map only (ideas)', unlisted: true }] : []),
+    ...board.meta.lists.filter(l => !l.archived),
   ]
 
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCorners}
+      collisionDetection={collision}
+      // dnd-kit focuses the dragged card again a moment after a drop, which blurred (and so
+      // closed) an add-card field opened right after a drag.
+      accessibility={{ restoreFocus: false }}
       onDragStart={onDragStart}
       onDragOver={onDragOver}
       onDragEnd={onDragEnd}
       onDragCancel={() => (setActiveId(null), setDraft(null))}
     >
-      <div className="kanban">
-        {lists.map(list => {
-          const ids = shown[list.id] ?? []
-          const limited = ids.length > COLUMN_LIMIT && !expanded.has(list.id) && !activeId
-          const visible = limited ? ids.slice(0, COLUMN_LIMIT) : ids
-          return (
-            <Column
-              key={list.id}
-              board={board}
-              listId={list.id}
-              title={list.title}
-              ids={ids}
-              color={listColor(board, list.id === UNLISTED ? null : list.id)}
-            >
-              <SortableContext items={visible} strategy={verticalListSortingStrategy}>
-                {visible.map(id => {
-                  const card = byId.get(id)
-                  return card ? (
-                    <SortableCard
-                      key={id}
-                      board={board}
-                      card={card}
-                      commits={commits}
-                      selected={selected.includes(id)}
-                    />
-                  ) : null
-                })}
-              </SortableContext>
-              {limited && (
-                <button className="show-more" onClick={() => setExpanded(s => new Set(s).add(list.id))}>
-                  Show all {ids.length}
-                </button>
-              )}
-            </Column>
-          )
-        })}
+      <div className="kanban-wrap">
+        <div className={`kanban${grab.grabbing ? ' grabbing' : ''}`} ref={scroller} {...grab.handlers}>
+          {lists.map(list => {
+            const ids = shown[list.id] ?? []
+            if (collapsed.includes(list.id) && !activeId) {
+              return (
+                <CollapsedColumn
+                  key={list.id}
+                  board={board}
+                  list={list}
+                  count={ids.length}
+                  color={listColor(board, list.unlisted ? null : list.id)}
+                />
+              )
+            }
+            const limited = ids.length > COLUMN_LIMIT && !expanded.has(list.id) && !activeId
+            const visible = limited ? ids.slice(0, COLUMN_LIMIT) : ids
+            return (
+              <Column
+                key={list.id}
+                board={board}
+                list={list}
+                ids={ids}
+                color={listColor(board, list.unlisted ? null : list.id)}
+                adding={adding === list.id}
+                setAdding={on => setAdding(on ? list.id : null)}
+                renaming={renaming === list.id}
+                setRenaming={on => setRenaming(on ? list.id : null)}
+              >
+                <SortableContext items={visible} strategy={verticalListSortingStrategy}>
+                  {visible.map(id => {
+                    const card = byId.get(id)
+                    return card ? (
+                      <SortableCard key={id} board={board} card={card} commits={commits} selected={selected.includes(id)} />
+                    ) : null
+                  })}
+                </SortableContext>
+                {limited && (
+                  <button className="show-more" onClick={() => setExpanded(s => new Set(s).add(list.id))}>
+                    Show all {ids.length}
+                  </button>
+                )}
+              </Column>
+            )
+          })}
+          <AddListColumn board={board} />
+        </div>
+        <DragTray active={!!activeId} />
       </div>
       <DragOverlay dropAnimation={null}>
         {activeId && byId.get(activeId) ? (
@@ -156,54 +197,189 @@ export function KanbanView({ board, matches }: { board: LoadedBoard; matches: (c
   )
 }
 
+/** Slides up from the bottom while a card is dragged: drop targets that are not lists. */
+function DragTray({ active }: { active: boolean }) {
+  return (
+    <div className={`drag-tray${active ? ' up' : ''}`} aria-hidden={!active}>
+      <TrayZone id={ZONE_UNLIST} label="Map only (idea)" hint="Takes it off the board, keeps it on the map" icon="◇" />
+      <TrayZone id={ZONE_ARCHIVE} label="Archive" hint="Hides it; the table view still lists it" icon="▣" danger />
+    </div>
+  )
+}
+
+function TrayZone({ id, label, hint, icon, danger }: { id: string; label: string; hint: string; icon: string; danger?: boolean }) {
+  const { setNodeRef, isOver } = useDroppable({ id })
+  return (
+    <div ref={setNodeRef} className={`tray-zone${isOver ? ' over' : ''}${danger ? ' danger' : ''}`} data-zone={id}>
+      <span className="tray-icon">{icon}</span>
+      <span>
+        <strong>{label}</strong>
+        <small>{hint}</small>
+      </span>
+    </div>
+  )
+}
+
 function Column({
   board,
-  listId,
-  title,
+  list,
   ids,
   color,
+  adding,
+  setAdding,
+  renaming,
+  setRenaming,
   children,
 }: {
   board: LoadedBoard
-  listId: string
-  title: string
+  list: ListDef & { unlisted?: boolean }
   ids: string[]
   color: string
+  adding: boolean
+  setAdding: (on: boolean) => void
+  renaming: boolean
+  setRenaming: (on: boolean) => void
   children: React.ReactNode
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: `list:${listId}` })
-  const [adding, setAdding] = useState(false)
+  const { setNodeRef, isOver } = useDroppable({ id: `list:${list.id}` })
   const work = ids.filter(id => {
     const card = board.cards.find(c => c.id === id)
     return card && !isDivider(card)
   })
+  const menu = (e: React.MouseEvent) => {
+    if (list.unlisted) return
+    openContextMenu(e, listMenu(board, list, { addCard: () => setAdding(true), rename: () => setRenaming(true) }))
+  }
 
   return (
-    <div className={`column${isOver ? ' over' : ''}`} data-list={listId}>
-      <div className="column-head" style={{ borderTopColor: color }}>
-        <span className="column-title">{title}</span>
+    <div className={`column${isOver ? ' over' : ''}`} data-list={list.id}>
+      <div
+        className="column-head"
+        style={{ borderTopColor: color }}
+        onContextMenu={menu}
+        onDoubleClick={e => {
+          if (!list.unlisted && (e.target as HTMLElement).closest('.column-title')) setRenaming(true)
+        }}
+      >
+        {renaming ? (
+          <RenameList board={board} list={list} onDone={() => setRenaming(false)} />
+        ) : (
+          <span className="column-title" title={list.title}>
+            {list.title}
+          </span>
+        )}
         <span className="column-count">{work.length}</span>
-        {work.length > 0 && (
-          <TackleMenu
-            label="Tackle all"
-            many={work.length > 1}
-            compact
-            onPick={(mode, split) =>
-              void tackleCards(board.path, work, mode, { split, listTitle: title })
-            }
-          />
+        {!list.unlisted && (
+          <button className="icon-button small column-menu" aria-label={`${list.title} actions`} onClick={menu}>
+            ⋯
+          </button>
         )}
       </div>
       <div className="column-body" ref={setNodeRef}>
         {children}
         {adding ? (
-          <AddCard board={board} listId={listId} onDone={() => setAdding(false)} />
+          <AddCard board={board} listId={list.id} onDone={() => setAdding(false)} />
         ) : (
           <button className="add-card" onClick={() => setAdding(true)}>
             + Add a card
           </button>
         )}
       </div>
+    </div>
+  )
+}
+
+function CollapsedColumn({ board, list, count, color }: { board: LoadedBoard; list: ListDef; count: number; color: string }) {
+  const { setNodeRef } = useDroppable({ id: `list:${list.id}` })
+  return (
+    <button
+      ref={setNodeRef}
+      className="column collapsed"
+      style={{ borderTopColor: color }}
+      data-list={list.id}
+      title={`Expand “${list.title}”`}
+      onClick={() => actions.toggleCollapsed(board.path, list.id)}
+      onContextMenu={e => openContextMenu(e, listMenu(board, list, { addCard: () => {}, rename: () => {} }))}
+    >
+      <span className="collapsed-count">{count}</span>
+      <span className="collapsed-title">{list.title}</span>
+    </button>
+  )
+}
+
+function RenameList({ board, list, onDone }: { board: LoadedBoard; list: ListDef; onDone: () => void }) {
+  const [title, setTitle] = useState(list.title)
+  const save = () => {
+    const text = title.trim()
+    onDone()
+    if (!text || text === list.title) return
+    void api.boards
+      .updateMeta(board.path, { lists: board.meta.lists.map(l => (l.id === list.id ? { ...l, title: text } : l)) })
+      .then(() => actions.loadBoard(board.path))
+  }
+  return (
+    <input
+      className="rename-list"
+      autoFocus
+      value={title}
+      onFocus={e => e.target.select()}
+      onChange={e => setTitle(e.target.value)}
+      onBlur={save}
+      onKeyDown={e => {
+        if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+        else if (e.key === 'Escape') {
+          e.stopPropagation()
+          setTitle(list.title)
+          onDone()
+        }
+      }}
+    />
+  )
+}
+
+function AddListColumn({ board }: { board: LoadedBoard }) {
+  const [open, setOpen] = useState(false)
+  const [title, setTitle] = useState('')
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (open) ref.current?.scrollIntoView({ behavior: 'smooth', inline: 'end', block: 'nearest' })
+  }, [open])
+
+  const add = async () => {
+    const text = title.trim()
+    if (!text) return setOpen(false)
+    const base = slugify(text)
+    let id = base
+    for (let n = 2; board.meta.lists.some(l => l.id === id); n++) id = `${base}-${n}`
+    setTitle('')
+    await api.boards.updateMeta(board.path, { lists: [...board.meta.lists, { id, title: text }] })
+    await actions.loadBoard(board.path)
+  }
+
+  return (
+    <div className="column add-list" ref={ref}>
+      {open ? (
+        <div className="add-list-form">
+          <input
+            autoFocus
+            placeholder="List title (Enter to add)"
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') void add()
+              else if (e.key === 'Escape') {
+                e.stopPropagation()
+                setOpen(false)
+              }
+            }}
+            onBlur={() => (title.trim() ? void add().then(() => setOpen(false)) : setOpen(false))}
+          />
+        </div>
+      ) : (
+        <button className="add-list-button" onClick={() => setOpen(true)}>
+          + Add a list
+        </button>
+      )}
     </div>
   )
 }
@@ -276,9 +452,15 @@ export function CardFace({
   dragging?: boolean
 }) {
   const open = useStore(s => s.openCard?.boardPath === board.path && s.openCard.id === card.id)
+  const menu = (e: React.MouseEvent) => openContextMenu(e, cardMenu(board, card))
   if (isDivider(card)) {
     return (
-      <div className="divider-card" title={`${card.id} (divider)`} onClick={() => actions.openCard(board.path, card.id)}>
+      <div
+        className="divider-card"
+        title={`${card.id} (divider)`}
+        onClick={() => actions.openCard(board.path, card.id)}
+        onContextMenu={menu}
+      >
         <span />
       </div>
     )
@@ -293,6 +475,7 @@ export function CardFace({
         if (e.ctrlKey || e.metaKey || e.shiftKey) actions.toggleSelected(board.path, card.id)
         else actions.openCard(board.path, card.id)
       }}
+      onContextMenu={menu}
     >
       <div className="card-title">{card.title}</div>
       <div className="card-meta">

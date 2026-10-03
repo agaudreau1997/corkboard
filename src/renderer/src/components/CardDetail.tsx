@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Card, CodeCommit, LoadedBoard, SessionRef } from '@shared/types'
@@ -206,6 +206,14 @@ async function openLinked(id: string, entry?: IndexEntry) {
 
 function LinkPicker({ index, onPick }: { index: IndexEntry[]; onPick: (id: string) => void }) {
   const [query, setQuery] = useState('')
+  const focusLinks = useStore(s => s.focusLinks)
+  const input = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (focusLinks) {
+      input.current?.scrollIntoView({ block: 'center' })
+      input.current?.focus()
+    }
+  }, [focusLinks])
   const q = query.trim().toLowerCase()
   const hits = q
     ? index.filter(e => e.id.toLowerCase().includes(q) || e.title.toLowerCase().includes(q)).slice(0, 8)
@@ -213,8 +221,9 @@ function LinkPicker({ index, onPick }: { index: IndexEntry[]; onPick: (id: strin
   return (
     <div className="link-picker">
       <input
+        ref={input}
         type="search"
-        placeholder="Link a card: id or title"
+        placeholder="Link a card on any board: id or title"
         value={query}
         onChange={e => setQuery(e.target.value)}
         onKeyDown={e => {

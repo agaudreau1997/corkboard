@@ -13,6 +13,8 @@ const api: CorkboardApi = {
   config: {
     get: () => invoke('config:get'),
     pickRoot: () => invoke('config:pickRoot'),
+    setCodeRepo: (boardPath, repo) => invoke('config:setCodeRepo', boardPath, repo),
+    pickFolder: title => invoke('config:pickFolder', title),
   },
   boards: {
     tree: () => invoke('boards:tree'),
@@ -25,7 +27,24 @@ const api: CorkboardApi = {
   cards: {
     create: (boardPath, fields) => invoke('cards:create', boardPath, fields),
     update: (boardPath, id, patch) => invoke('cards:update', boardPath, id, patch),
+    updateMany: (boardPath, patches) => invoke('cards:updateMany', boardPath, patches),
+    move: (fromPath, id, toPath, list, pos) => invoke('cards:move', fromPath, id, toPath, list, pos),
+    duplicate: (boardPath, id) => invoke('cards:duplicate', boardPath, id),
     filePath: (boardPath, id) => invoke('cards:filePath', boardPath, id),
+  },
+  lists: {
+    move: (fromPath, listId, toPath) => invoke('lists:move', fromPath, listId, toPath),
+  },
+  sync: {
+    now: () => invoke('sync:now'),
+    status: () => invoke('sync:status'),
+  },
+  claude: {
+    info: () => invoke('claude:info'),
+    update: boardPath => invoke('claude:update', boardPath),
+  },
+  clipboard: {
+    write: text => ipcRenderer.send('clipboard:write', text),
   },
   map: {
     save: (boardPath, map) => invoke('map:save', boardPath, map),
@@ -54,6 +73,7 @@ const api: CorkboardApi = {
     delta: cb => subscribe('board:delta', cb),
     treeChanged: cb => subscribe('boards:treeChanged', cb),
     boardCommitted: cb => subscribe('git:boardCommitted', cb),
+    syncStatus: cb => subscribe('sync:status', cb),
     ptyCreated: cb => subscribe('pty:created', cb),
     ptyData: cb => subscribe('pty:data', cb),
     ptyExit: cb => subscribe('pty:exit', cb),

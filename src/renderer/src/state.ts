@@ -1,7 +1,18 @@
 import { create } from 'zustand'
 import { sortCards } from '@shared/cardfile'
 import type { CorkboardApi } from '@shared/api'
-import type { AppConfig, BoardDelta, BoardNode, Card, CodeCommit, LoadedBoard, PtyInfo } from '@shared/types'
+import type {
+  AppConfig,
+  BoardDelta,
+  BoardNode,
+  Card,
+  ClaudeInfo,
+  CodeCommit,
+  LoadedBoard,
+  PtyInfo,
+  SyncStatus,
+} from '@shared/types'
+import type { MenuItem } from './components/ContextMenu'
 
 export const api: CorkboardApi = (window as unknown as { corkboard: CorkboardApi }).corkboard
 
@@ -14,12 +25,21 @@ type UiPrefs = {
   sidebarWidth: number
   terminalHeight: number
   expanded: string[]
+  /** Collapsed list ids, per board path. */
+  collapsed: Record<string, string[]>
 }
 
 const PREFS_KEY = 'corkboard.ui'
 
 function loadPrefs(): UiPrefs {
-  const fallback: UiPrefs = { tabs: [], activeTab: null, sidebarWidth: 260, terminalHeight: 300, expanded: [] }
+  const fallback: UiPrefs = {
+    tabs: [],
+    activeTab: null,
+    sidebarWidth: 260,
+    terminalHeight: 300,
+    expanded: [],
+    collapsed: {},
+  }
   try {
     return { ...fallback, ...(JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') as Partial<UiPrefs>) }
   } catch {
@@ -46,6 +66,11 @@ type State = UiPrefs & {
   modal: Modal | null
   toast: { text: string; tone: 'info' | 'error' } | null
   lastCommit: { summary: string; at: number } | null
+  sync: SyncStatus
+  claude: ClaudeInfo | null
+  contextMenu: { x: number; y: number; items: MenuItem[] } | null
+  /** Set to open the card drawer with its link picker focused. */
+  focusLinks: number
 }
 
 export const useStore = create<State>(() => ({
@@ -63,6 +88,10 @@ export const useStore = create<State>(() => ({
   modal: null,
   toast: null,
   lastCommit: null,
+  sync: { state: 'idle' },
+  claude: null,
+  contextMenu: null,
+  focusLinks: 0,
 }))
 
 const set = useStore.setState
@@ -75,6 +104,7 @@ useStore.subscribe(state => {
     sidebarWidth: state.sidebarWidth,
     terminalHeight: state.terminalHeight,
     expanded: state.expanded,
+    collapsed: state.collapsed,
   }
   try {
     localStorage.setItem(PREFS_KEY, JSON.stringify(prefs))
@@ -120,7 +150,14 @@ export const actions = {
         ptyBuffers.set(id, buffer)
       }
     })
-    api.on.ptyExit((id, code) => set(s => ({ exited: { ...s.exited, [id]: code } })))
+    api.on.ptyExit((id, code) => {
+      set(s => ({ exited: { ...s.exited, [id]: code } }))
+      // `claude update` finished: show the version it left.
+      if (get().terminals.find(t => t.id === id)?.title === 'claude update') void actions.refreshClaude()
+    })
+    api.on.syncStatus(sync => set({ sync }))
+    void api.sync.status().then(sync => set({ sync }))
+    void actions.refreshClaude()
     const config = await api.config.get()
     set({ config })
     if (config) await actions.afterRootOpened()
@@ -247,6 +284,55 @@ export const actions = {
       actions.toast((error as Error).message, 'error')
       await actions.loadBoard(boardPath)
       return undefined
+    }
+  },
+
+  async refreshClaude() {
+    set({ claude: await api.claude.info() })
+  },
+
+  async updateClaude() {
+    await api.claude.update(get().activeTab ?? undefined)
+  },
+
+  async syncNow() {
+    set(s => ({ sync: { ...s.sync, state: 'syncing' } }))
+    const status = await api.sync.now()
+    set({ sync: status })
+    if (status.state === 'conflict' || status.state === 'offline') actions.toast(status.message ?? status.state, 'error')
+  },
+
+  copy(text: string, what = text) {
+    api.clipboard.write(text)
+    actions.toast(`Copied ${what}`)
+  },
+
+  selectMany(boardPath: string, ids: string[]) {
+    set(s => ({ selected: { ...s.selected, [boardPath]: ids } }))
+  },
+
+  toggleCollapsed(boardPath: string, listId: string) {
+    set(s => {
+      const current = s.collapsed[boardPath] ?? []
+      const next = current.includes(listId) ? current.filter(x => x !== listId) : [...current, listId]
+      return { collapsed: { ...s.collapsed, [boardPath]: next } }
+    })
+  },
+
+  /** Moves a card to a list on this board or another one; follows it to its new board. */
+  async moveCard(fromPath: string, id: string, toPath: string, list: string | null, pos?: number) {
+    try {
+      if (fromPath === toPath) {
+        await actions.updateCard(fromPath, id, pos === undefined ? { list } : { list, pos })
+        return
+      }
+      await api.cards.move(fromPath, id, toPath, list, pos)
+      if (get().openCard?.id === id) set({ openCard: null })
+      if (get().boards[toPath]) await actions.loadBoard(toPath)
+      const target = findNode(get().tree, toPath)
+      actions.toast(`Moved ${id} to ${target?.title ?? toPath}`)
+    } catch (error) {
+      actions.toast((error as Error).message, 'error')
     }
   },
 

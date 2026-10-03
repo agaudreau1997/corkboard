@@ -32,13 +32,22 @@ export class BoardStore {
   private boards = new Map<string, LoadedBoard>()
   /** Last text read or written per absolute file path: a watch event that changes nothing is dropped. */
   private texts = new Map<string, string>()
-  private watcher?: FSWatcher
+  /** One non-recursive watch per folder that matters: the root, each board and its cards. */
+  private watchers = new Map<string, FSWatcher>()
   private pending = new Set<string>()
   private flushTimer?: NodeJS.Timeout
   private events?: StoreEvents
+  /** This machine's own code repo paths, by board path (app config, never in the repo). */
+  private localRepos: Record<string, string> = {}
 
-  constructor(root: string) {
+  constructor(root: string, localRepos: Record<string, string> = {}) {
     this.root = path.resolve(root)
+    this.localRepos = localRepos
+  }
+
+  setLocalRepos(localRepos: Record<string, string>): void {
+    this.localRepos = localRepos
+    this.resolveInheritance()
   }
 
   // ---- reading -------------------------------------------------------------------------------
@@ -114,15 +123,22 @@ export class BoardStore {
     }
   }
 
-  /** codeRepo comes down from the nearest ancestor that sets it. */
+  /**
+   * codeRepo comes down from the nearest board that sets it, this machine's own path first (the
+   * same repo sits at different paths on different machines), then board.json's, which may be
+   * relative to the board repo (`../godot-shooter`).
+   */
   private resolveInheritance(): void {
     for (const board of this.boards.values()) {
       let at: string | undefined = board.path
       board.codeRepo = undefined
+      board.codeRepoLocal = undefined
       while (at !== undefined) {
-        const repo = this.boards.get(at)?.meta.codeRepo
-        if (repo) {
-          board.codeRepo = repo
+        const local = this.localRepos[at]
+        const shared = this.boards.get(at)?.meta.codeRepo
+        if (local || shared) {
+          board.codeRepo = local || path.resolve(this.root, shared!)
+          board.codeRepoLocal = !!local
           break
         }
         at = parentPath(at)
@@ -141,6 +157,7 @@ export class BoardStore {
         key: b.meta.key,
         listCount: b.meta.lists.length,
         cardCount: b.cards.filter(c => !c.archived).length,
+        lists: b.meta.lists,
         children: [],
       })
     }
@@ -248,8 +265,8 @@ export class BoardStore {
     fields: { title: string; list: string | null; pos?: number; body?: string; links?: string[] },
   ): Promise<Card> {
     const board = this.board(boardPath)
-    const next =
-      Math.max(0, ...board.cards.map(c => cardNumber(c.id)).filter(n => Number.isFinite(n))) + 1
+    const own = board.cards.filter(c => c.id.startsWith(`${board.meta.key}-`))
+    const next = Math.max(0, ...own.map(c => cardNumber(c.id)).filter(n => Number.isFinite(n))) + 1
     const inList = sortCards(board.cards.filter(c => c.list === fields.list && !c.archived))
     const card: Card = {
       id: `${board.meta.key}-${next}`,
@@ -274,6 +291,72 @@ export class BoardStore {
     const card: Card = { ...current, ...patch, updated: new Date().toISOString() }
     await this.writeCard(boardPath, card)
     return card
+  }
+
+  /** One patch on several cards (archive a list's cards, re-sort a list). */
+  async updateCards(boardPath: string, patches: { id: string; patch: CardPatch }[]): Promise<Card[]> {
+    const out: Card[] = []
+    for (const { id, patch } of patches) out.push(await this.updateCard(boardPath, id, patch))
+    return out
+  }
+
+  /**
+   * Moves a card to another board (or list). The card keeps its id, so its commits' `Card:`
+   * trailers and other cards' links still find it; the file moves to the target's cards folder.
+   */
+  async moveCard(fromPath: string, id: string, toPath: string, list: string | null, pos?: number): Promise<Card> {
+    if (fromPath === toPath) return this.updateCard(fromPath, id, { list, ...(pos === undefined ? {} : { pos }) })
+    const from = this.board(fromPath)
+    const to = this.board(toPath)
+    const current = from.cards.find(c => c.id === id)
+    if (!current) throw new Error(`No card ${id} on ${fromPath}`)
+    const inList = sortCards(to.cards.filter(c => c.list === list && !c.archived))
+    const card: Card = {
+      ...current,
+      list,
+      pos: pos ?? between(inList.at(-1)?.pos, undefined),
+      updated: new Date().toISOString(),
+    }
+    await this.writeCard(toPath, card)
+    const oldFile = this.cardFile(fromPath, id)
+    this.texts.delete(oldFile)
+    await fs.rm(oldFile, { force: true })
+    from.cards = from.cards.filter(c => c.id !== id)
+    this.events?.onDelta({ path: fromPath, cards: [], removed: [id] })
+    this.events?.onTreeChanged()
+    return card
+  }
+
+  /** Moves a list, with every card in it, to the end of another board's lists. */
+  async moveList(fromPath: string, listId: string, toPath: string): Promise<string> {
+    if (fromPath === toPath) return listId
+    const from = this.board(fromPath)
+    const to = this.board(toPath)
+    const list = from.meta.lists.find(l => l.id === listId)
+    if (!list) throw new Error(`No list ${listId} on ${fromPath}`)
+    let id = list.id
+    for (let n = 2; to.meta.lists.some(l => l.id === id); n++) id = `${list.id}-${n}`
+    await this.updateMeta(toPath, { lists: [...to.meta.lists, { ...list, id }] })
+    for (const card of sortCards(from.cards.filter(c => c.list === listId))) {
+      await this.moveCard(fromPath, card.id, toPath, id, card.pos)
+    }
+    await this.updateMeta(fromPath, { lists: from.meta.lists.filter(l => l.id !== listId) })
+    return id
+  }
+
+  async duplicateCard(boardPath: string, id: string): Promise<Card> {
+    const board = this.board(boardPath)
+    const source = board.cards.find(c => c.id === id)
+    if (!source) throw new Error(`No card ${id} on ${boardPath}`)
+    const inList = sortCards(board.cards.filter(c => c.list === source.list && !c.archived))
+    const after = inList[inList.findIndex(c => c.id === id) + 1]
+    return this.createCard(boardPath, {
+      title: `${source.title} (copy)`,
+      list: source.list,
+      pos: between(source.pos, after?.pos),
+      body: source.body,
+      links: [...source.links],
+    })
   }
 
   async saveMap(boardPath: string, map: BoardMap): Promise<void> {
@@ -304,21 +387,57 @@ export class BoardStore {
 
   // ---- watching ------------------------------------------------------------------------------
 
+  /**
+   * Watches the board folders, never `.git`: a recursive watch of the repo also watched `.git`,
+   * and the folders a rebase makes and removes there ended the watch without a word, after which
+   * no change on disk reached the screen.
+   */
   watch(events: StoreEvents): void {
     this.events = events
-    this.watcher?.close()
-    this.watcher = watch(this.root, { recursive: true }, (_event, filename) => {
-      if (!filename) return
-      const rel = filename.toString().split(path.sep).join('/')
-      if (rel.startsWith('.git/') || rel === '.git' || rel.endsWith('.tmp')) return
-      this.pending.add(rel)
-      clearTimeout(this.flushTimer)
-      this.flushTimer = setTimeout(() => void this.flush(), 80)
-    })
+    this.rewatch()
+  }
+
+  private rewatch(): void {
+    const wanted = new Set<string>([''])
+    for (const p of this.boards.keys()) {
+      // The board, every folder above it (a board may sit in a plain folder) and its cards.
+      const parts = p.split('/')
+      for (let i = 1; i <= parts.length; i++) wanted.add(parts.slice(0, i).join('/'))
+      wanted.add(`${p}/cards`)
+    }
+    for (const [rel, watcher] of this.watchers) {
+      if (!wanted.has(rel)) {
+        watcher.close()
+        this.watchers.delete(rel)
+      }
+    }
+    for (const rel of wanted) {
+      if (this.watchers.has(rel)) continue
+      try {
+        const watcher = watch(path.join(this.root, rel), (_event, filename) => {
+          if (!filename) return
+          const name = filename.toString()
+          if (name === '.git' || name.endsWith('.tmp')) return
+          this.pending.add(rel ? `${rel}/${name}` : name)
+          clearTimeout(this.flushTimer)
+          this.flushTimer = setTimeout(() => void this.flush(), 80)
+        })
+        watcher.on('error', () => {
+          // The folder went away (a board deleted, a branch switched): watch again what is left.
+          watcher.close()
+          this.watchers.delete(rel)
+          setTimeout(() => this.rewatch(), 200)
+        })
+        this.watchers.set(rel, watcher)
+      } catch {
+        /* not there (yet): a cards folder appears with its first card, and the board's watch sees it */
+      }
+    }
   }
 
   close(): void {
-    this.watcher?.close()
+    for (const watcher of this.watchers.values()) watcher.close()
+    this.watchers.clear()
     clearTimeout(this.flushTimer)
   }
 
@@ -395,6 +514,15 @@ export class BoardStore {
         board.cards = sortCards([...board.cards.filter(c => c.id !== card.id), card])
         delta(boardPath).cards.push(card)
         if (isNew) treeChanged = true
+      } else if (name === 'cards' && this.boards.has(parts.slice(0, -1).join('/'))) {
+        // A board's cards folder appeared (its first card, written by a session): read it whole,
+        // since the cards in it may have landed before its watch did.
+        const boardPath = parts.slice(0, -1).join('/')
+        const board = await this.readBoard(boardPath)
+        if (board) {
+          delta(boardPath).cards.push(...board.cards)
+          treeChanged = true
+        }
       } else if (!name.includes('.')) {
         // A folder appeared or went away: maybe a whole board (git checkout, a copy).
         const before = new Set(this.boards.keys())
@@ -406,6 +534,7 @@ export class BoardStore {
     }
 
     if (treeChanged) this.resolveInheritance()
+    if (treeChanged || changed.some(rel => !rel.split('/').at(-1)!.includes('.'))) this.rewatch()
     for (const d of deltas.values()) this.events?.onDelta(d)
     if (treeChanged) this.events?.onTreeChanged()
   }

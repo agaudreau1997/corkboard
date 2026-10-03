@@ -23,7 +23,9 @@ import {
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { isDivider } from '@shared/cardfile'
 import type { BoardMap, Card, LoadedBoard, MapNodePos } from '@shared/types'
+import { cardMenu } from '../menus'
 import { actions, api, listColor, useStore, NONE } from '../state'
+import { openContextMenu } from './ContextMenu'
 
 type CardNodeData = { card: Card; color: string; listTitle: string; selectedForTackle: boolean }
 type CardNode = Node<CardNodeData, 'card'>
@@ -209,6 +211,10 @@ function MapCanvas({ board, matches }: { board: LoadedBoard; matches: (c: Card) 
           onConnect={onConnect}
           onEdgesDelete={onEdgesDelete}
           onNodeDoubleClick={(_, node) => actions.openCard(board.path, node.id)}
+          onNodeContextMenu={(e, node) => {
+            const card = board.cards.find(c => c.id === node.id)
+            if (card) openContextMenu(e, cardMenu(board, card))
+          }}
           onNodeClick={(e, node) => {
             if (e.ctrlKey || e.metaKey || e.shiftKey) actions.toggleSelected(board.path, node.id)
           }}

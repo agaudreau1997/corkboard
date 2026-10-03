@@ -53,6 +53,20 @@ describe('BoardStore', () => {
     expect(fresh.board('robot-shooter/ideas').codeRepo).toBe('/code')
   })
 
+  it('resolves code repos: this machine first, then board.json, relative to the repo', async () => {
+    const store = new BoardStore(root)
+    await store.init()
+    const parent = await store.createBoard('', 'Game', 'G')
+    const child = await store.createBoard(parent, 'Ideas', 'I')
+    await store.updateMeta(parent, { codeRepo: '../game-code' })
+    expect(store.board(child).codeRepo).toBe(path.resolve(root, '../game-code'))
+    store.setLocalRepos({ [parent]: '/elsewhere/game' })
+    expect(store.board(child).codeRepo).toBe('/elsewhere/game')
+    expect(store.board(child).codeRepoLocal).toBe(true)
+    store.setLocalRepos({})
+    expect(store.board(parent).codeRepoLocal).toBe(false)
+  })
+
   it('numbers cards per board and writes them as files', async () => {
     const store = new BoardStore(root)
     await store.init()
@@ -67,6 +81,30 @@ describe('BoardStore', () => {
     const moved = await store.updateCard(p, 'G-2', { list: 'done' })
     expect(moved.list).toBe('done')
     expect(parseCard(readFileSync(store.cardFile(p, 'G-2'), 'utf8')).list).toBe('done')
+  })
+
+  it('moves a card and a whole list to another board, ids kept', async () => {
+    const store = new BoardStore(root)
+    await store.init()
+    const a = await store.createBoard('', 'Alpha', 'A')
+    const b = await store.createBoard('', 'Beta', 'B')
+    const one = await store.createCard(a, { title: 'One', list: 'todo' })
+    await store.createCard(a, { title: 'Two', list: 'doing' })
+    await store.createCard(a, { title: 'Three', list: 'doing' })
+
+    const moved = await store.moveCard(a, one.id, b, 'done')
+    expect(moved.id).toBe('A-1')
+    expect(readFileSync(store.cardFile(b, 'A-1'), 'utf8')).toContain('list: done')
+    expect(() => readFileSync(store.cardFile(a, 'A-1'))).toThrow()
+    // B's own numbering ignores the guest: its next card is B-1.
+    expect((await store.createCard(b, { title: 'Native', list: 'todo' })).id).toBe('B-1')
+
+    const listId = await store.moveList(a, 'doing', b)
+    expect(listId).toBe('doing-2')
+    expect(store.board(b).meta.lists.at(-1)).toEqual({ id: 'doing-2', title: 'Doing' })
+    expect(store.board(a).meta.lists.map(l => l.id)).toEqual(['todo', 'done'])
+    expect(store.board(b).cards.filter(c => c.list === 'doing-2').map(c => c.id)).toEqual(['A-2', 'A-3'])
+    expect(store.board(a).cards).toEqual([])
   })
 
   it('refuses to delete a board that still has cards', async () => {
@@ -119,6 +157,56 @@ describe('BoardStore', () => {
     await sleep(400)
     // One delta from the write itself, none from the watch.
     expect(deltas.length).toBe(1)
+    store.close()
+  })
+})
+
+describe('the watch and git', () => {
+  it('keeps seeing card files through commits, branch switches and a rebase', async () => {
+    const run = (...args: string[]) => execFileSync('git', args, { cwd: root, stdio: 'pipe' })
+    run('init', '-q', '-b', 'main')
+    run('config', 'user.email', 't@example.com')
+    run('config', 'user.name', 'Test')
+    const store = new BoardStore(root)
+    await store.init()
+    const p = await store.createBoard('', 'Game', 'G')
+    const card = await store.createCard(p, { title: 'Watched', list: 'todo' })
+    const second = await store.createCard(p, { title: 'Second', list: 'todo' })
+    run('add', '-A')
+    run('commit', '-q', '-m', 'seed')
+    const deltas: BoardDelta[] = []
+    store.watch({ onDelta: d => deltas.push(d), onTreeChanged: () => {} })
+    await sleep(100)
+
+    // Another branch moves one card; main renames the other; rebase main onto the other branch.
+    run('checkout', '-q', '-b', 'other')
+    writeFileSync(store.cardFile(p, card.id), serializeCard({ ...card, list: 'done' }))
+    run('commit', '-qam', 'move')
+    run('checkout', '-q', 'main')
+    writeFileSync(store.cardFile(p, second.id), serializeCard({ ...second, title: 'Renamed' }))
+    run('commit', '-qam', 'rename')
+    run('rebase', '-q', 'other')
+    await until(() => store.board(p).cards.find(c => c.id === card.id && c.list === 'done'))
+    await until(() => store.board(p).cards.find(c => c.id === second.id && c.title === 'Renamed'))
+
+    // After all that .git churn, a plain edit still arrives.
+    writeFileSync(store.cardFile(p, card.id), serializeCard({ ...card, title: 'Still watched', list: 'done' }))
+    await until(() => deltas.find(d => d.cards.some(c => c.title === 'Still watched')))
+    store.close()
+  })
+
+  it('reads a cards folder that appears with its first card', async () => {
+    const store = new BoardStore(root)
+    await store.init()
+    const p = await store.createBoard('', 'Fresh', 'F')
+    rmSync(path.join(root, p, 'cards'), { recursive: true })
+    store.watch({ onDelta: () => {}, onTreeChanged: () => {} })
+    await sleep(100)
+    execFileSync('mkdir', [path.join(root, p, 'cards')])
+    writeFileSync(path.join(root, p, 'cards', 'F-1.md'), '---\nid: F-1\ntitle: First\nlist: todo\npos: 1\n---\n')
+    await until(() => store.board(p).cards.find(c => c.id === 'F-1'))
+    writeFileSync(path.join(root, p, 'cards', 'F-2.md'), '---\nid: F-2\ntitle: Second\nlist: todo\npos: 2\n---\n')
+    await until(() => store.board(p).cards.find(c => c.id === 'F-2'))
     store.close()
   })
 })

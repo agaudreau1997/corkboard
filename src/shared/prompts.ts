@@ -67,8 +67,8 @@ export function tacklePrompt(cards: Card[], ctx: PromptContext): string {
   if (!ctx.cloud && doneList) {
     rules.push(
       one
-        ? `When the work is done and verified, move the card to "${doneList.title}": set \`list: ${doneList.id}\` in its front matter.`
-        : `As each card is done and verified, move it to "${doneList.title}" (\`list: ${doneList.id}\` in its front matter) before starting the next, so the board shows progress.`,
+        ? `When the work is done and verified, move the card to "${doneList.title}": set \`list: ${doneList.id}\` and \`updated:\` (now, ISO UTC) in its front matter.`
+        : `As each card is done and verified, move it to "${doneList.title}" (\`list: ${doneList.id}\` and \`updated:\` now, in its front matter) before starting the next, so the board shows progress.`,
     )
   }
   if (!ctx.cloud) rules.push("Don't commit in the board repo; the board app commits it.")
