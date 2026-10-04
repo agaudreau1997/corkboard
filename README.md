@@ -89,7 +89,7 @@ npm test           # unit tests: card files, the store and its watch, git, sync 
 npm run e2e        # builds, then drives the real app on a made-up board repo
 ```
 
-CI (`.github/workflows/ci.yml`) runs the typecheck, the unit tests and the end-to-end test on Ubuntu (in a virtual display, `xvfb-run`) and Windows for every push and pull request.
+CI (`.github/workflows/ci.yml`) runs the typecheck, the unit tests and the end-to-end test on Ubuntu (in a virtual display, `xvfb-run`) and Windows for every push and pull request. The end-to-end test does not pass on Windows yet, so its run there does not fail CI.
 
 The end-to-end test (`tests/e2e/smoke.mjs`) writes a made-up board repo in a temporary folder (`tests/e2e/fixture.mjs`: a game's boards, with child boards, a map, long lists, archived cards and a second board, nothing from anyone's real boards), points the app at it with a hidden window, and replaces `claude` with a stand-in that records its arguments (`CORKBOARD_CLAUDE_BIN`), so nothing real is started or billed. Screenshots go to `test-results/` (`SHOT_DIR` to change). `node tests/e2e/smoke.mjs <board repo>` starts from another board repo's first commit instead, which must have the fixture's shape: the checks name its boards, lists and ids.
 
