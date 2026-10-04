@@ -1,0 +1,73 @@
+# A `v*` tag (from `npm version`) builds every package and uploads it to a draft GitHub release.
+# The apps' updater only sees a release once it is published, which is done by hand on GitHub.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  # The draft is made once, before the builds: both build jobs would otherwise look for it at the
+  # same time, find none, and each make one. electron-builder uploads to the draft it finds by tag.
+  draft:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: The tag matches package.json
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME, but package.json says $version (tag with npm version)"
+            exit 1
+          fi
+      - name: Make the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq '.[].tag_name' | grep -qxF "$GITHUB_REF_NAME"; then
+            echo "A release for $GITHUB_REF_NAME exists already"
+          else
+            gh release create "$GITHUB_REF_NAME" --draft --verify-tag --generate-notes --title "Corkboard ${GITHUB_REF_NAME#v}"
+          fi
+
+  linux:
+    needs: draft
+    # An older Ubuntu, so node-pty's pty.node (compiled here by npm ci) and the AppImage also run
+    # where glibc is older than on the machine that runs them today.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      # rpm for electron-builder's fpm; squashfs-tools for the package check.
+      - run: sudo apt-get update && sudo apt-get install -y rpm squashfs-tools
+      - run: npm ci
+      - run: npm test
+      - run: npx electron-vite build
+      # Both in one run, so latest-linux.yml lists both: two runs overwrite each other's.
+      - run: npx electron-builder --linux AppImage rpm --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: node scripts/check-packages.mjs linux
+
+  windows:
+    needs: draft
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npx electron-vite build
+      - run: npx electron-builder --win nsis portable --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: node scripts/check-packages.mjs win

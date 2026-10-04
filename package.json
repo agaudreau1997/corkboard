@@ -20,9 +20,9 @@
     "install-launcher": "npm run build && bash scripts/install-launcher.sh",
     "install-launcher:appimage": "bash scripts/install-launcher.sh --appimage",
     "icon": "python3 scripts/make-icon.py",
-    "dist": "electron-vite build && electron-builder --win",
-    "dist:linux": "electron-vite build && electron-builder --linux AppImage",
-    "dist:linux:rpm": "electron-vite build && electron-builder --linux rpm"
+    "dist": "electron-vite build && electron-builder --win --publish never",
+    "dist:linux": "electron-vite build && electron-builder --linux AppImage --publish never",
+    "dist:linux:rpm": "electron-vite build && electron-builder --linux rpm --publish never"
   },
   "dependencies": {
     "node-pty": "1.1.0",

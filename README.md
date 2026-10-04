@@ -58,12 +58,27 @@ To start it from the desktop menu (and get its icon on the taskbar, which a Wayl
 
 `npm run dist:linux` packages it for Linux into `dist/`: `Corkboard-<version>.AppImage` (one file that runs on any distribution; it needs FUSE 2, `fuse-libs` on Fedora) and `linux-unpacked/corkboard` (the app as a plain folder). An AppImage doesn't add itself to the desktop menu: `npm run install-launcher:appimage` copies the newest one to `~/.local/lib/corkboard/Corkboard.AppImage` and points the menu entry (and the taskbar icon) at it; run it again after a rebuild. `npm run dist:linux:rpm` builds `corkboard-<version>.x86_64.rpm` instead (installs under `/opt/Corkboard` with its own menu entry: `sudo dnf install ./dist/corkboard-*.rpm`); electron-builder's bundled `fpm` needs `libcrypt.so.1` for it, which Fedora ships in `libxcrypt-compat`. On Linux node-pty runs the `pty.node` that `npm install` compiled (it is an N-API addon, so no rebuild against Electron), so build where `npm install` ran; the package leaves out node-pty's Windows and macOS prebuilds. `CORKBOARD_E2E_EXECUTABLE=dist/linux-unpacked/corkboard node tests/e2e/smoke.mjs` runs the end-to-end test against the packaged app.
 
+## Releases
+
+Releases are built in CI and published on GitHub, never from someone's machine. To cut one:
+
+```bash
+npm version patch -m "Release %s"
+git push --follow-tags
+```
+
+`npm version` (`patch` or `minor`) sets the version in `package.json`, commits it and tags that commit `v<version>`; `package.json` is the source of truth, and the release workflow refuses a tag that doesn't match it. The tag starts `.github/workflows/release.yml`, which makes a **draft** release and fills it: the unit tests, then the AppImage and the rpm built on Ubuntu 22.04 (in one run, so `latest-linux.yml` lists both; on an older Ubuntu, so node-pty's compiled `pty.node` and the AppImage also run where glibc is older), and the Setup exe and the portable exe built on Windows, with `latest.yml`. `scripts/check-packages.mjs` then checks that every package carries `resources/app-update.yml` (where the in-app updater looks for releases) and that only the rpm says it is one. Read the draft on GitHub, edit its notes, and *Publish release*: until then it is invisible to everyone else. The exes are unsigned.
+
+The local `npm run dist*` scripts build the same packages into `dist/` and never publish.
+
 ## Tests
 
 ```bash
 npm test           # unit tests: card files, the store and its watch, git, sync between two clones, prompts, terminal titles, themes
 npm run e2e        # builds, then drives the real app on a scratch clone of the board repo
 ```
+
+CI (`.github/workflows/ci.yml`) runs the typecheck and the unit tests on Ubuntu and Windows for every push and pull request. The end-to-end test isn't there yet: it seeds its board repo from one on the author's machine.
 
 The end-to-end test (`tests/e2e/smoke.mjs`) clones a board repo to a temporary folder, points the app at it with a hidden window, and replaces `claude` with a stand-in that records its arguments (`CORKBOARD_CLAUDE_BIN`), so nothing real is started or billed. Screenshots go to `test-results/` (`SHOT_DIR` to change).
 

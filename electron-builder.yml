@@ -19,6 +19,15 @@ npmRebuild: false
 # native addon can't load from inside the asar archive on any platform.
 asarUnpack:
   - node_modules/node-pty/**
+# Releases live on GitHub. A `v*` tag makes CI build every package and upload it to a draft
+# release (.github/workflows/release.yml); the apps only see it once the draft is published. Every
+# package also carries this as resources/app-update.yml, which tells the in-app updater where to
+# look. The local `npm run dist*` scripts never publish.
+publish:
+  provider: github
+  owner: agaudreau1997
+  repo: corkboard
+  releaseType: draft
 win:
   icon: build/icon.png
   target:
