@@ -56,28 +56,46 @@ const openedUrls = () => (existsSync(urlLog) ? readFileSync(urlLog, 'utf8').spli
 /** The stand-in's calls that started sessions (the app also asks it for --version). */
 const sessionCalls = () =>
   existsSync(fakeLog) ? readFileSync(fakeLog, 'utf8').split('\n--\n').filter(c => c && !c.startsWith('--version')) : []
-const fakeClaude = path.join(scratch, 'fake-claude')
 // Records its argv, then parses it the way Claude Code does (--add-dir takes every argument up to
-// the next option), so a prompt an option swallowed shows up on screen as "prompt=none".
+// the next option), so a prompt an option swallowed shows up on screen as "prompt=none". It is a
+// Node script so it runs on Windows too, behind a launcher the terminal's shell runs: a bash script
+// on Unix, a .ps1 on Windows (PowerShell runs that itself, so a prompt's quotes and newlines reach
+// Node intact; a .cmd would go through cmd.exe, which mangles them).
+const fakeScript = path.join(scratch, 'fake-claude.mjs')
 writeFileSync(
-  fakeClaude,
+  fakeScript,
   [
-    '#!/bin/bash',
-    `printf '%s\\0' "$@" >> ${JSON.stringify(fakeLog)}`,
-    `printf '\\n--\\n' >> ${JSON.stringify(fakeLog)}`,
-    'cloud=no; [ "$1" = "--cloud" ] && cloud=yes',
-    'prompt=none',
-    'while [ $# -gt 0 ]; do case "$1" in',
-    '  --add-dir) shift; while [ $# -gt 0 ] && [ "${1#-}" = "$1" ]; do shift; done ;;',
-    '  -n|--session-id|-w|--resume) shift 2 ;;',
-    '  --cloud) [ $# -gt 1 ] && prompt=given; shift 2 ;;',
-    '  --version|update) shift ;;',
-    '  *) prompt=given; shift ;;',
-    'esac; done',
-    'echo "FAKE CLAUDE in $PWD prompt=$prompt"',
-    'if [ $cloud = yes ]; then echo "Created https://claude.ai/code/session_fake123"; fi',
+    "import { appendFileSync } from 'node:fs'",
+    'const argv = process.argv.slice(2)',
+    `appendFileSync(${JSON.stringify(fakeLog)}, argv.map(a => a + '\\0').join('') + '\\n--\\n')`,
+    "const cloud = argv[0] === '--cloud'",
+    "let prompt = 'none'",
+    'for (let i = 0; i < argv.length; ) {',
+    '  const a = argv[i]',
+    "  if (a === '--add-dir') for (i++; i < argv.length && !argv[i].startsWith('-'); i++);",
+    "  else if (['-n', '--session-id', '-w', '--resume'].includes(a)) i += 2",
+    "  else if (a === '--cloud') {",
+    "    if (i + 1 < argv.length) prompt = 'given'",
+    '    i += 2',
+    "  } else if (a === '--version' || a === 'update') i++",
+    '  else {',
+    "    prompt = 'given'",
+    '    i++',
+    '  }',
+    '}',
+    'console.log(`FAKE CLAUDE in ${process.cwd()} prompt=${prompt}`)',
+    "if (cloud) console.log('Created https://claude.ai/code/session_fake123')",
     '',
   ].join('\n'),
+)
+const psQuote = s => `'${s.replaceAll("'", "''")}'`
+const shQuote = s => `'${s.replaceAll("'", `'\\''`)}'`
+const fakeClaude = path.join(scratch, process.platform === 'win32' ? 'fake-claude.ps1' : 'fake-claude')
+writeFileSync(
+  fakeClaude,
+  process.platform === 'win32'
+    ? `& ${psQuote(process.execPath)} ${psQuote(fakeScript)} @args\r\nexit $LASTEXITCODE\r\n`
+    : `#!/bin/bash\nexec ${shQuote(process.execPath)} ${shQuote(fakeScript)} "$@"\n`,
 )
 chmodSync(fakeClaude, 0o755)
 
