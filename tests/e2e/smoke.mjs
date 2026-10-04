@@ -48,6 +48,8 @@ execFileSync('git', ['-c', 'user.email=e@x', '-c', 'user.name=E', 'commit', '-q'
 const rsMeta = JSON.parse(readFileSync(path.join(root, 'robot-shooter/board.json'), 'utf8'))
 rsMeta.codeRepo = codeRepo
 writeFileSync(path.join(root, 'robot-shooter/board.json'), `${JSON.stringify(rsMeta, null, 2)}\n`)
+// No CLAUDE.md, as in a board repo made before the app wrote one, so the side panel offers it.
+if (existsSync(path.join(root, 'CLAUDE.md'))) execFileSync('git', ['rm', '-q', 'CLAUDE.md'], { cwd: root })
 execFileSync('git', ['commit', '-qam', 'e2e: point at the scratch code repo'], { cwd: root })
 
 const fakeLog = path.join(scratch, 'claude-calls.txt')
@@ -624,6 +626,22 @@ try {
   })
   check(!!copiedPrompt, `Copy › Tackle prompt put ${moverId}'s tackle prompt on the clipboard`)
   check(readFileSync(promptCardFile, 'utf8') === moverBefore, 'copying the prompt left the card as it was')
+  check(!copiedPrompt?.includes('CLAUDE.md'), 'the prompt points to no CLAUDE.md the board repo lacks')
+
+  // ---- the board repo has no CLAUDE.md: the side panel offers one ----
+  const guideFile = path.join(root, 'CLAUDE.md')
+  const offer = page.locator('.guide-offer')
+  check((await offer.count()) === 1 && !existsSync(guideFile), 'a board repo without a CLAUDE.md gets an offer of one, and no file')
+  await shot('09b-guide-offer')
+  await offer.getByRole('button', { name: 'Add one' }).click()
+  check(!!(await until(() => existsSync(guideFile))) && readFileSync(guideFile, 'utf8').includes('set its `updated:`'), 'Add one writes the CLAUDE.md with the card format')
+  check(!!(await until(async () => (await offer.count()) === 0)), 'and the offer goes away')
+  const rootLogHas = text => execFileSync('git', ['log', '--format=%B'], { cwd: root, stdio: 'pipe' }).toString().includes(text)
+  check(!!(await until(() => rootLogHas('Add CLAUDE.md'), 12000)), 'the app commits the CLAUDE.md it added')
+  await mover.click({ button: 'right' })
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Copy' }).hover()
+  await page.getByRole('menuitem', { name: /Tackle prompt/ }).click()
+  check(!!(await until(async () => (await app.evaluate(({ clipboard }) => clipboard.readText())).includes('(its CLAUDE.md describes the card format)'))), 'now the prompt points to it')
 
   await page.locator(`.card[data-card="${moverId}"]`).click({ button: 'right' })
   await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Move to board' }).hover()
@@ -750,6 +768,8 @@ try {
   await page.getByRole('dialog').getByRole('button', { name: 'Add project' }).click()
   await page.locator('.project-row', { hasText: 'Side project' }).waitFor()
   check(existsSync(path.join(second, '.git')), 'a new project folder becomes a git repo')
+  check(existsSync(path.join(second, 'CLAUDE.md')) && existsSync(path.join(second, 'README.md')), 'with a README and a CLAUDE.md')
+  check((await page.locator('.guide-offer').count()) === 0, 'so neither project offers a CLAUDE.md')
   check((await page.locator('.project-row').count()) === 2, 'the side panel shows both projects')
   await page.locator('.tree-row', { hasText: 'Untitled shooter' }).click({ button: 'right' })
   await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Move to project' }).hover()

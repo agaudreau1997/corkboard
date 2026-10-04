@@ -31,6 +31,8 @@ export type CorkboardApi = {
     /** Adds a board repo (an empty or new folder becomes a git repo); answers its id. */
     add(opts: { boardRoot: string; name?: string; codeRepo?: string }): Promise<string>
     update(id: string, patch: { name?: string; codeRepo?: string | null }): Promise<void>
+    /** Writes the board repo's CLAUDE.md (the card format) when it has none. */
+    addGuide(id: string): Promise<void>
     /** Takes it out of the app; its folder stays. */
     remove(id: string): Promise<void>
     pickFolder(title: string): Promise<string | null>

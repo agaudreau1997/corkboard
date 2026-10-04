@@ -181,6 +181,8 @@ export type ProjectNode = {
   root: string
   codeRepo?: string
   sync: SyncStatus
+  /** Whether the repo has its CLAUDE.md (the card format, for sessions and hand edits). */
+  guide: boolean
   boards: BoardNode[]
 }
 

@@ -4,6 +4,7 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
+import { BOARD_GUIDE_FILE } from '@shared/boardguide'
 import { isDivider, slugify } from '@shared/cardfile'
 import { discussPrompt, sessionName, tacklePrompt } from '@shared/prompts'
 import type { Card, PtyInfo, SessionRef, TackleRequest } from '@shared/types'
@@ -114,6 +115,7 @@ function buildPrompt(store: BoardStore, req: TackleRequest, cards: Card[]): stri
     cardFile: id => store.cardFile(req.boardPath, id),
     linkTitle: id => store.findCard(id)?.card.title,
     cloud: req.mode === 'cloud',
+    guide: existsSync(path.join(store.root, BOARD_GUIDE_FILE)),
     listTitle: req.listTitle,
     boardTitle: req.boardTitle,
   })

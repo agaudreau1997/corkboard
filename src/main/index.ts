@@ -262,6 +262,12 @@ function registerIpc(): void {
     commitCache.clear()
     send('boards:treeChanged')
   })
+  ipcMain.handle('projects:addGuide', async (_e, id: string) => {
+    const project = projects.get(id)
+    if (!project) throw new Error(`No project ${id}`)
+    await project.addGuide()
+    send('boards:treeChanged')
+  })
   ipcMain.handle('projects:remove', async (_e, id: string) => {
     const project = projects.get(id)
     if (!project) return
