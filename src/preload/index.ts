@@ -51,6 +51,11 @@ const api: CorkboardApi = {
     update: boardPath => invoke('claude:update', boardPath),
     desktopAvailable: () => invoke('claude:desktopAvailable'),
   },
+  updates: {
+    status: () => invoke('updates:status'),
+    check: () => invoke('updates:check'),
+    install: () => invoke('updates:install'),
+  },
   clipboard: {
     write: text => ipcRenderer.send('clipboard:write', text),
   },
@@ -89,6 +94,7 @@ const api: CorkboardApi = {
     ptyData: cb => subscribe('pty:data', cb),
     ptyExit: cb => subscribe('pty:exit', cb),
     ptyStatus: cb => subscribe('pty:status', cb),
+    updateStatus: cb => subscribe('updates:changed', cb),
   },
 }
 

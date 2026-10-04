@@ -15,6 +15,7 @@ import type {
   ProjectTheme,
   PtyInfo,
   TerminalStatus,
+  UpdateStatus,
 } from '@shared/types'
 import type { MenuItem } from './components/ContextMenu'
 
@@ -91,6 +92,8 @@ type State = UiPrefs & {
   toast: { text: string; tone: 'info' | 'error' } | null
   lastCommit: { projectId: string; summary: string; at: number } | null
   claude: ClaudeInfo | null
+  /** Corkboard's own version and its updates. */
+  update: UpdateStatus | null
   /** Whether claude:// links reach the Claude desktop app on this machine. */
   desktop: boolean
   contextMenu: { x: number; y: number; items: MenuItem[] } | null
@@ -119,6 +122,7 @@ export const useStore = create<State>(() => ({
   toast: null,
   lastCommit: null,
   claude: null,
+  update: null,
   desktop: false,
   contextMenu: null,
   focusLinks: 0,
@@ -207,7 +211,9 @@ export const actions = {
     api.on.syncStatus((projectId, sync) =>
       set(s => ({ projects: s.projects.map(p => (p.id === projectId ? { ...p, sync } : p)) })),
     )
+    api.on.updateStatus(update => set({ update }))
     void actions.refreshClaude()
+    void api.updates.status().then(update => set({ update }))
     void api.claude.desktopAvailable().then(desktop => set({ desktop }))
     const config = await api.config.get()
     set({ config })
@@ -366,6 +372,25 @@ export const actions = {
 
   async updateClaude() {
     await api.claude.update(get().activeTab ?? undefined)
+  },
+
+  /**
+   * Installs the downloaded update and starts it again. A restart stops the terminals, Claude
+   * sessions with them (each can be resumed from its card): with any running, it asks first.
+   */
+  async restartToUpdate() {
+    const s = get()
+    const running = s.terminals.filter(t => s.exited[t.id] === undefined)
+    if (running.length) {
+      const working = running.filter(t => s.terminalStatus[t.id] === 'working').length
+      const ok = await actions.confirm(
+        'Restart to update?',
+        `${running.length === 1 ? 'A terminal is' : `${running.length} terminals are`} still running${working ? `, Claude working in ${working}` : ''}. Restarting stops ${running.length === 1 ? 'it' : 'them'}: a Claude session can be resumed from its card afterwards.`,
+        'Restart and update',
+      )
+      if (!ok) return
+    }
+    await api.updates.install()
   },
 
   async syncNow(projectId: string) {

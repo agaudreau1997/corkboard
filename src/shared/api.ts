@@ -17,6 +17,7 @@ import type {
   SyncStatus,
   TackleRequest,
   TerminalStatus,
+  UpdateStatus,
 } from './types'
 
 export type CorkboardApi = {
@@ -79,6 +80,14 @@ export type CorkboardApi = {
     /** Whether claude:// links open the Claude desktop app here. */
     desktopAvailable(): Promise<boolean>
   }
+  /** Corkboard's own updates, from its GitHub releases. */
+  updates: {
+    status(): Promise<UpdateStatus>
+    /** Looks for a newer release now. */
+    check(): Promise<void>
+    /** Stops the terminals, commits and pushes the board repos, then installs and restarts. */
+    install(): Promise<void>
+  }
   clipboard: {
     write(text: string): void
   }
@@ -122,5 +131,6 @@ export type CorkboardApi = {
     ptyExit(cb: (id: string, code: number) => void): () => void
     /** A terminal's status changed (Claude started or stopped working, or left). */
     ptyStatus(cb: (id: string, status: TerminalStatus) => void): () => void
+    updateStatus(cb: (status: UpdateStatus) => void): () => void
   }
 }

@@ -1,6 +1,6 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
-import { execFile } from 'node:child_process'
-import { existsSync, promises as fs } from 'node:fs'
+import { execFile, execFileSync } from 'node:child_process'
+import { existsSync, readdirSync, readFileSync, promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import type {
@@ -15,13 +15,16 @@ import type {
   SessionRef,
   SyncStatus,
   TackleRequest,
+  UpdateStatus,
 } from '@shared/types'
+import { autoUpdater } from 'electron-updater'
 import { desktopAvailable } from './desktop'
 import { codeCommits, commitFiles } from './git'
 import { boardKey, prepareBoardRepo, Project, projectId, splitKey } from './projects'
 import { PtyManager } from './pty'
 import { shellProbe } from './shell'
 import { CLAUDE, openInDesktop, promptFor, resume, stopDesktopWatches, tackle } from './tackle'
+import { releasesPage, updateMode, Updates } from './updates'
 
 // Test seams: a scratch profile, a board root, a hidden window, short delays, a folder picker.
 if (process.env.CORKBOARD_USER_DATA) app.setPath('userData', process.env.CORKBOARD_USER_DATA)
@@ -30,6 +33,7 @@ const TIMING = {
   commitDelayMs: Number(process.env.CORKBOARD_COMMIT_DELAY_MS ?? 8000),
   syncIntervalMs: Number(process.env.CORKBOARD_SYNC_INTERVAL_MS ?? 60_000),
 }
+const UPDATE_CHECK_MS = 4 * 60 * 60_000
 
 let win: BrowserWindow | undefined
 const projects = new Map<string, Project>()
@@ -382,6 +386,10 @@ function registerIpc(): void {
   })
   ipcMain.handle('claude:desktopAvailable', () => desktopAvailable())
 
+  ipcMain.handle('updates:status', () => updates?.status ?? updatesOff)
+  ipcMain.handle('updates:check', () => updates?.check())
+  ipcMain.handle('updates:install', () => updates?.install())
+
   ipcMain.handle('pty:create', (_e, opts: { title: string; boardPath?: string; cwd?: string }) => {
     let cwd = opts.cwd
     if (!cwd && opts.boardPath) {
@@ -437,6 +445,54 @@ function claudeInfo(): Promise<ClaudeInfo> {
   })
 }
 
+// ---- updates ---------------------------------------------------------------------------------
+
+let updates: Updates | undefined
+let updatesOff: UpdateStatus = { current: app.getVersion(), state: 'off' }
+
+/** Starts checking for updates, when this copy is one that updates (see updates.ts). */
+function startUpdates(): void {
+  const resource = (name: string) => {
+    try {
+      return readFileSync(path.join(process.resourcesPath, name), 'utf8').trim()
+    } catch {
+      return undefined
+    }
+  }
+  const mode = updateMode({
+    packaged: app.isPackaged,
+    platform: process.platform,
+    env: process.env,
+    releases: releasesPage(resource('app-update.yml')),
+    packageType: resource('package-type'),
+    rpmOwned: () => {
+      try {
+        execFileSync('rpm', ['-qf', process.execPath], { stdio: 'ignore' })
+        return true
+      } catch {
+        return false
+      }
+    },
+    nsisInstalled: () => readdirSync(path.dirname(process.execPath)).some(f => /^Uninstall .*\.exe$/i.test(f)),
+  })
+  if (mode.kind === 'off') {
+    updatesOff = { ...updatesOff, message: mode.why }
+    return
+  }
+  updates = new Updates(autoUpdater, {
+    current: app.getVersion(),
+    releases: mode.releases,
+    notifyOnly: mode.kind === 'notify',
+    prepareQuit,
+    relaunch: () => {
+      app.relaunch()
+      app.quit()
+    },
+    onStatus: status => send('updates:changed', status),
+  })
+  updates.start(UPDATE_CHECK_MS)
+}
+
 // ---- window ----------------------------------------------------------------------------------
 
 function createWindow(): void {
@@ -478,22 +534,43 @@ function createWindow(): void {
 app.whenReady().then(() => {
   registerIpc()
   createWindow()
+  startUpdates()
 })
 
-let quitting = false
+let shutdown: Promise<void> | undefined
+let readyToQuit = false
+
+/**
+ * What happens before the process goes, once: the terminals stop, and what is pending is committed
+ * and pushed, but never holding the quit for long. A quit waits for it, and so does an update's
+ * install, which starts before the quit.
+ */
+function prepareQuit(): Promise<void> {
+  shutdown ??= (async () => {
+    try {
+      ptys.killAll()
+      stopDesktopWatches()
+      updates?.stop()
+      const pending = [...projects.values()].map(async p => {
+        p.store.close()
+        p.sync.stop()
+        await p.sync.sync()
+      })
+      await Promise.race([Promise.all(pending), new Promise(r => setTimeout(r, 10_000))])
+    } catch (error) {
+      console.error('Before quitting:', error)
+    } finally {
+      // Whatever happened, the quit goes through.
+      readyToQuit = true
+    }
+  })()
+  return shutdown
+}
+
 app.on('before-quit', event => {
-  if (quitting) return
-  // Commit and push what is pending before the process goes, but never hold the quit for long.
+  if (readyToQuit) return
   event.preventDefault()
-  quitting = true
-  ptys.killAll()
-  stopDesktopWatches()
-  const pending = [...projects.values()].map(async p => {
-    p.store.close()
-    p.sync.stop()
-    await p.sync.sync()
-  })
-  void Promise.race([Promise.all(pending), new Promise(r => setTimeout(r, 10_000))]).finally(() => app.quit())
+  void prepareQuit().finally(() => app.quit())
 })
 
 app.on('window-all-closed', () => app.quit())

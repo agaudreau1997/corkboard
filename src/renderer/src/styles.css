@@ -383,6 +383,16 @@ code,
   color: var(--muted);
 }
 
+.update-line button.foot-text {
+  text-align: left;
+  font: inherit;
+}
+
+.update-ready .foot-text,
+.update-available .foot-text {
+  color: var(--green);
+}
+
 
 
 .resize-x {

@@ -216,3 +216,20 @@ export type SyncStatus = {
 }
 
 export type ClaudeInfo = { version?: string; path?: string; error?: string }
+
+/** Corkboard's own updates, from the GitHub releases, as the side panel shows them. */
+export type UpdateStatus = {
+  /** The version running. */
+  current: string
+  state: 'off' | 'checking' | 'current' | 'available' | 'downloading' | 'ready' | 'installing' | 'error'
+  /** The newer version, once one is found. */
+  version?: string
+  /** Download progress, 0–100. */
+  percent?: number
+  /** Why updates are off, or what went wrong. */
+  message?: string
+  /** The release page of `version` (else `current`): its notes, and its packages. */
+  page?: string
+  /** This copy can't update itself (the portable exe): a newer version is only announced. */
+  notifyOnly?: boolean
+}

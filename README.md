@@ -67,9 +67,20 @@ npm version patch -m "Release %s"
 git push --follow-tags
 ```
 
-`npm version` (`patch` or `minor`) sets the version in `package.json`, commits it and tags that commit `v<version>`; `package.json` is the source of truth, and the release workflow refuses a tag that doesn't match it. The tag starts `.github/workflows/release.yml`, which makes a **draft** release and fills it: the unit tests, then the AppImage and the rpm built on Ubuntu 22.04 (in one run, so `latest-linux.yml` lists both; on an older Ubuntu, so node-pty's compiled `pty.node` and the AppImage also run where glibc is older), and the Setup exe and the portable exe built on Windows, with `latest.yml`. `scripts/check-packages.mjs` then checks that every package carries `resources/app-update.yml` (where the in-app updater looks for releases) and that only the rpm says it is one. Read the draft on GitHub, edit its notes, and *Publish release*: until then it is invisible to everyone else. The exes are unsigned.
+`npm version` (`patch` or `minor`) sets the version in `package.json`, commits it and tags that commit `v<version>`; `package.json` is the source of truth, and the release workflow refuses a tag that doesn't match it. The tag starts `.github/workflows/release.yml`, which makes a **draft** release and fills it: the unit tests, then the AppImage and the rpm built on Ubuntu 22.04 (in one run, so `latest-linux.yml` lists both; on an older Ubuntu, so node-pty's compiled `pty.node` and the AppImage also run where glibc is older), and the Setup exe and the portable exe built on Windows, with `latest.yml`. `scripts/check-packages.mjs` then checks that every package carries `resources/app-update.yml` (where the in-app updater looks for releases) and that only the rpm says it is one. Read the draft on GitHub, edit its notes, and *Publish release*: until then neither people nor installed copies see it. The exes are unsigned.
 
 The local `npm run dist*` scripts build the same packages into `dist/` and never publish.
+
+## Updates
+
+The side panel's foot shows the Corkboard version running; click it for its release notes. An installed Corkboard looks for a newer published release when it starts and every four hours, and what it does with one depends on how it was installed:
+
+- **Windows installer** (the Setup exe): downloads it in the background and installs it silently at the next quit, or at once with *Restart to update*.
+- **AppImage**: downloads the new one and replaces the file where it lies (`~/.local/lib/corkboard/Corkboard.AppImage` after `npm run install-launcher:appimage`), at the next quit or on *Restart to update*.
+- **rpm**: downloads the new rpm and installs it with dnf behind a password prompt, at the next quit or on *Restart to update*, so dnf still tracks the package.
+- **Portable exe**: can't update itself. The side panel says *Corkboard <version> is out*, and *Download* opens the release page.
+
+*Restart to update* asks first when terminals are running (restarting stops them, and the Claude sessions in them, which resume from their cards), then commits and pushes the board repos as a quit does, and only then installs. A development build, a copy run from `dist/linux-unpacked` or `dist/win-unpacked`, and the end-to-end test never look. The first copy with the updater (0.1.2) is installed by hand: `sudo dnf install ./corkboard-<version>.x86_64.rpm`, the Setup exe, or the AppImage. The exes are unsigned, so SmartScreen warns about the first download, not about the updates the app installs.
 
 ## Tests
 
@@ -86,7 +97,7 @@ The test clones the board repo into a scratch bare remote and works on a clone o
 
 The test starts from the board repo's first commit (the Trello import), so what the boards hold today never changes what it checks, and it never opens the real board repo: `CORKBOARD_ROOT` is its only project. The app's own output is saved as `main-process.log` beside the screenshots.
 
-Environment seams: `CORKBOARD_ROOT` (a test's only project), `CORKBOARD_USER_DATA` (profile folder), `CORKBOARD_PICK_FOLDER` (what the folder picker answers), `CORKBOARD_HIDDEN=1` (an offscreen window: a hidden one stops animating after its first screenshot), `CORKBOARD_COMMIT_DELAY_MS`, `CORKBOARD_SYNC_INTERVAL_MS` (0 = no periodic sync), `CORKBOARD_CLAUDE_BIN`.
+Environment seams: `CORKBOARD_ROOT` (a test's only project), `CORKBOARD_USER_DATA` (profile folder), `CORKBOARD_PICK_FOLDER` (what the folder picker answers), `CORKBOARD_HIDDEN=1` (an offscreen window: a hidden one stops animating after its first screenshot), `CORKBOARD_COMMIT_DELAY_MS`, `CORKBOARD_SYNC_INTERVAL_MS` (0 = no periodic sync), `CORKBOARD_CLAUDE_BIN`, `CORKBOARD_UPDATES=0` (never look for Corkboard updates).
 
 ## Importing from Trello
 

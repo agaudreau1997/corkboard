@@ -141,7 +141,9 @@ async function until(fn, ms = 6000) {
 
 const packaged = process.env.CORKBOARD_E2E_EXECUTABLE
 const app = await electron.launch({
-  ...(packaged ? { executablePath: path.resolve(packaged), args: [] } : { args: [path.join(appDir, 'out/main/index.js')] }),
+  // The app folder, as `npm start` and the launcher run it: Electron then reads package.json (its
+  // name and version) and starts its main, out/main/index.js.
+  ...(packaged ? { executablePath: path.resolve(packaged), args: [] } : { args: [appDir] }),
   cwd: appDir,
   env: {
     ...process.env,
@@ -156,6 +158,8 @@ const app = await electron.launch({
     CORKBOARD_DESKTOP_SESSIONS_DIR: path.join(scratch, 'desktop-sessions'),
     CORKBOARD_CLAUDE_PROJECTS_DIR: path.join(scratch, 'claude-projects'),
     CORKBOARD_DESKTOP_POLL_MS: '300',
+    // Never looks for Corkboard updates, even as a packaged app.
+    CORKBOARD_UPDATES: '0',
   },
 })
 // The main process's own output (git failures and the like), saved beside the screenshots.
@@ -171,6 +175,7 @@ page.on('console', m => m.type() === 'error' && console.log('console.error:', m.
 await page.setViewportSize({ width: 1500, height: 940 }).catch(() => {})
 const shot = async name => page.screenshot({ path: path.join(shots, `${name}.png`) })
 
+let quitCard
 try {
   // ---- the tree and tabs ----
   await page.getByRole('treeitem').first().waitFor()
@@ -179,6 +184,11 @@ try {
   await page.locator('.tree-row', { hasText: 'Robot shooter' }).first().locator('.twisty').click()
   const children = await page.locator('.tree-row .tree-title').allTextContents()
   check(['Ideas', 'Narrative & lore', 'Performance'].every(t => children.includes(t)), 'child boards listed under Robot shooter')
+  const { version } = JSON.parse(readFileSync(path.join(appDir, 'package.json'), 'utf8'))
+  const updateLine = page.locator('.update-line.update-off')
+  await until(async () => (await updateLine.count()) === 1)
+  const versionLine = await updateLine.textContent().catch(() => 'no line')
+  check(versionLine === `Corkboard ${version}`, `the side panel shows the version, with updates off (${versionLine})`)
 
   await page.locator('.tree-row', { hasText: 'Robot shooter' }).first().click()
   await page.locator('.column').first().waitFor()
@@ -902,12 +912,26 @@ try {
   await page.getByRole('tab', { name: 'Table', exact: true }).click()
   check((await page.locator('tbody tr').count()) > 100, 'table lists the cards')
   await shot('07-table')
+
+  // A change made just before quitting: the quit commits and pushes it (the same work an update's
+  // install waits for).
+  const rsKey = await page.locator('.tab[title$=":robot-shooter"]').first().getAttribute('title')
+  quitCard = await page.evaluate(async key => {
+    const board = await window.corkboard.boards.load(key)
+    const card = board.cards.find(c => c.list && !c.archived)
+    await window.corkboard.cards.update(key, card.id, { title: `${card.title} (renamed at quit)` })
+    return card.id
+  }, rsKey)
 } catch (error) {
   console.log('FAIL', error)
   failures++
   await shot('99-failure').catch(() => {})
 } finally {
   await app.close()
+}
+if (quitCard) {
+  const pushed = execFileSync('git', ['show', `main:robot-shooter/cards/${quitCard}.md`], { cwd: remote }).toString()
+  check(pushed.includes('(renamed at quit)'), `quitting committed and pushed ${quitCard}, changed just before`)
 }
 
 writeFileSync(path.join(shots, 'main-process.log'), mainLog.join(''))

@@ -1,4 +1,4 @@
-import type { BoardNode, ProjectNode, SyncStatus } from '@shared/types'
+import type { BoardNode, ProjectNode, SyncStatus, UpdateStatus } from '@shared/types'
 import { actions, api, projectIdOf, useStore } from '../state'
 import { discussBoard } from '../tackle'
 import { openContextMenu, type MenuItem } from './ContextMenu'
@@ -34,6 +34,7 @@ export function Sidebar() {
         <button className="link add-project" onClick={() => actions.setModal({ kind: 'addProject' })}>
           + Add project
         </button>
+        <UpdateLine />
         <ClaudeLine />
       </footer>
       <ResizeHandle />
@@ -292,6 +293,65 @@ function TreeNode({ node, depth }: { node: BoardNode; depth: number }) {
             <TreeNode key={child.path} node={child} depth={depth + 1} />
           ))}
         </div>
+      )}
+    </div>
+  )
+}
+
+/** What the line says about an update, and what its button does. */
+function updateText(u: UpdateStatus): { text: string; tip: string; button?: { label: string; tip: string; run: () => void } } {
+  const notes = u.page ? '\nClick for the release notes.' : ''
+  const check = { label: 'Check', tip: 'Looks for a newer release now', run: () => void api.updates.check() }
+  switch (u.state) {
+    case 'off':
+      return { text: `Corkboard ${u.current}`, tip: `Updates are off: ${u.message ?? 'not this copy'}.` }
+    case 'checking':
+      return { text: `Corkboard ${u.current} · checking…`, tip: `Looking for a newer release.${notes}` }
+    case 'current':
+      return { text: `Corkboard ${u.current} · up to date`, tip: `No newer release.${notes}`, button: check }
+    case 'available':
+      return {
+        text: `Corkboard ${u.version} is out`,
+        tip: `You run ${u.current}.${notes}`,
+        button: {
+          label: 'Download',
+          tip: "Opens the release page. The portable exe can't update itself; the installer can.",
+          run: () => u.page && api.shell.openExternal(u.page),
+        },
+      }
+    case 'downloading':
+      return { text: `Corkboard ${u.version} · downloading ${u.percent ?? 0}%`, tip: `You run ${u.current}.${notes}` }
+    case 'ready':
+      return {
+        text: `Corkboard ${u.version} is ready`,
+        tip: `You run ${u.current}; ${u.version} installs at the next quit, or now.${notes}`,
+        button: { label: 'Restart to update', tip: 'Installs it and starts Corkboard again', run: () => void actions.restartToUpdate() },
+      }
+    case 'installing':
+      return { text: `Installing Corkboard ${u.version}…`, tip: 'Committing and pushing the boards first.' }
+    case 'error':
+      return { text: `Corkboard ${u.current} · update check failed`, tip: `${u.message ?? 'The update check failed.'}${notes}`, button: check }
+  }
+}
+
+/** Corkboard's own version, and its updates; the version opens its release notes. */
+function UpdateLine() {
+  const update = useStore(s => s.update)
+  if (!update) return null
+  const { text, tip, button } = updateText(update)
+  return (
+    <div className={`foot-line update-line update-${update.state}`} title={tip}>
+      {update.page ? (
+        <button className="link foot-text" onClick={() => update.page && api.shell.openExternal(update.page)}>
+          {text}
+        </button>
+      ) : (
+        <span className="foot-text">{text}</span>
+      )}
+      {button && (
+        <button className="foot-button" title={button.tip} onClick={button.run}>
+          {button.label}
+        </button>
       )}
     </div>
   )
