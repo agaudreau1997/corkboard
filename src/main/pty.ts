@@ -2,11 +2,13 @@
 // `claude …` inside it and drops back to an interactive shell when Claude exits, so the tab
 // stays usable (`claude --resume`, git, the game's tests).
 
+import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import * as pty from 'node-pty'
 import type { PtyInfo, TerminalStatus } from '@shared/types'
 import { shellLaunch } from './shell'
-import { scanTitles, statusFromTitle } from './termstatus'
+import { foregroundGroup, scanTitles, statusFromTitle } from './termstatus'
 
 type Entry = {
   proc: pty.IPty
@@ -80,6 +82,28 @@ export class PtyManager {
   resize(id: string, cols: number, rows: number): void {
     const entry = this.ptys.get(id)
     if (entry && cols > 0 && rows > 0) entry.proc.resize(cols, rows)
+  }
+
+  /**
+   * What runs in the foreground of a terminal, by name, when that is not its shell waiting at the
+   * prompt: a dev server, an editor, a `claude` typed by hand. Null on Windows, where the shell has
+   * no foreground job to ask about; the window still knows from the title when Claude works.
+   */
+  running(id: string): string | null {
+    const entry = this.ptys.get(id)
+    if (!entry || process.platform === 'win32') return null
+    const shell = entry.proc.pid
+    let group: number | null = null
+    try {
+      group =
+        process.platform === 'linux'
+          ? foregroundGroup(readFileSync(`/proc/${shell}/stat`, 'utf8'))
+          : Number(execFileSync('ps', ['-o', 'tpgid=', '-p', String(shell)], { encoding: 'utf8' }).trim()) || null
+    } catch {
+      return null // the shell just ended
+    }
+    if (group === null || group === shell) return null
+    return entry.proc.process || 'a command'
   }
 
   kill(id: string): void {

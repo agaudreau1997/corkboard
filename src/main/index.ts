@@ -383,6 +383,7 @@ function registerIpc(): void {
   ipcMain.on('pty:resize', (_e, id: string, cols: number, rows: number) => ptys.resize(id, cols, rows))
   ipcMain.on('pty:kill', (_e, id: string) => ptys.kill(id))
   ipcMain.handle('pty:list', () => ptys.list())
+  ipcMain.handle('pty:running', (_e, id: string) => ptys.running(id))
 
   const open = (url: string) => shell.openExternal(url)
   ipcMain.handle('tackle:start', (_e, req: TackleRequest) => {

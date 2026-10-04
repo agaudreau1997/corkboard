@@ -91,6 +91,8 @@ export type CorkboardApi = {
     resize(id: string, cols: number, rows: number): void
     kill(id: string): void
     list(): Promise<PtyInfo[]>
+    /** The program running in a terminal's foreground, when it is not the shell at its prompt. */
+    running(id: string): Promise<string | null>
   }
   tackle: {
     start(req: TackleRequest): Promise<PtyInfo[]>

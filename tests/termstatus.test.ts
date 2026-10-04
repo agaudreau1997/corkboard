@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { scanTitles, statusFromTitle } from '../src/main/termstatus'
+import { foregroundGroup, scanTitles, statusFromTitle } from '../src/main/termstatus'
 
 const title = (text: string, end = '\x07') => `\x1b]0;${text}${end}`
 
@@ -46,5 +46,22 @@ describe('statusFromTitle', () => {
     expect(statusFromTitle('')).toBe('shell')
     expect(statusFromTitle('alex@host:~/corkboard')).toBe('shell')
     expect(statusFromTitle('vim notes.md')).toBe('shell')
+  })
+})
+
+describe('foregroundGroup', () => {
+  const stat = (comm: string, tpgid: number) => `4242 (${comm}) S 4200 4242 4242 34817 ${tpgid} 4194560 1710 0 0 0 3 1 0 0 20 0`
+
+  it('reads the tpgid field of /proc/<pid>/stat', () => {
+    expect(foregroundGroup(stat('bash', 4242))).toBe(4242)
+    expect(foregroundGroup(stat('bash', 5150))).toBe(5150)
+  })
+
+  it('counts past a command name with spaces and parentheses', () => {
+    expect(foregroundGroup(stat('my (odd) shell', 5150))).toBe(5150)
+  })
+
+  it('has none without a controlling terminal', () => {
+    expect(foregroundGroup(stat('bash', -1))).toBeNull()
   })
 })

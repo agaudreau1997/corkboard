@@ -66,6 +66,7 @@ const api: CorkboardApi = {
     resize: (id, cols, rows) => ipcRenderer.send('pty:resize', id, cols, rows),
     kill: id => ipcRenderer.send('pty:kill', id),
     list: () => invoke('pty:list'),
+    running: id => invoke('pty:running', id),
   },
   tackle: {
     start: req => invoke('tackle:start', req),

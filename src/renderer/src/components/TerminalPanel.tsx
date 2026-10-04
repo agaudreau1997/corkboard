@@ -75,6 +75,15 @@ function TerminalTab({ info, active }: { info: PtyInfo; active: boolean }) {
       ref={tab}
       className={`terminal-tab${active ? ' active' : ''}${exitCode !== undefined ? ' exited' : ''}${state.kind === 'finished' ? ' attention' : ''}`}
       onClick={() => useStore.setState({ activeTerminal: info.id, terminalOpen: true })}
+      // A middle click closes the tab, as in a browser. Otherwise the press would start autoscroll,
+      // and the release on Linux would paste the selection into the focused terminal.
+      onMouseDown={e => e.button === 1 && e.preventDefault()}
+      onMouseUp={e => e.button === 1 && e.preventDefault()}
+      onAuxClick={e => {
+        if (e.button !== 1) return
+        e.preventDefault()
+        void actions.requestCloseTerminal(info.id)
+      }}
       title={`${info.title}\n${state.label}\n${info.cwd}`}
     >
       <i className={`term-status ${state.kind}`} role="img" aria-label={state.label} />
@@ -82,9 +91,10 @@ function TerminalTab({ info, active }: { info: PtyInfo; active: boolean }) {
       <button
         className="tab-close"
         aria-label="Close terminal"
+        title="Close (middle-click the tab)"
         onClick={e => {
           e.stopPropagation()
-          actions.closeTerminal(info.id)
+          void actions.requestCloseTerminal(info.id)
         }}
       >
         ×

@@ -27,3 +27,15 @@ export function statusFromTitle(title: string): TerminalStatus {
   if (title.startsWith('✳')) return 'waiting'
   return 'shell'
 }
+
+/**
+ * The terminal's foreground process group, from a Linux `/proc/<pid>/stat` line: the shell's own
+ * group while it waits at its prompt, a job's while that runs. The command name in parentheses may
+ * hold spaces and parentheses itself, so the fields are counted from the last `)`.
+ */
+export function foregroundGroup(stat: string): number | null {
+  const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ')
+  // state ppid pgrp session tty_nr tpgid
+  const tpgid = Number(fields[5])
+  return Number.isInteger(tpgid) && tpgid > 0 ? tpgid : null
+}

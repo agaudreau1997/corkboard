@@ -691,6 +691,36 @@ try {
   await page.keyboard.press('Enter')
   check(!!(await until(async () => (await shellIcon()).includes('shell'))), 'Claude gone: a shell again')
 
+  // Middle-clicking a tab closes it, asking first while something runs in it.
+  const tabCount = () => page.locator('.terminal-tab').count()
+  if (process.platform !== 'win32') {
+    // Windows has no foreground job to ask the shell about: only a working Claude asks there.
+    const tabs = await tabCount()
+    await page.keyboard.type('sleep 60\n')
+    await sleep(800)
+    await shellTab.click({ button: 'middle' })
+    const closeButton = page.getByRole('dialog').getByRole('button', { name: 'Close terminal' })
+    check(!!(await until(async () => (await closeButton.count()) === 1, 5000)), 'middle-clicking a busy tab asks first')
+    check((await page.getByRole('dialog').textContent()).includes('sleep'), 'and names what runs in it')
+    // Copy › Identifier left RS-886 in the selection that a middle click pastes on Linux.
+    await sleep(300)
+    const shellText = (await page.locator('.xterm-host:visible .xterm-rows').textContent()) ?? ''
+    check(!shellText.includes('RS-886'), 'the middle click pastes nothing into the terminal')
+    await shot('17-terminal-close-busy')
+    await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click()
+    check((await tabCount()) === tabs, 'Cancel keeps the tab')
+    await shellTab.click({ button: 'middle' })
+    await closeButton.click()
+    check(!!(await until(async () => (await tabCount()) === tabs - 1, 5000)), 'confirming closes it')
+  }
+  const tabs = await tabCount()
+  await page.locator('.terminal-tabs').getByTitle('New shell').click()
+  await until(async () => (await tabCount()) === tabs + 1, 10000)
+  await sleep(1500)
+  await page.locator('.terminal-tab').last().click({ button: 'middle' })
+  const closedIdle = await until(async () => (await tabCount()) === tabs, 5000)
+  check(!!closedIdle && (await page.getByRole('dialog').count()) === 0, 'middle-clicking an idle shell closes it without asking')
+
   // ---- a finished card shows no session badge; an open one does ----
   await page.locator('.tab[title="deus-board:robot-shooter"], .tab[title$=":robot-shooter"]').first().click()
   await page.getByRole('tab', { name: 'Board', exact: true }).click()

@@ -451,6 +451,24 @@ export const actions = {
     await api.pty.create({ title: 'shell', boardPath })
   },
 
+  /** Closes a terminal from its tab, asking first when closing would stop something running in it. */
+  async requestCloseTerminal(id: string) {
+    const s = get()
+    const title = s.terminals.find(t => t.id === id)?.title ?? 'terminal'
+    let busy: string | null = null
+    if (s.exited[id] === undefined) {
+      const status = s.terminalStatus[id]
+      // Claude at its prompt is not stopped mid-way: its session resumes later.
+      if (status === 'working') busy = 'Claude is working in it. Closing stops its turn part-way.'
+      else if (status !== 'waiting') {
+        const running = await api.pty.running(id)
+        if (running) busy = `${running} is still running in it. Closing stops it.`
+      }
+    }
+    if (busy && !(await actions.confirm(`Close “${title}”?`, busy, 'Close terminal'))) return
+    actions.closeTerminal(id)
+  },
+
   closeTerminal(id: string) {
     api.pty.kill(id)
     set(s => {
