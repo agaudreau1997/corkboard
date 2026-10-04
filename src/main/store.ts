@@ -457,7 +457,7 @@ export class BoardStore {
     this.texts.set(abs, text)
     const tmp = `${abs}.${process.pid}.tmp`
     await fs.writeFile(tmp, text, 'utf8')
-    await fs.rename(tmp, abs)
+    await renameOver(tmp, abs)
   }
 
   // ---- watching ------------------------------------------------------------------------------
@@ -656,6 +656,23 @@ export function deriveKey(title: string): string {
 
 export function formatJson(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`
+}
+
+/**
+ * fs.rename onto an existing file, retried for a few seconds on Windows: there it fails (EPERM,
+ * EBUSY) while another process has the old file open, as the auto-commit's git or a virus scanner
+ * does for a moment after a write.
+ */
+async function renameOver(from: string, to: string): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fs.rename(from, to)
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? ''
+      if (process.platform !== 'win32' || attempt >= 20 || !['EPERM', 'EACCES', 'EBUSY'].includes(code)) throw error
+      await new Promise(r => setTimeout(r, 25 * attempt))
+    }
+  }
 }
 
 async function readOrUndefined(abs: string): Promise<string | undefined> {
