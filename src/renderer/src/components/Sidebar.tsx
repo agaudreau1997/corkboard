@@ -1,5 +1,6 @@
 import type { BoardNode, ProjectNode, SyncStatus } from '@shared/types'
 import { actions, api, projectIdOf, useStore } from '../state'
+import { discussBoard } from '../tackle'
 import { openContextMenu, type MenuItem } from './ContextMenu'
 
 export function Sidebar() {
@@ -153,10 +154,22 @@ function boardMenu(node: BoardNode): MenuItem[] {
   const projects = useStore.getState().projects
   const here = projectIdOf(node.path)
   const others = projects.filter(p => p.id !== here)
+  const desktop = useStore.getState().desktop
+  const discuss = (mode: 'desktop' | 'local') => () => void discussBoard(node.path, mode)
   return [
     { label: 'Open', onSelect: () => void actions.openBoard(node.path) },
     { label: 'Open map', onSelect: () => void actions.openBoard(node.path, 'map') },
     { label: 'Open table', onSelect: () => void actions.openBoard(node.path, 'table') },
+    'separator',
+    {
+      label: 'Discuss / triage',
+      hint: 'no implementing',
+      disabled: !node.cardCount,
+      items: [
+        ...(desktop ? [{ label: 'In Claude desktop', onSelect: discuss('desktop') }] : []),
+        { label: 'In a terminal', onSelect: discuss('local') },
+      ],
+    },
     'separator',
     { label: 'New board inside…', onSelect: () => actions.setModal({ kind: 'newBoard', parent: node.path }) },
     { label: 'Settings…', onSelect: () => void openSettings(node.path) },

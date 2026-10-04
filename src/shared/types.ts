@@ -141,6 +141,8 @@ export type TackleRequest = {
   split?: 'together' | 'each'
   /** Title of the list, when the cards are a whole list. */
   listTitle?: string
+  /** Title of the board, when the cards are a whole board. */
+  boardTitle?: string
   /** Talk the cards through (no implementing, the cards stay put) instead of working on them. */
   purpose?: 'tackle' | 'discuss'
 }

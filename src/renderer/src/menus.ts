@@ -143,7 +143,7 @@ export function cardMenu(board: LoadedBoard, card: Card): MenuItem[] {
 
 /** Where cards can be talked through: one card, or a list or selection to triage together. */
 export function discussItems(board: LoadedBoard, ids: string[], listTitle?: string): MenuItem[] {
-  const go = (mode: 'desktop' | 'local') => () => void discussCards(board.path, ids, mode, listTitle)
+  const go = (mode: 'desktop' | 'local') => () => void discussCards(board.path, ids, mode, { listTitle })
   const desktop = useStore.getState().desktop
   return [
     ...(desktop ? [{ label: 'In Claude desktop', onSelect: go('desktop') }] : []),

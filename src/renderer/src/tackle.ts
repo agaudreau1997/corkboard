@@ -1,4 +1,4 @@
-import { isDivider } from '@shared/cardfile'
+import { isDivider, sortCards } from '@shared/cardfile'
 import type { TackleMode } from '@shared/types'
 import { actions, api, useStore } from './state'
 
@@ -57,14 +57,14 @@ export async function tackleCards(
 }
 
 /**
- * Opens a conversation about cards (one card, or a list to triage): nothing is implemented unless
- * asked in it, and the cards stay in their lists.
+ * Opens a conversation about cards (one card, or a list or board to triage): nothing is implemented
+ * unless asked in it, and the cards stay in their lists.
  */
 export async function discussCards(
   boardPath: string,
   cardIds: string[],
   mode: 'desktop' | 'local',
-  listTitle?: string,
+  scope: { listTitle?: string; boardTitle?: string } = {},
 ): Promise<void> {
   const board = useStore.getState().boards[boardPath]
   if (!board) return
@@ -77,9 +77,23 @@ export async function discussCards(
     return
   }
   try {
-    await api.tackle.start({ boardPath, cardIds: ids, mode, split: 'together', listTitle, purpose: 'discuss' })
+    await api.tackle.start({ boardPath, cardIds: ids, mode, split: 'together', ...scope, purpose: 'discuss' })
     if (mode === 'desktop') actions.toast('Opened a discussion in Claude desktop: nothing gets implemented unless you ask.')
   } catch (error) {
     actions.toast((error as Error).message, 'error')
   }
+}
+
+/**
+ * Triages a whole board in one conversation: the cards of each list in board order, then the
+ * map-only ideas. Archived lists and cards are left out. The board loads first when it is not open.
+ */
+export async function discussBoard(boardPath: string, mode: 'desktop' | 'local'): Promise<void> {
+  if (!useStore.getState().boards[boardPath]) await actions.loadBoard(boardPath)
+  const board = useStore.getState().boards[boardPath]
+  if (!board) return
+  const live = board.cards.filter(c => !c.archived && !isDivider(c))
+  const groups = [...board.meta.lists.filter(l => !l.archived).map(l => l.id), null]
+  const ids = groups.flatMap(list => sortCards(live.filter(c => c.list === list)).map(c => c.id))
+  await discussCards(boardPath, ids, mode, { boardTitle: board.meta.title })
 }

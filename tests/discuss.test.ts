@@ -73,7 +73,27 @@ describe('discuss prompts', () => {
     expect(prompt).toContain('Do not implement anything')
   })
 
+  it('a whole board: triage, each card with the list it sits in', () => {
+    const idea = { ...card('G-3', 'Weather'), list: null }
+    const prompt = discussPrompt([card('G-1', 'Turrets'), { ...card('G-2', 'Traps'), list: 'doing' }, idea], {
+      ...ctx,
+      boardTitle: 'Game',
+    })
+    expect(prompt.startsWith(`Let's triage the whole "Game" board of the task board, its 3 cards:`)).toBe(true)
+    expect(prompt).toContain('1. G-1: Turrets\n   List: To do\n   File: /b/game/cards/G-1.md')
+    expect(prompt).toContain('2. G-2: Traps\n   List: Doing')
+    expect(prompt).toContain('3. G-3: Weather\n   List: map only (idea)')
+    expect(prompt).toContain('Propose; I decide.')
+    expect(prompt).toContain('Do not implement anything')
+  })
+
+  it('a list names no list per card', () => {
+    const prompt = discussPrompt([card('G-1', 'a'), card('G-2', 'b')], { ...ctx, listTitle: 'To do' })
+    expect(prompt).not.toContain('List:')
+  })
+
   it('names the session for what it is', () => {
+    expect(sessionName([card('G-1', 'a'), card('G-2', 'b')], 'Game', 'discuss')).toBe('Triage Game (2 cards)')
     expect(sessionName([card('G-1', 'Turrets')], undefined, 'discuss')).toBe('Discuss G-1 Turrets')
     expect(sessionName([card('G-1', 'a'), card('G-2', 'b')], 'To do', 'discuss')).toBe('Triage To do (2 cards)')
   })

@@ -11,16 +11,18 @@ export type PromptContext = {
   linkTitle: (id: string) => string | undefined
   cloud: boolean
   listTitle?: string
+  /** Title of the board, when the cards are a whole board. */
+  boardTitle?: string
 }
 
 export type Purpose = 'tackle' | 'discuss'
 
-export function sessionName(cards: Card[], listTitle?: string, purpose: Purpose = 'tackle'): string {
+export function sessionName(cards: Card[], groupTitle?: string, purpose: Purpose = 'tackle'): string {
   const name =
     cards.length === 1
       ? `${cards[0].id} ${truncate(cards[0].title, 48)}`
-      : listTitle
-        ? `${listTitle} (${cards.length} cards)`
+      : groupTitle
+        ? `${groupTitle} (${cards.length} cards)`
         : `${cards.map(c => c.id).join(' ')}`
   if (purpose === 'tackle') return name
   return cards.length > 1 ? `Triage ${name}` : `Discuss ${name}`
@@ -43,12 +45,19 @@ export function discussPrompt(cards: Card[], ctx: PromptContext): string {
     if (links) parts.push(`Related cards:\n${links}`)
     parts.push(`The card is ${ctx.cardFile(card.id)} in the board repo ${ctx.boardRoot} (its CLAUDE.md describes the card format).`)
   } else {
-    const where = ctx.listTitle ? ` in the "${ctx.listTitle}" list` : ''
-    parts.push(`Let's triage these ${cards.length} cards${where} of the task board:`)
+    if (ctx.boardTitle && !ctx.listTitle) {
+      parts.push(`Let's triage the whole "${ctx.boardTitle}" board of the task board, its ${cards.length} cards:`)
+    } else {
+      const where = ctx.listTitle ? ` in the "${ctx.listTitle}" list` : ''
+      parts.push(`Let's triage these ${cards.length} cards${where} of the task board:`)
+    }
     parts.push(
       cards
         .map((card, i) => {
-          const lines = [`${i + 1}. ${card.id}: ${card.title}`, `   File: ${ctx.cardFile(card.id)}`]
+          const lines = [`${i + 1}. ${card.id}: ${card.title}`]
+          // Across a whole board, where each card sits is part of the triage.
+          if (ctx.boardTitle && !ctx.listTitle) lines.push(`   List: ${listName(card, ctx.meta)}`)
+          lines.push(`   File: ${ctx.cardFile(card.id)}`)
           const body = card.body.trim()
           if (body) lines.push(indent(body, '   '))
           return lines.join('\n')
@@ -129,6 +138,11 @@ export function tacklePrompt(cards: Card[], ctx: PromptContext): string {
   const notes = ctx.meta.promptNotes?.trim()
   if (notes) parts.push(notes)
   return parts.join('\n\n')
+}
+
+function listName(card: Card, meta: BoardMeta): string {
+  if (card.list === null) return 'map only (idea)'
+  return meta.lists.find(l => l.id === card.list)?.title ?? card.list
 }
 
 function linkLines(card: Card, ctx: PromptContext): string {

@@ -54,8 +54,9 @@ export async function tackle(
       linkTitle: id => store.findCard(id)?.card.title,
       cloud,
       listTitle: req.listTitle,
+      boardTitle: req.boardTitle,
     })
-    const name = sessionName(group, req.listTitle, discuss ? 'discuss' : 'tackle')
+    const name = sessionName(group, req.listTitle ?? req.boardTitle, discuss ? 'discuss' : 'tackle')
     const purpose = discuss ? ({ purpose: 'discuss' } as const) : {}
     const started = new Date().toISOString()
     let ref: SessionRef

@@ -554,6 +554,17 @@ try {
   await page.locator('.ctx-menu').getByRole('menuitem', { name: 'In Claude desktop' }).click()
   const triageLink = await until(() => openedUrls().find(u => u.startsWith('claude://code/new?') && new URL(u).searchParams.get('q').startsWith("Let's triage")))
   check(!!triageLink, 'Discuss / triage on a list opens one desktop session for the whole list')
+
+  const boardRow = page.locator('.tree-row.active')
+  const boardTitle = (await boardRow.locator('.tree-title').textContent())?.trim()
+  const callsBeforeBoardTalk = sessionCalls().length
+  await boardRow.click({ button: 'right' })
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: /Discuss \/ triage/ }).hover()
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: 'In a terminal' }).click()
+  const boardTalk = await until(() => sessionCalls().slice(callsBeforeBoardTalk)[0], 15000)
+  const boardPrompt = boardTalk?.split('\0').at(-2) ?? ''
+  check(boardPrompt.startsWith(`Let's triage the whole "${boardTitle}" board`), `Discuss / triage on a board opens one session for all of ${boardTitle}`)
+  check(boardPrompt.includes(`${talkId}: `) && boardPrompt.includes('   List: '), 'its prompt lists every card with its list')
   await shot('05-terminal')
 
   // Tackle a whole list in parallel: one terminal per card.
