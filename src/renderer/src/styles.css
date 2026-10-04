@@ -1179,6 +1179,9 @@ tr.selected td {
 
 .drawer {
   width: 440px;
+  min-width: 320px;
+  /* A window made narrower after a wide drag still leaves the board a column. */
+  max-width: calc(100% - 280px);
   flex: none;
   border-left: 1px solid var(--line);
   background: var(--bg-2);
@@ -1187,6 +1190,27 @@ tr.selected td {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* Straddles the drawer's left border without taking room from either side. */
+.drawer-resize {
+  position: relative;
+  z-index: 5;
+  flex: none;
+  width: 6px;
+  margin: 0 -3px;
+  cursor: col-resize;
+}
+
+.drawer-resize:hover,
+.resizing-x .drawer-resize {
+  background: linear-gradient(to right, transparent 2px, var(--accent) 2px, var(--accent) 4px, transparent 4px);
+}
+
+.resizing-x,
+.resizing-x * {
+  cursor: col-resize !important;
+  user-select: none;
 }
 
 .drawer-head {

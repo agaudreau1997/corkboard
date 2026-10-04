@@ -14,12 +14,46 @@ export function CardDetail() {
   const card = board?.cards.find(c => c.id === open?.id)
   // The drawer belongs to the board in front; switching tabs hides it.
   if (!open || !board || !card || open.boardPath !== activeTab) return null
-  return <Drawer key={`${board.path}:${card.id}`} board={board} card={card} />
+  return (
+    <>
+      <ResizeHandle />
+      <Drawer key={`${board.path}:${card.id}`} board={board} card={card} />
+    </>
+  )
+}
+
+/** The drawer's left edge. A sibling of the drawer, so it stays put while the drawer scrolls. */
+function ResizeHandle() {
+  return (
+    <div
+      className="drawer-resize"
+      onPointerDown={e => {
+        e.preventDefault()
+        const startX = e.clientX
+        const start = useStore.getState().drawerWidth
+        // Leave the board in front at least a column's width.
+        const max = Math.max(320, e.currentTarget.parentElement!.clientWidth - 280)
+        const move = (ev: PointerEvent) =>
+          useStore.setState({ drawerWidth: Math.round(Math.min(max, Math.max(320, start - (ev.clientX - startX)))) })
+        const up = () => {
+          window.removeEventListener('pointermove', move)
+          window.removeEventListener('pointerup', up)
+          document.body.classList.remove('resizing-x')
+        }
+        window.addEventListener('pointermove', move)
+        window.addEventListener('pointerup', up)
+        document.body.classList.add('resizing-x')
+      }}
+      onDoubleClick={() => useStore.setState({ drawerWidth: 440 })}
+      title="Drag to resize; double-click for the default width"
+    />
+  )
 }
 
 function Drawer({ board, card }: { board: LoadedBoard; card: Card }) {
   const allCommits = useStore(s => s.commits[board.path])
   const desktop = useStore(s => s.desktop)
+  const width = useStore(s => s.drawerWidth)
   const commits = useMemo(() => commitsFor(allCommits, card.id), [allCommits, card.id])
   const [title, setTitle] = useState(card.title)
   const [body, setBody] = useState(card.body)
@@ -41,7 +75,7 @@ function Drawer({ board, card }: { board: LoadedBoard; card: Card }) {
   const titleOf = (id: string) => index.find(e => e.id === id)
 
   return (
-    <aside className="drawer" aria-label={`Card ${card.id}`}>
+    <aside className="drawer" aria-label={`Card ${card.id}`} style={{ width }}>
       <div className="drawer-head">
         <span className="card-id big">{card.id}</span>
         <span className="muted">{board.meta.title}</span>

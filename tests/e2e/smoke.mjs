@@ -396,6 +396,18 @@ try {
   check(openId.startsWith('RS-'), `drawer opened for ${openId}`)
   await shot('04-drawer')
 
+  // Its left edge resizes it; the width is remembered, and a double-click puts it back.
+  const drawerWidth = () => page.locator('.drawer').evaluate(el => el.getBoundingClientRect().width)
+  const edge = await page.locator('.drawer-resize').boundingBox()
+  await page.mouse.move(edge.x + edge.width / 2, edge.y + 200)
+  await page.mouse.down()
+  await page.mouse.move(edge.x + edge.width / 2 - 120, edge.y + 200, { steps: 8 })
+  await page.mouse.up()
+  check((await drawerWidth()) === 560, `dragging the drawer's edge widens it (${await drawerWidth()})`)
+  check(await page.evaluate(() => JSON.parse(localStorage.getItem('corkboard.ui')).drawerWidth === 560), 'and the width is remembered')
+  await page.mouse.dblclick(edge.x + edge.width / 2 - 120, edge.y + 200)
+  check((await drawerWidth()) === 440, 'double-clicking the edge puts it back')
+
   await page.keyboard.press('Control+f')
   check(await page.locator('.filter').evaluate(el => el === document.activeElement), 'Ctrl+F focuses the filter')
 
