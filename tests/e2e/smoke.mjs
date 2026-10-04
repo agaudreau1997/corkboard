@@ -143,6 +143,17 @@ const check = (ok, what) => {
   if (!ok) failures++
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms))
+/** The card files in a cards folder: not the `.tmp` files the store writes before renaming them. */
+const cardFiles = dir => readdirSync(dir).filter(n => n.endsWith('.md'))
+/** Their texts, without one renamed or removed between the listing and the read. */
+const cardTexts = dir =>
+  cardFiles(dir).flatMap(n => {
+    try {
+      return [readFileSync(path.join(dir, n), 'utf8')]
+    } catch {
+      return []
+    }
+  })
 async function until(fn, ms = 6000) {
   const end = Date.now() + ms
   for (;;) {
@@ -297,7 +308,7 @@ try {
   await shot('13-map-backdrops')
 
   // Double-click empty space: an input; Escape (or nothing typed) adds no card.
-  const cardsBefore = readdirSync(path.join(root, IDEAS.path, 'cards')).length
+  const cardsBefore = cardFiles(path.join(root, IDEAS.path, 'cards')).length
   const pane = await page.locator('.react-flow__pane').boundingBox()
   // A spot where the pointer meets the canvas itself (not a card, the controls or the minimap),
   // with canvas all around: a connection dropped within 20 px of a card's dot snaps to it. When a
@@ -317,16 +328,16 @@ try {
   await page.locator('.map-new-card input').waitFor()
   await page.keyboard.press('Escape')
   await sleep(300)
-  check((await page.locator('.map-new-card').count()) === 0 && readdirSync(path.join(root, IDEAS.path, 'cards')).length === cardsBefore, 'Escape on a new map card adds nothing')
+  check((await page.locator('.map-new-card').count()) === 0 && cardFiles(path.join(root, IDEAS.path, 'cards')).length === cardsBefore, 'Escape on a new map card adds nothing')
   await page.mouse.dblclick(emptyAt.x, emptyAt.y)
   await page.locator('.map-new-card input').waitFor()
   await page.mouse.click(pane.x + pane.width / 2, pane.y + 20)
   await sleep(300)
-  check(readdirSync(path.join(root, IDEAS.path, 'cards')).length === cardsBefore, 'an empty new card left by clicking away adds nothing')
+  check(cardFiles(path.join(root, IDEAS.path, 'cards')).length === cardsBefore, 'an empty new card left by clicking away adds nothing')
   await page.mouse.dblclick(emptyAt.x, emptyAt.y)
   await page.keyboard.type('Typed on the map')
   await page.keyboard.press('Enter')
-  check(await until(() => readdirSync(path.join(root, IDEAS.path, 'cards')).length === cardsBefore + 1), 'a typed title adds the card')
+  check(await until(() => cardFiles(path.join(root, IDEAS.path, 'cards')).length === cardsBefore + 1), 'a typed title adds the card')
 
   // Drag a card's dot to empty space: an input for a new card linked from it.
   const linker = page.locator('.react-flow__node-card').first()
@@ -344,7 +355,7 @@ try {
   await page.keyboard.press('Enter')
   const grown = await until(() => {
     const dir = path.join(root, IDEAS.path, 'cards')
-    const f = readdirSync(dir).map(n => readFileSync(path.join(dir, n), 'utf8')).find(t => t.includes('title: Grown from a link'))
+    const f = cardTexts(dir).find(t => t.includes('title: Grown from a link'))
     return f ? /id: (\S+)/.exec(f)[1] : null
   })
   check(!!grown && (await until(() => readFileSync(path.join(root, IDEAS.path, 'cards', `${linkerId}.md`), 'utf8').includes(grown))), `the new card ${grown} is linked from ${linkerId}`)
@@ -490,8 +501,8 @@ try {
   check(await until(async () => (await firstInTodo()) === 'Sorted older'), 'a manual list shows its cards in their positions')
   await sortTodo(/Last updated/)
   check(await until(async () => (await firstInTodo()) === 'Sorted newer'), 'and back to last updated first')
-  const olderFile = path.join(root, 'scratch-board/cards', readdirSync(path.join(root, 'scratch-board/cards'))
-    .find(f => readFileSync(path.join(root, 'scratch-board/cards', f), 'utf8').includes('title: Sorted older')))
+  const olderId = /^id: (\S+)$/m.exec(cardTexts(path.join(root, 'scratch-board/cards')).find(t => t.includes('title: Sorted older')))[1]
+  const olderFile = path.join(root, 'scratch-board/cards', `${olderId}.md`)
   const later = new Date(Date.now() + 60000).toISOString()
   writeFileSync(olderFile, readFileSync(olderFile, 'utf8').replace(/^created: .*$/m, line => `${line}\nupdated: ${later}`))
   check(await until(async () => (await firstInTodo()) === 'Sorted older'), 'a card updated on disk rises to the top of its list')
@@ -882,7 +893,7 @@ try {
   await page.getByRole('button', { name: 'Move board' }).click()
   const movedBoard = await until(() => existsSync(path.join(second, SPARE.path, 'board.json')) && !existsSync(path.join(root, SPARE.path)))
   check(movedBoard, `${SPARE.title} moved into the other project, folder and cards`)
-  check(readdirSync(path.join(second, SPARE.path, 'cards')).length === SPARE.files, `with its ${SPARE.files} cards`)
+  check(cardFiles(path.join(second, SPARE.path, 'cards')).length === SPARE.files, `with its ${SPARE.files} cards`)
   await page.locator('.project[data-project] .tree-row', { hasText: SPARE.title }).waitFor()
   const secondLogHas = text => {
     try {
