@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { between, isDivider, LIST_COLORS, parseCard, reorderLists, serializeCard, slugify, sortCards } from '@shared/cardfile'
+import {
+  between,
+  isDivider,
+  LIST_COLORS,
+  listSort,
+  orderList,
+  parseCard,
+  reorderLists,
+  serializeCard,
+  slugify,
+  sortCards,
+} from '@shared/cardfile'
 import { tacklePrompt, sessionName } from '@shared/prompts'
 import type { BoardMeta, Card } from '@shared/types'
 
@@ -71,6 +82,38 @@ describe('helpers', () => {
       { ...base, id: 'RS-1', pos: 2 },
     ]
     expect(sortCards(cards).map(c => c.id)).toEqual(['RS-2', 'RS-1', 'RS-3'])
+  })
+
+  it('orders a list by its sort, last updated first unless it says otherwise', () => {
+    const cards = [
+      { ...base, id: 'RS-1', pos: 1, title: 'b', created: '2026-01-01', updated: '2026-03-01' },
+      { ...base, id: 'RS-2', pos: 2, title: 'a', created: '2026-01-02', updated: '2026-03-03' },
+      { ...base, id: 'RS-3', pos: 3, title: 'c', created: '2026-01-03', updated: '2026-03-02' },
+    ]
+    const ids = (sort: Parameters<typeof orderList>[1]) => orderList(cards, sort).map(c => c.id)
+    expect(listSort({})).toBe('updated')
+    expect(ids(listSort({}))).toEqual(['RS-2', 'RS-3', 'RS-1'])
+    expect(ids('manual')).toEqual(['RS-1', 'RS-2', 'RS-3'])
+    expect(ids('newest')).toEqual(['RS-3', 'RS-2', 'RS-1'])
+    expect(ids('oldest')).toEqual(['RS-1', 'RS-2', 'RS-3'])
+    expect(ids('title')).toEqual(['RS-2', 'RS-1', 'RS-3'])
+    // A card that changes takes its place with no write to pos.
+    const touched = cards.map(c => (c.id === 'RS-1' ? { ...c, updated: '2026-04-01' } : c))
+    expect(orderList(touched, 'updated').map(c => c.id)).toEqual(['RS-1', 'RS-2', 'RS-3'])
+    // A card never changed since it was made counts from its creation.
+    const fresh = [...cards, { ...base, id: 'RS-4', pos: 4, created: '2026-03-04' }]
+    expect(orderList(fresh, 'updated')[0].id).toBe('RS-4')
+  })
+
+  it('sorts a list between its dividers, which stay put', () => {
+    const cards = [
+      { ...base, id: 'RS-1', pos: 1, updated: '2026-03-01' },
+      { ...base, id: 'RS-2', pos: 2, updated: '2026-03-02' },
+      { ...base, id: 'RS-3', pos: 3, title: '---', updated: '2026-03-09' },
+      { ...base, id: 'RS-4', pos: 4, updated: '2026-03-03' },
+      { ...base, id: 'RS-5', pos: 5, updated: '2026-03-04' },
+    ]
+    expect(orderList(cards, 'updated').map(c => c.id)).toEqual(['RS-2', 'RS-1', 'RS-3', 'RS-5', 'RS-4'])
   })
 
   it('reorders lists around the archived ones, which keep their places', () => {

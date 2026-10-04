@@ -3,7 +3,7 @@
 // one-line diff and a hand edit by a person or a Claude session round-trips unchanged.
 
 import YAML from 'yaml'
-import type { Card, ListDef, SessionRef } from './types'
+import type { Card, ListDef, ListSort, SessionRef } from './types'
 
 const KNOWN = [
   'id',
@@ -111,6 +111,53 @@ export function between(before: number | undefined, after: number | undefined): 
 
 export function sortCards(cards: Card[]): Card[] {
   return [...cards].sort((a, b) => a.pos - b.pos || cardNumber(a.id) - cardNumber(b.id))
+}
+
+/** The order a list gets when board.json names none. */
+export const DEFAULT_SORT: ListSort = 'updated'
+
+/** The orders a list can keep, as its menu offers them. */
+export const LIST_SORTS: { id: ListSort; label: string; compare?: (a: Card, b: Card) => number }[] = [
+  { id: 'updated', label: 'Last updated', compare: (a, b) => touched(b).localeCompare(touched(a)) },
+  { id: 'newest', label: 'Newest first', compare: (a, b) => (b.created ?? '').localeCompare(a.created ?? '') },
+  { id: 'oldest', label: 'Oldest first', compare: (a, b) => (a.created ?? '').localeCompare(b.created ?? '') },
+  { id: 'number', label: 'Card number', compare: (a, b) => cardNumber(a.id) - cardNumber(b.id) },
+  { id: 'title', label: 'Title A–Z', compare: (a, b) => a.title.localeCompare(b.title) },
+  { id: 'manual', label: 'Manual', compare: undefined },
+]
+
+/** When a card last changed: a new card, or one written by hand, may carry only `created`. */
+function touched(card: Card): string {
+  return card.updated ?? card.created ?? ''
+}
+
+/** The sort a list keeps, unset meaning the default. */
+export function listSort(list: Pick<ListDef, 'sort'> | undefined): ListSort {
+  return list?.sort ?? DEFAULT_SORT
+}
+
+/**
+ * A list's cards in the order it shows them. The order is worked out each time rather than
+ * written into `pos`, so a card that lands or changes takes its place without a write, and
+ * `pos` keeps the manual order for when the list goes back to it. Dividers stay where `pos`
+ * puts them and the cards between two dividers are sorted among themselves; ties keep `pos` order.
+ */
+export function orderList(cards: Card[], sort: ListSort): Card[] {
+  const byPos = sortCards(cards)
+  const compare = LIST_SORTS.find(s => s.id === sort)?.compare
+  if (!compare) return byPos
+  const out: Card[] = []
+  let run: Card[] = []
+  for (const card of byPos) {
+    if (!isDivider(card)) {
+      run.push(card)
+      continue
+    }
+    out.push(...run.sort(compare), card)
+    run = []
+  }
+  out.push(...run.sort(compare))
+  return out
 }
 
 /** A card titled with a run of dashes is a divider inside its list, not work. */

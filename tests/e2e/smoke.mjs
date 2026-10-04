@@ -440,6 +440,34 @@ try {
   const live = await until(async () => (await page.locator('.column[data-list="doing"] .card', { hasText: 'Drag me to done' }).count()) === 1)
   check(live, 'a card file edited on disk moved columns on screen')
 
+  // ---- a list keeps itself sorted by last update; a change on disk re-sorts it ----
+  for (const title of ['Sorted older', 'Sorted newer']) {
+    await todo.getByText('+ Add a card').click()
+    await page.keyboard.type(title)
+    await page.keyboard.press('Enter')
+    await page.keyboard.press('Escape')
+    await todo.locator('.card', { hasText: title }).waitFor()
+    await sleep(20)
+  }
+  const firstInTodo = async () => (await todo.locator('.card .card-title').first().textContent())?.trim()
+  check((await firstInTodo()) === 'Sorted newer', `a list shows its last updated card first (${await firstInTodo()})`)
+  const sortTodo = async name => {
+    await todo.locator('.column-head').click({ button: 'right' })
+    await page.locator('.ctx-menu').getByRole('menuitem', { name: /Sort cards by/ }).hover()
+    await page.locator('.ctx-menu').getByRole('menuitem', { name }).click()
+  }
+  const todoSort = () => JSON.parse(readFileSync(path.join(root, 'scratch-board/board.json'), 'utf8')).lists.find(l => l.id === 'todo')?.sort
+  await sortTodo(/Manual/)
+  check(await until(() => todoSort() === 'manual'), 'Sort cards by › Manual is kept in board.json')
+  check(await until(async () => (await firstInTodo()) === 'Sorted older'), 'a manual list shows its cards in their positions')
+  await sortTodo(/Last updated/)
+  check(await until(async () => (await firstInTodo()) === 'Sorted newer'), 'and back to last updated first')
+  const olderFile = path.join(root, 'scratch-board/cards', readdirSync(path.join(root, 'scratch-board/cards'))
+    .find(f => readFileSync(path.join(root, 'scratch-board/cards', f), 'utf8').includes('title: Sorted older')))
+  const later = new Date(Date.now() + 60000).toISOString()
+  writeFileSync(olderFile, readFileSync(olderFile, 'utf8').replace(/^created: .*$/m, line => `${line}\nupdated: ${later}`))
+  check(await until(async () => (await firstInTodo()) === 'Sorted older'), 'a card updated on disk rises to the top of its list')
+
   // ---- the board repo commits itself ----
   const log = await until(() => {
     const out = execFileSync('git', ['log', '--format=%B', '-5'], { cwd: root }).toString()
@@ -519,7 +547,7 @@ try {
   check(linkParams.getAll('folder').join() === codeRepo, 'in the code repo, its only folder')
   check(linkParams.get('q')?.includes(`if your working directory is not ${codeRepo}, stop`) ?? false, 'the prompt asks the session to check its folder')
   check(await until(() => readFileSync(cardFileOf(tackleId), 'utf8').includes('kind: desktop')), 'the desktop session is recorded')
-  check((await page.locator('.drawer .sessions li', { hasText: 'waiting' }).count()) === 1, 'waiting until its prompt is sent')
+  check(await until(async () => (await page.locator('.drawer .sessions li', { hasText: 'waiting' }).count()) === 1), 'waiting until its prompt is sent')
   // The desktop app indexes the session and writes its transcript once the prompt is sent.
   const desktopIndex = path.join(scratch, 'desktop-sessions', 'account', 'org')
   mkdirSync(desktopIndex, { recursive: true })

@@ -12,7 +12,12 @@ export type ListDef = {
   archived?: boolean
   /** Its colour; unset, the colour of its place in the board's palette. */
   color?: string
+  /** How its cards are ordered; unset, by last update (see `orderList`). */
+  sort?: ListSort
 }
+
+/** A list's order: `manual` is the cards' `pos` (drag and drop), the others are kept as cards change. */
+export type ListSort = 'manual' | 'updated' | 'newest' | 'oldest' | 'number' | 'title'
 
 export type BoardMeta = {
   /** Card id prefix, unique in the repo: cards of this board are `<key>-<n>`. */

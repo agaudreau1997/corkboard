@@ -1,6 +1,6 @@
 // The right-click menus of cards and lists, shared by the board, map and table views.
 
-import { between, cardNumber, isDivider, reorderLists, sortCards } from '@shared/cardfile'
+import { between, isDivider, LIST_SORTS, listSort, orderList, reorderLists, sortCards } from '@shared/cardfile'
 import type { BoardNode, Card, ListDef, LoadedBoard, TackleMode } from '@shared/types'
 import type { MenuItem } from './components/ContextMenu'
 import { discussCards, tackleCards } from './tackle'
@@ -30,6 +30,7 @@ export function cardMenu(board: LoadedBoard, card: Card): MenuItem[] {
   const selected = useStore.getState().selected[board.path] ?? []
   const isSelected = selected.includes(card.id)
   const inList = sortCards(board.cards.filter(c => c.list === card.list && !c.archived))
+  const sorted = card.list !== null && listSort(board.meta.lists.find(l => l.id === card.list)) !== 'manual'
   const tackle = (mode: TackleMode) => () => void tackleCards(board.path, [card.id], mode)
   const divider = isDivider(card)
 
@@ -83,12 +84,14 @@ export function cardMenu(board: LoadedBoard, card: Card): MenuItem[] {
   items.push(
     {
       label: 'Move to top',
-      disabled: inList[0]?.id === card.id,
+      hint: sorted ? 'the list is sorted' : undefined,
+      disabled: sorted || inList[0]?.id === card.id,
       onSelect: () => void actions.updateCard(board.path, card.id, { pos: between(undefined, inList[0]?.pos) }),
     },
     {
       label: 'Move to bottom',
-      disabled: inList.at(-1)?.id === card.id,
+      hint: sorted ? 'the list is sorted' : undefined,
+      disabled: sorted || inList.at(-1)?.id === card.id,
       onSelect: () => void actions.updateCard(board.path, card.id, { pos: between(inList.at(-1)?.pos, undefined) }),
     },
     'separator',
@@ -213,7 +216,8 @@ function endOf(board: LoadedBoard, listId: string): number {
 export type ListMenuHooks = { addCard: () => void; rename: () => void }
 
 export function listMenu(board: LoadedBoard, list: ListDef, hooks: ListMenuHooks): MenuItem[] {
-  const cards = sortCards(board.cards.filter(c => c.list === list.id && !c.archived))
+  const sort = listSort(list)
+  const cards = orderList(board.cards.filter(c => c.list === list.id && !c.archived), sort)
   const work = cards.filter(c => !isDivider(c))
   const collapsed = (useStore.getState().collapsed[board.path] ?? []).includes(list.id)
   const visible = listsOf(board)
@@ -226,12 +230,6 @@ export function listMenu(board: LoadedBoard, list: ListDef, hooks: ListMenuHooks
     const other = visible[visibleIndex + by]
     const lists = other ? reorderLists(board.meta.lists, list.id, other.id) : null
     if (lists) void actions.setLists(board.path, lists)
-  }
-  const sortBy = (compare: (a: Card, b: Card) => number) => () => {
-    const ordered = [...cards].sort(compare)
-    void api.cards
-      .updateMany(board.path, ordered.map((c, i) => ({ id: c.id, patch: { pos: (i + 1) * 1024 } })))
-      .catch(e => actions.toast((e as Error).message, 'error'))
   }
 
   const boards = otherBoards(board.path)
@@ -255,14 +253,14 @@ export function listMenu(board: LoadedBoard, list: ListDef, hooks: ListMenuHooks
     'separator',
     {
       label: 'Sort cards by',
-      disabled: cards.length < 2,
-      items: [
-        { label: 'Card number', onSelect: sortBy((a, b) => cardNumber(a.id) - cardNumber(b.id)) },
-        { label: 'Newest first', onSelect: sortBy((a, b) => (b.created ?? '').localeCompare(a.created ?? '')) },
-        { label: 'Oldest first', onSelect: sortBy((a, b) => (a.created ?? '').localeCompare(b.created ?? '')) },
-        { label: 'Recently updated', onSelect: sortBy((a, b) => (b.updated ?? '').localeCompare(a.updated ?? '')) },
-        { label: 'Title A–Z', onSelect: sortBy((a, b) => a.title.localeCompare(b.title)) },
-      ],
+      hint: LIST_SORTS.find(s => s.id === sort)?.label,
+      items: LIST_SORTS.map(s => ({
+        label: s.label,
+        hint: s.id === 'manual' ? 'drag and drop' : undefined,
+        checked: s.id === sort,
+        disabled: s.id === sort,
+        onSelect: () => void actions.setListSort(board.path, list.id, s.id),
+      })),
     },
     { label: 'Move list left', disabled: visibleIndex <= 0, onSelect: () => moveBy(-1) },
     { label: 'Move list right', disabled: visibleIndex >= visible.length - 1, onSelect: () => moveBy(1) },
