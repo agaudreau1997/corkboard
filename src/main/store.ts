@@ -275,13 +275,15 @@ export class BoardStore {
   }
 
   /**
-   * Removes a board's folder. One with cards or child boards goes only with `force`: its child
-   * boards go with it (all of it stays in the repo's git history).
+   * Removes a board's folder. One with live cards or child boards goes only with `force`: its child
+   * boards go with it (all of it stays in the repo's git history). Archived cards don't hold it
+   * back, since archiving is how a board is emptied: they go with the folder.
    */
   async deleteBoard(boardPath: string, force = false): Promise<void> {
     const board = this.board(boardPath)
     const children = [...this.boards.keys()].filter(p => p.startsWith(`${boardPath}/`))
-    if (!force && board.cards.length) throw new Error('The board still has cards; archive or move them first.')
+    const live = board.cards.filter(c => !c.archived)
+    if (!force && live.length) throw new Error('The board still has cards; archive or move them first.')
     if (!force && children.length) throw new Error('The board still has child boards.')
     await fs.rm(path.join(this.root, boardPath), { recursive: true })
     for (const p of [boardPath, ...children]) this.boards.delete(p)

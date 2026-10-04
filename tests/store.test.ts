@@ -162,6 +162,20 @@ describe('BoardStore', () => {
     expect(store.tree().map(n => n.path)).toEqual(['game'])
   })
 
+  it('deletes a board whose cards are all archived without force', async () => {
+    const store = new BoardStore(root)
+    await store.init()
+    const p = await store.createBoard('', 'Performance', 'PERF')
+    await store.createCard(p, { title: 'x', list: 'todo' })
+    await store.createCard(p, { title: 'y', list: 'todo' })
+    await store.updateCard(p, 'PERF-1', { archived: true })
+    await expect(store.deleteBoard(p)).rejects.toThrow(/cards/)
+    await store.updateCard(p, 'PERF-2', { archived: true })
+    await store.deleteBoard(p)
+    expect(store.tree()).toEqual([])
+    expect(() => readFileSync(path.join(root, p, 'board.json'))).toThrow()
+  })
+
   it('sees a card edited, added and removed on disk by someone else', async () => {
     const store = new BoardStore(root)
     await store.init()

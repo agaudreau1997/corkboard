@@ -881,6 +881,21 @@ try {
   check(await until(() => !existsSync(path.join(second, 'untitled-shooter'))), 'typing the name deletes the board and its cards')
   const deleted = await until(() => secondLogHas('Delete board untitled-shooter'), 12000)
   check(!!deleted, 'and commits the deletion')
+  // A board whose cards are all archived counts as empty: a plain confirm deletes it.
+  const retired = path.join(second, 'retired')
+  mkdirSync(path.join(retired, 'cards'), { recursive: true })
+  writeFileSync(
+    path.join(retired, 'cards/RET-1.md'),
+    '---\nid: RET-1\ntitle: Old\nlist: todo\npos: 1024\ncreated: 2026-01-01T00:00:00.000Z\nupdated: 2026-01-01T00:00:00.000Z\narchived: true\n---\n',
+  )
+  writeFileSync(path.join(retired, 'board.json'), `${JSON.stringify({ key: 'RET', title: 'Retired', lists: [{ id: 'todo', title: 'To do' }] }, null, 2)}\n`)
+  const retiredRow = page.locator('.project[data-project] .tree-row', { hasText: 'Retired' })
+  await retiredRow.waitFor()
+  await retiredRow.click({ button: 'right' })
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: /Delete board/ }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click()
+  check(await until(() => !existsSync(retired)), 'a board with only archived cards deletes on a plain confirm')
+  check((await page.locator('.toast.error').count()) === 0, 'without an error')
 
   // Table view.
   await page.locator('.tab[title$=":robot-shooter"]').click()
