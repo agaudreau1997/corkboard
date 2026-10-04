@@ -2,6 +2,10 @@
   "name": "corkboard",
   "version": "0.1.0",
   "description": "A git-backed kanban and mind-map board that hands cards to Claude Code",
+  "author": {
+    "name": "agaudreau1997",
+    "email": "alexpwnser@live.ca"
+  },
   "main": "./out/main/index.js",
   "private": true,
   "scripts": {
@@ -13,8 +17,11 @@
     "e2e": "electron-vite build && node tests/e2e/smoke.mjs",
     "import-trello": "node scripts/import-trello.mts",
     "install-launcher": "npm run build && bash scripts/install-launcher.sh",
+    "install-launcher:appimage": "bash scripts/install-launcher.sh --appimage",
     "icon": "python3 scripts/make-icon.py",
-    "dist": "electron-vite build && electron-builder --win"
+    "dist": "electron-vite build && electron-builder --win",
+    "dist:linux": "electron-vite build && electron-builder --linux AppImage",
+    "dist:linux:rpm": "electron-vite build && electron-builder --linux rpm"
   },
   "dependencies": {
     "node-pty": "1.1.0",

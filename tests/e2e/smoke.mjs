@@ -4,6 +4,9 @@
 //   npm run build && node tests/e2e/smoke.mjs [board repo to clone]
 //
 // Screenshots go to $SHOT_DIR (default: ./test-results). Exits 1 on the first failed check.
+//
+// CORKBOARD_E2E_EXECUTABLE runs the same checks against a packaged app instead of the dev build,
+// e.g. dist/linux-unpacked/corkboard after `npm run dist:linux`.
 
 import { execFileSync } from 'node:child_process'
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -94,8 +97,9 @@ async function until(fn, ms = 6000) {
   }
 }
 
+const packaged = process.env.CORKBOARD_E2E_EXECUTABLE
 const app = await electron.launch({
-  args: [path.join(appDir, 'out/main/index.js')],
+  ...(packaged ? { executablePath: path.resolve(packaged), args: [] } : { args: [path.join(appDir, 'out/main/index.js')] }),
   cwd: appDir,
   env: {
     ...process.env,

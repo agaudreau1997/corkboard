@@ -7,10 +7,11 @@ files:
   - out/**
   # The window icon: index.ts loads it from ../../build/icon.png.
   - build/icon.png
-# node-pty ships N-API prebuilds, so there is nothing to compile against Electron's headers.
+# node-pty is an N-API addon, so it never needs compiling against Electron's headers: Windows
+# and macOS use its prebuilds, Linux the pty.node that `npm install` compiled.
 npmRebuild: false
-# node-pty starts conpty.dll, OpenConsole.exe and winpty-agent.exe from its own folder,
-# which can't live inside the asar archive.
+# node-pty starts conpty.dll, OpenConsole.exe and winpty-agent.exe from its own folder, and a
+# native addon can't load from inside the asar archive on any platform.
 asarUnpack:
   - node_modules/node-pty/**
 win:
@@ -21,3 +22,25 @@ win:
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
+linux:
+  icon: build/icon.png
+  category: Development
+  # The binary, its .desktop file (corkboard.desktop) and the Wayland app id match package.json's
+  # desktopName, which is how the taskbar finds the icon.
+  executableName: corkboard
+  synopsis: Kanban and mind map of git-backed task boards, handed to Claude Code
+  desktop:
+    entry:
+      StartupWMClass: corkboard
+  # `npm run dist:linux`: one file that runs on any distribution (needs FUSE 2, fuse-libs on
+  # Fedora). `npm run dist:linux:rpm` builds an rpm instead (installs under /opt with a menu entry
+  # and icons); electron-builder's bundled fpm needs libcrypt.so.1 for that, which Fedora ships in
+  # libxcrypt-compat.
+  target:
+    - AppImage
+  files:
+    # Linux runs the pty.node `npm install` compiled: leave out the Windows and macOS builds and
+    # the Windows console sources (58 MB of node-pty's 63).
+    - "!node_modules/node-pty/prebuilds/**"
+    - "!node_modules/node-pty/third_party/**"
+    - "!node_modules/node-pty/deps/**"

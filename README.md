@@ -53,6 +53,8 @@ To start it from the desktop menu (and get its icon on the taskbar, which a Wayl
 
 `npm run dist` packages it for Windows into `dist/`: `Corkboard Setup <version>.exe` (an installer with a Start menu entry and an uninstaller), `Corkboard <version>.exe` (a single portable exe that unpacks itself on each start), and `win-unpacked/Corkboard.exe` (the app as a plain folder). The settings are in `electron-builder.yml`. The exes are unsigned, so SmartScreen warns on first run (*More info → Run anyway*).
 
+`npm run dist:linux` packages it for Linux into `dist/`: `Corkboard-<version>.AppImage` (one file that runs on any distribution; it needs FUSE 2, `fuse-libs` on Fedora) and `linux-unpacked/corkboard` (the app as a plain folder). An AppImage doesn't add itself to the desktop menu: `npm run install-launcher:appimage` copies the newest one to `~/.local/lib/corkboard/Corkboard.AppImage` and points the menu entry (and the taskbar icon) at it; run it again after a rebuild. `npm run dist:linux:rpm` builds `corkboard-<version>.x86_64.rpm` instead (installs under `/opt/Corkboard` with its own menu entry: `sudo dnf install ./dist/corkboard-*.rpm`); electron-builder's bundled `fpm` needs `libcrypt.so.1` for it, which Fedora ships in `libxcrypt-compat`. On Linux node-pty runs the `pty.node` that `npm install` compiled (it is an N-API addon, so no rebuild against Electron), so build where `npm install` ran; the package leaves out node-pty's Windows and macOS prebuilds. `CORKBOARD_E2E_EXECUTABLE=dist/linux-unpacked/corkboard node tests/e2e/smoke.mjs` runs the end-to-end test against the packaged app.
+
 ## Tests
 
 ```bash
