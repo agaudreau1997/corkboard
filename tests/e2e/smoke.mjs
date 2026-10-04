@@ -396,6 +396,9 @@ try {
   check(openId.startsWith('RS-'), `drawer opened for ${openId}`)
   await shot('04-drawer')
 
+  await page.keyboard.press('Control+f')
+  check(await page.locator('.filter').evaluate(el => el === document.activeElement), 'Ctrl+F focuses the filter')
+
   // RS-967 has a commit in the scratch code repo.
   await page.locator('.filter').fill('RS-967')
   await page.locator('.card', { hasText: 'RS-967' }).first().click()

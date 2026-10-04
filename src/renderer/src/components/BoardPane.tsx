@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Card } from '@shared/types'
 import { actions, useStore, type ViewMode, NONE } from '../state'
 import { KanbanView } from './KanbanView'
@@ -18,6 +18,20 @@ export function BoardPane({ path }: { path: string }) {
   const view = useStore(s => s.tabs.find(t => t.path === path)?.view ?? 'board')
   const selected = useStore(s => s.selected[path] ?? NONE)
   const [filter, setFilter] = useState('')
+  const filterInput = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'f') return
+      // Shells use Ctrl+F for "cursor forward"; leave it to the terminal.
+      if (useStore.getState().modal || (e.target as Element | null)?.closest?.('.terminal-panel')) return
+      e.preventDefault()
+      filterInput.current?.focus()
+      filterInput.current?.select()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   const matches = useMemo(() => {
     const q = filter.trim().toLowerCase()
@@ -49,9 +63,10 @@ export function BoardPane({ path }: { path: string }) {
           ))}
         </div>
         <input
+          ref={filterInput}
           className="filter"
           type="search"
-          placeholder="Filter cards"
+          placeholder="Filter cards (Ctrl+F)"
           value={filter}
           onChange={e => setFilter(e.target.value)}
         />
