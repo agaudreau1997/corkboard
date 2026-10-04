@@ -15,6 +15,7 @@ import type {
   SessionRef,
   SyncStatus,
   TackleRequest,
+  TerminalStatus,
 } from './types'
 
 export type CorkboardApi = {
@@ -110,5 +111,7 @@ export type CorkboardApi = {
     ptyCreated(cb: (info: PtyInfo) => void): () => void
     ptyData(cb: (id: string, data: string) => void): () => void
     ptyExit(cb: (id: string, code: number) => void): () => void
+    /** A terminal's status changed (Claude started or stopped working, or left). */
+    ptyStatus(cb: (id: string, status: TerminalStatus) => void): () => void
   }
 }

@@ -98,6 +98,28 @@ writeFileSync(
     : `#!/bin/bash\nexec ${shQuote(process.execPath)} ${shQuote(fakeScript)} "$@"\n`,
 )
 chmodSync(fakeClaude, 0o755)
+// One Claude turn as the terminal sees it: Claude Code's titles (✳ at its prompt, ◐/◑ flipping
+// while it works), then its prompt until Enter, then the cleared title it leaves on exit.
+const fakeTurn = path.join(scratch, 'fake-turn.mjs')
+writeFileSync(
+  fakeTurn,
+  [
+    "const title = t => process.stdout.write('\\x1b]0;' + t + '\\x07')",
+    "title('\\u2733 Claude Code')",
+    'let frame = 0',
+    "const spin = setInterval(() => title((frame++ % 2 ? '\\u25d1' : '\\u25d0') + ' Fake turn'), 200)",
+    'setTimeout(() => {',
+    '  clearInterval(spin)',
+    "  title('\\u2733 Fake turn')",
+    "  console.log('FAKE TURN DONE')",
+    "  process.stdin.once('data', () => {",
+    "    title('')",
+    '    process.exit(0)',
+    '  })',
+    '}, 3000)',
+    '',
+  ].join('\n'),
+)
 
 let failures = 0
 const check = (ok, what) => {
@@ -621,6 +643,29 @@ try {
   }, 10000)
   check(echoed, 'an interactive shell runs in the terminal panel')
   await shot('06-shell')
+
+  // Each tab's icon follows the title Claude Code sets; a turn that ends out of sight stands out.
+  const shellTab = page.locator('.terminal-tab').last()
+  const shellIcon = () => shellTab.locator('.term-status').getAttribute('class')
+  check((await shellIcon()).includes('shell'), 'a shell tab shows the shell icon')
+  const runTurn =
+    process.platform === 'win32'
+      ? `& ${psQuote(process.execPath)} ${psQuote(fakeTurn)}`
+      : `${shQuote(process.execPath)} ${shQuote(fakeTurn)}`
+  await page.keyboard.type(`${runTurn}\n`)
+  check(!!(await until(async () => (await shellIcon()).includes('working'), 10000)), 'Claude working: the tab spins')
+  await shot('15-terminal-working')
+  await page.locator('.terminal-tab').first().click()
+  const finished = await until(async () => (await shellIcon()).includes('finished'), 10000)
+  check(!!finished && (await shellTab.getAttribute('class')).includes('attention'), 'a turn that ended in a background tab marks it')
+  check((await page.locator('.terminal-finished').textContent()) === '1', 'and the strip counts it by Terminals')
+  await shot('16-terminal-finished')
+  await page.locator('.terminal-finished').click()
+  check((await shellIcon()).includes('waiting') && !(await shellTab.getAttribute('class')).includes('attention'), 'the count opens that tab and clears its mark: Claude waits')
+  check((await page.locator('.terminal-finished').count()) === 0, 'and goes away')
+  await sleep(300) // its terminal takes the focus on the next frame
+  await page.keyboard.press('Enter')
+  check(!!(await until(async () => (await shellIcon()).includes('shell'))), 'Claude gone: a shell again')
 
   // ---- a finished card shows no session badge; an open one does ----
   await page.locator('.tab[title="deus-board:robot-shooter"], .tab[title$=":robot-shooter"]').first().click()

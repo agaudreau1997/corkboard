@@ -12,6 +12,8 @@ A desktop kanban and mind-map board whose data is a git repo of plain files, bui
 - **Three views of the same cards.** *Board* (lists as columns, drag and drop; dragging a card raises a tray at the bottom with *Map only (idea)* and *Archive* drop zones; drag the empty background to pan, with momentum; *+ Add a list* at the end, drag a list by its header to reorder the lists (each keeps its colour), double-click a list title to rename it, a list over 60 cards shows the first 60 until you ask), *Map* (a free canvas: cards are nodes, `links` are the lines between them. Every list has a backdrop its cards sit on, dragged by its header (its cards come along) and resized from its corners; dropping a card on another list's backdrop moves it to that list; right-click a backdrop for *Automatically lay out* (its cards in columns inside it), *Fit to its cards*, *Add a card here*. Double-click opens a title input for a new card (in the backdrop under it, else an idea with no list); dragging a card's dot onto another card links them, onto empty space opens the input for a new card linked from it; Escape or an empty title adds nothing. Positions and backdrops are kept in `map.json`) and *Table* (sortable, archived cards on request).
 - **Tackle with Claude.** From a card: *Tackle locally*, *In a worktree* or *Claude Cloud*. From a list header (*Tackle all*) or a selection (Ctrl/Shift-click cards): one local session for all of them in order, one session per card in parallel (each in its own worktree), or one cloud session. Every session runs in the embedded terminal panel (Ctrl+`), is recorded on its cards (`sessions:`), and can be resumed from the card; the card face shows a ▶ badge for them until the card is done (in the board's done list, or marked complete), the drawer keeps them after.
 
+- **Terminal tabs show what Claude is doing.** Each tab's icon: a spinner while Claude works, a green dot when it's your turn (Claude at its prompt or asking something), `❯` for a plain shell, a square once the shell ended (red for a failure). A turn that ends in a tab you aren't looking at pulses and bolds the tab, and a count by *Terminals* jumps to it. The app reads this from the terminal title Claude Code sets (`◐`/`◑` while it works, `✳` when it stops, cleared on exit; read from 2.1.289), so a `claude` typed in a shell tab shows too; with `CLAUDE_CODE_DISABLE_TERMINAL_TITLE` set the tab stays a shell.
+
 - **Discuss before tackling.** *Discuss* on a card (its drawer, or its menu) and *Discuss / triage* on a list or a selection open one conversation, in Claude desktop or a terminal, that may not implement anything: no code changes, no new files, no commits in the code repo unless you ask in it. Claude reads the cards and the code and talks them through (what's unclear, risks, scope, splitting; for a list: still relevant, ready, to split, merge, move or archive), and once you agree it writes the outcome into the card files themselves, which is how a card gets its details before it's tackled. A discussion leaves the cards in their lists and shows as ✎ on the card.
 
 ## Right-click menus
@@ -58,7 +60,7 @@ To start it from the desktop menu (and get its icon on the taskbar, which a Wayl
 ## Tests
 
 ```bash
-npm test           # unit tests: card files, the store and its watch, git, sync between two clones, prompts
+npm test           # unit tests: card files, the store and its watch, git, sync between two clones, prompts, terminal titles
 npm run e2e        # builds, then drives the real app on a scratch clone of the board repo
 ```
 

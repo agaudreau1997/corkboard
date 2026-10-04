@@ -42,6 +42,7 @@ const ptys = new PtyManager({
   created: info => send('pty:created', info),
   data: (id, data) => send('pty:data', id, data),
   exit: (id, code) => send('pty:exit', id, code),
+  status: (id, status) => send('pty:status', id, status),
 })
 
 // ---- config ----------------------------------------------------------------------------------

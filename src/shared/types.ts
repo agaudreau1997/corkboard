@@ -147,6 +147,13 @@ export type TackleRequest = {
 
 export type PtyInfo = { id: string; title: string; cwd: string; cardIds?: string[] }
 
+/**
+ * What runs in a terminal tab, from the title Claude Code sets: `working` while it works,
+ * `waiting` when it is at its prompt or asking something (your turn), `shell` with no Claude
+ * in front (or one that sets no title).
+ */
+export type TerminalStatus = 'shell' | 'working' | 'waiting'
+
 /** One board repo the app shows, as this machine knows it (app config, never synced). */
 export type ProjectConfig = {
   id: string

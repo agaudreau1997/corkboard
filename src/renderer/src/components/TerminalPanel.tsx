@@ -1,7 +1,7 @@
 import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
 import { useEffect, useRef } from 'react'
-import type { PtyInfo } from '@shared/types'
+import type { PtyInfo, TerminalStatus } from '@shared/types'
 import { actions, api, attachTerminalSink, useStore } from '../state'
 
 export function TerminalPanel() {
@@ -9,8 +9,8 @@ export function TerminalPanel() {
   const active = useStore(s => s.activeTerminal)
   const open = useStore(s => s.terminalOpen)
   const height = useStore(s => s.terminalHeight)
-  const exited = useStore(s => s.exited)
   const activeTab = useStore(s => s.activeTab)
+  const attention = useStore(s => s.attention)
 
   return (
     <div className={`terminal-panel${open ? ' open' : ''}`} style={{ height: open ? height : 34 }}>
@@ -23,27 +23,24 @@ export function TerminalPanel() {
         >
           {open ? '▾' : '▴'} Terminals
         </button>
-        <div className="terminal-tab-scroll">
-        {terminals.map(t => (
-          <div
-            key={t.id}
-            className={`terminal-tab${t.id === active ? ' active' : ''}${t.id in exited ? ' exited' : ''}`}
-            onClick={() => useStore.setState({ activeTerminal: t.id, terminalOpen: true })}
-            title={`${t.title}\n${t.cwd}`}
+        {attention.length > 0 && (
+          <button
+            className="terminal-finished"
+            onClick={() => useStore.setState({ activeTerminal: attention[0], terminalOpen: true })}
+            title={
+              attention.length === 1
+                ? 'Claude finished in a tab you have not looked at: show it'
+                : `Claude finished in ${attention.length} tabs you have not looked at: show the first`
+            }
           >
-            <span>{t.title}</span>
-            <button
-              className="tab-close"
-              aria-label="Close terminal"
-              onClick={e => {
-                e.stopPropagation()
-                actions.closeTerminal(t.id)
-              }}
-            >
-              ×
-            </button>
-          </div>
-        ))}
+            <i className="term-status finished" aria-hidden />
+            {attention.length}
+          </button>
+        )}
+        <div className="terminal-tab-scroll">
+          {terminals.map(t => (
+            <TerminalTab key={t.id} info={t} active={t.id === active} />
+          ))}
         </div>
         <button className="ghost small" onClick={() => void actions.newTerminal(activeTab ?? undefined)} title="New shell">
           +
@@ -61,6 +58,53 @@ export function TerminalPanel() {
       </div>
     </div>
   )
+}
+
+function TerminalTab({ info, active }: { info: PtyInfo; active: boolean }) {
+  const status = useStore(s => s.terminalStatus[info.id])
+  const exitCode = useStore(s => s.exited[info.id])
+  const attention = useStore(s => s.attention.includes(info.id))
+  const state = tabState(status, exitCode, attention)
+  const tab = useRef<HTMLDivElement>(null)
+  // The strip scrolls sideways: bring a tab into view when it becomes the one shown.
+  useEffect(() => {
+    if (active) tab.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [active])
+  return (
+    <div
+      ref={tab}
+      className={`terminal-tab${active ? ' active' : ''}${exitCode !== undefined ? ' exited' : ''}${state.kind === 'finished' ? ' attention' : ''}`}
+      onClick={() => useStore.setState({ activeTerminal: info.id, terminalOpen: true })}
+      title={`${info.title}\n${state.label}\n${info.cwd}`}
+    >
+      <i className={`term-status ${state.kind}`} role="img" aria-label={state.label} />
+      <span>{info.title}</span>
+      <button
+        className="tab-close"
+        aria-label="Close terminal"
+        onClick={e => {
+          e.stopPropagation()
+          actions.closeTerminal(info.id)
+        }}
+      >
+        ×
+      </button>
+    </div>
+  )
+}
+
+type TabState = { kind: TerminalStatus | 'finished' | 'exited' | 'failed'; label: string }
+
+/** What a tab's icon shows: an ended shell first, then Claude's state, a fresh finish standing out. */
+function tabState(status: TerminalStatus | undefined, exitCode: number | undefined, attention: boolean): TabState {
+  if (exitCode !== undefined)
+    return { kind: exitCode === 0 ? 'exited' : 'failed', label: `Ended (exit code ${exitCode})` }
+  if (status === 'working') return { kind: 'working', label: 'Claude is working' }
+  if (status === 'waiting')
+    return attention
+      ? { kind: 'finished', label: 'Claude finished: your turn' }
+      : { kind: 'waiting', label: 'Claude is waiting for you' }
+  return { kind: 'shell', label: 'Shell' }
 }
 
 function XTerm({ info, visible }: { info: PtyInfo; visible: boolean }) {

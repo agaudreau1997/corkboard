@@ -12,6 +12,7 @@ import type {
   LoadedBoard,
   ProjectNode,
   PtyInfo,
+  TerminalStatus,
 } from '@shared/types'
 import type { MenuItem } from './components/ContextMenu'
 
@@ -75,6 +76,10 @@ type State = UiPrefs & {
   openCard: { boardPath: string; id: string } | null
   terminals: PtyInfo[]
   exited: Record<string, number>
+  /** Per terminal, once its first title came in; none means a plain shell. */
+  terminalStatus: Record<string, TerminalStatus>
+  /** Terminals whose Claude finished while their tab was out of sight, until it is looked at. */
+  attention: string[]
   activeTerminal: string | null
   terminalOpen: boolean
   modal: Modal | null
@@ -99,6 +104,8 @@ export const useStore = create<State>(() => ({
   openCard: null,
   terminals: [],
   exited: {},
+  terminalStatus: {},
+  attention: [],
   activeTerminal: null,
   terminalOpen: false,
   modal: null,
@@ -129,6 +136,12 @@ useStore.subscribe(state => {
   } catch {
     /* private storage: the layout simply is not remembered */
   }
+})
+
+// A terminal on screen has been seen: its attention mark goes.
+useStore.subscribe(state => {
+  const shown = state.terminalOpen ? state.activeTerminal : null
+  if (shown && state.attention.includes(shown)) set({ attention: state.attention.filter(t => t !== shown) })
 })
 
 // ---- terminal output: buffered until its xterm mounts -----------------------------------------
@@ -168,8 +181,17 @@ export const actions = {
         ptyBuffers.set(id, buffer)
       }
     })
+    api.on.ptyStatus((id, status) => {
+      set(s => {
+        const finished = s.terminalStatus[id] === 'working' && status === 'waiting'
+        const unseen = !(s.terminalOpen && s.activeTerminal === id)
+        const attention = s.attention.filter(t => t !== id)
+        if (finished && unseen) attention.push(id)
+        return { terminalStatus: { ...s.terminalStatus, [id]: status }, attention }
+      })
+    })
     api.on.ptyExit((id, code) => {
-      set(s => ({ exited: { ...s.exited, [id]: code } }))
+      set(s => ({ exited: { ...s.exited, [id]: code }, attention: s.attention.filter(t => t !== id) }))
       // `claude update` finished: show the version it left.
       if (get().terminals.find(t => t.id === id)?.title === 'claude update') void actions.refreshClaude()
     })
@@ -433,8 +455,11 @@ export const actions = {
     api.pty.kill(id)
     set(s => {
       const terminals = s.terminals.filter(t => t.id !== id)
+      const { [id]: _, ...terminalStatus } = s.terminalStatus
       return {
         terminals,
+        terminalStatus,
+        attention: s.attention.filter(t => t !== id),
         activeTerminal: s.activeTerminal === id ? (terminals.at(-1)?.id ?? null) : s.activeTerminal,
         terminalOpen: terminals.length ? s.terminalOpen : false,
       }

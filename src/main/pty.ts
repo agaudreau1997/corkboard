@@ -4,15 +4,24 @@
 
 import { randomUUID } from 'node:crypto'
 import * as pty from 'node-pty'
-import type { PtyInfo } from '@shared/types'
+import type { PtyInfo, TerminalStatus } from '@shared/types'
 import { shellLaunch } from './shell'
+import { scanTitles, statusFromTitle } from './termstatus'
 
-type Entry = { proc: pty.IPty; info: PtyInfo; listeners: ((data: string) => void)[] }
+type Entry = {
+  proc: pty.IPty
+  info: PtyInfo
+  listeners: ((data: string) => void)[]
+  status: TerminalStatus
+  /** The end of the last chunk when it cut a title sequence in two. */
+  titleCarry: string
+}
 
 export type PtyEvents = {
   created: (info: PtyInfo) => void
   data: (id: string, data: string) => void
   exit: (id: string, code: number) => void
+  status: (id: string, status: TerminalStatus) => void
 }
 
 export class PtyManager {
@@ -28,11 +37,12 @@ export class PtyManager {
     const { file, args, env } = shellLaunch(opts.command)
     const proc = pty.spawn(file, args, { name: 'xterm-256color', cols: 120, rows: 30, cwd: opts.cwd, env })
     const info: PtyInfo = { id: randomUUID(), title: opts.title, cwd: opts.cwd, cardIds: opts.cardIds }
-    const entry: Entry = { proc, info, listeners: [] }
+    const entry: Entry = { proc, info, listeners: [], status: 'shell', titleCarry: '' }
     this.ptys.set(info.id, entry)
     proc.onData(data => {
       this.events.data(info.id, data)
       for (const listener of entry.listeners) listener(data)
+      this.readStatus(entry, data)
     })
     proc.onExit(({ exitCode }) => {
       this.ptys.delete(info.id)
@@ -40,6 +50,17 @@ export class PtyManager {
     })
     this.events.created(info)
     return info
+  }
+
+  /** Follows the titles the output sets; tells the window when the status changes, not per title. */
+  private readStatus(entry: Entry, data: string): void {
+    const { titles, carry } = scanTitles(entry.titleCarry, data)
+    entry.titleCarry = carry
+    if (!titles.length) return
+    const status = statusFromTitle(titles[titles.length - 1])
+    if (status === entry.status) return
+    entry.status = status
+    this.events.status(entry.info.id, status)
   }
 
   /** Extra reader of a terminal's output (a cloud tackle watching for its session URL). */
