@@ -4,7 +4,7 @@ import { actions, useStore, type ViewMode, NONE } from '../state'
 import { KanbanView } from './KanbanView'
 import { MapView } from './MapView'
 import { TableView } from './TableView'
-import { tackleAllItems } from '../menus'
+import { discussItems, tackleAllItems } from '../menus'
 import { openContextMenu } from './ContextMenu'
 
 const VIEWS: { id: ViewMode; label: string }[] = [
@@ -70,6 +70,17 @@ export function BoardPane({ path }: { path: string }) {
               }}
             >
               Tackle ▾
+            </button>
+            <button
+              onClick={e => {
+                const r = e.currentTarget.getBoundingClientRect()
+                openContextMenu(
+                  { clientX: r.left, clientY: r.bottom + 4, preventDefault() {}, stopPropagation() {} },
+                  discussItems(board, selected),
+                )
+              }}
+            >
+              Discuss ▾
             </button>
             <button className="ghost" onClick={() => actions.clearSelection(path)}>
               Clear

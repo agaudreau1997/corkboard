@@ -461,6 +461,27 @@ try {
   await page.locator('.drawer .sessions li', { hasText: 'Terminal' }).getByRole('button', { name: 'Desktop' }).click()
   const imported = await until(() => openedUrls().find(u => u.startsWith('claude://resume?session=')))
   check(!!imported && /session=[0-9a-f-]{36}$/.test(imported), `a terminal session opens in the desktop app (${imported})`)
+
+  // ---- Discuss: a card from its menu (terminal), a list from its menu (desktop) ----
+  const todoCard = page.locator('.column[data-list="todo"] .card').first()
+  const talkId = await todoCard.getAttribute('data-card')
+  const callsBeforeTalk = sessionCalls().length
+  await todoCard.click({ button: 'right' })
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: /^Discuss/ }).hover()
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: 'In a terminal' }).click()
+  const talk = await until(() => sessionCalls().slice(callsBeforeTalk)[0], 15000)
+  const talkPrompt = talk?.split('\0').at(-2) ?? ''
+  check(talkPrompt.startsWith(`Let's discuss card ${talkId}`), `Discuss opens a session about ${talkId}`)
+  check(talkPrompt.includes('Do not implement anything') && !talkPrompt.includes(`Card: ${talkId}`), 'its prompt forbids implementing and asks for no commits')
+  const talkFile = readFileSync(cardFileOf(talkId), 'utf8')
+  check(talkFile.includes('purpose: discuss') && talkFile.includes('list: todo'), 'the discussion is recorded and the card stays in its list')
+  check((await page.locator(`.card[data-card="${talkId}"] .badge.discuss`).count()) === 1, 'the card shows a discussion badge')
+
+  await page.locator('.column[data-list="todo"] .column-head').click({ button: 'right' })
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: /Discuss \/ triage/ }).hover()
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: 'In Claude desktop' }).click()
+  const triageLink = await until(() => openedUrls().find(u => u.startsWith('claude://code/new?') && new URL(u).searchParams.get('q').startsWith("Let's triage")))
+  check(!!triageLink, 'Discuss / triage on a list opens one desktop session for the whole list')
   await shot('05-terminal')
 
   // Tackle a whole list in parallel: one terminal per card.

@@ -159,8 +159,9 @@ export class AutoCommitter {
         if (before.list !== now.list) lines.push(`Move ${id}: ${before.list ?? 'map'} → ${now.list ?? 'map'}`)
         else if (!before.archived && now.archived) lines.push(`Archive ${id}`)
         else if (now.sessions.length > before.sessions.length) {
-          const kind = now.sessions.at(-1)?.kind === 'cloud' ? ' in Claude Cloud' : ''
-          lines.push(`Tackle ${id}${kind}`)
+          const last = now.sessions.at(-1)
+          const kind = last?.kind === 'cloud' ? ' in Claude Cloud' : ''
+          lines.push(`${last?.purpose === 'discuss' ? 'Discuss' : 'Tackle'} ${id}${kind}`)
         } else if (now.sessions.length < before.sessions.length) {
           const gone = before.sessions.length - now.sessions.length
           lines.push(`Forget ${gone} session${gone === 1 ? '' : 's'} on ${id}`)

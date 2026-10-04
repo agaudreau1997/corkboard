@@ -1842,3 +1842,11 @@ button.danger-fill:hover {
   color: var(--muted);
   font-size: 11px;
 }
+
+.badge.discuss {
+  color: #7cc4f5;
+}
+
+.k-discuss {
+  color: #7cc4f5;
+}

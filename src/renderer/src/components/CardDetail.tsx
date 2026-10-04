@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Card, CodeCommit, LoadedBoard, SessionRef } from '@shared/types'
-import { tackleCards } from '../tackle'
+import { discussCards, tackleCards } from '../tackle'
 import { actions, api, commitsFor, listColor, localTime, useStore } from '../state'
 
 type IndexEntry = { id: string; title: string; boardPath: string; boardTitle: string }
@@ -104,6 +104,14 @@ function Drawer({ board, card }: { board: LoadedBoard; card: Card }) {
         </button>
         <button title="A claude.ai/code session on the pushed branch" onClick={() => void tackleCards(board.path, [card.id], 'cloud')}>
           Cloud
+        </button>
+        <span className="spacer" />
+        <button
+          className="ghost"
+          title={`Talk the card through ${desktop ? 'in Claude desktop' : 'in a terminal'}: questions, scope, details for the card; nothing is implemented unless you ask`}
+          onClick={() => void discussCards(board.path, [card.id], desktop ? 'desktop' : 'local')}
+        >
+          Discuss
         </button>
       </div>
 
@@ -337,6 +345,7 @@ function SessionRow({
   const detail = [session.name, session.id && `session ${session.id}`, session.cwd].filter(Boolean).join('\n')
   return (
     <li className="session" title={detail || undefined}>
+      {session.purpose === 'discuss' && <span className="kind k-discuss">Discuss</span>}
       <span className={`kind k-${session.kind}`}>{kind}</span>
       <span className="muted">{localTime(session.started)}</span>
       <span className="muted">{others}</span>

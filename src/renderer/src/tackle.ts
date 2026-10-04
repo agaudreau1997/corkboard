@@ -55,3 +55,31 @@ export async function tackleCards(
     actions.toast((error as Error).message, 'error')
   }
 }
+
+/**
+ * Opens a conversation about cards (one card, or a list to triage): nothing is implemented unless
+ * asked in it, and the cards stay in their lists.
+ */
+export async function discussCards(
+  boardPath: string,
+  cardIds: string[],
+  mode: 'desktop' | 'local',
+  listTitle?: string,
+): Promise<void> {
+  const board = useStore.getState().boards[boardPath]
+  if (!board) return
+  const ids = cardIds.filter(id => {
+    const card = board.cards.find(c => c.id === id)
+    return card && !card.archived && !isDivider(card)
+  })
+  if (!ids.length) {
+    actions.toast('Nothing to discuss: dividers and archived cards are skipped.', 'error')
+    return
+  }
+  try {
+    await api.tackle.start({ boardPath, cardIds: ids, mode, split: 'together', listTitle, purpose: 'discuss' })
+    if (mode === 'desktop') actions.toast('Opened a discussion in Claude desktop: nothing gets implemented unless you ask.')
+  } catch (error) {
+    actions.toast((error as Error).message, 'error')
+  }
+}

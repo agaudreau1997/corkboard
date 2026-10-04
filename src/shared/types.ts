@@ -44,6 +44,8 @@ export type SessionRef = {
   name?: string
   /** The Claude desktop app's own id for the session (`local_…`), once found in its index. */
   desktopId?: string
+  /** A discussion (talk the card through, no implementing) rather than a tackle. */
+  purpose?: 'discuss'
 }
 
 export type Card = {
@@ -139,6 +141,8 @@ export type TackleRequest = {
   split?: 'together' | 'each'
   /** Title of the list, when the cards are a whole list. */
   listTitle?: string
+  /** Talk the cards through (no implementing, the cards stay put) instead of working on them. */
+  purpose?: 'tackle' | 'discuss'
 }
 
 export type PtyInfo = { id: string; title: string; cwd: string; cardIds?: string[] }

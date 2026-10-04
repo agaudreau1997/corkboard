@@ -3,7 +3,7 @@
 import { between, cardNumber, isDivider, reorderLists, sortCards } from '@shared/cardfile'
 import type { BoardNode, Card, ListDef, LoadedBoard, TackleMode } from '@shared/types'
 import type { MenuItem } from './components/ContextMenu'
-import { tackleCards } from './tackle'
+import { discussCards, tackleCards } from './tackle'
 import { actions, api, findNode, flatten, projectIdOf, useStore } from './state'
 
 /** Every other board as "Parent / Child" (behind its project's name when there are several). */
@@ -38,6 +38,7 @@ export function cardMenu(board: LoadedBoard, card: Card): MenuItem[] {
   ]
   if (!divider && !card.archived) {
     items.push({ label: 'Tackle', items: cardTackleItems(board, card.id) })
+    items.push({ label: 'Discuss', hint: 'no implementing', items: discussItems(board, [card.id]) })
     if (selected.length > 1 && isSelected) {
       items.push({
         label: `Tackle the ${selected.length} selected`,
@@ -140,6 +141,16 @@ export function cardMenu(board: LoadedBoard, card: Card): MenuItem[] {
   return items
 }
 
+/** Where cards can be talked through: one card, or a list or selection to triage together. */
+export function discussItems(board: LoadedBoard, ids: string[], listTitle?: string): MenuItem[] {
+  const go = (mode: 'desktop' | 'local') => () => void discussCards(board.path, ids, mode, listTitle)
+  const desktop = useStore.getState().desktop
+  return [
+    ...(desktop ? [{ label: 'In Claude desktop', onSelect: go('desktop') }] : []),
+    { label: 'In a terminal', onSelect: go('local') },
+  ]
+}
+
 /** Where one card can be tackled. */
 export function cardTackleItems(board: LoadedBoard, id: string): MenuItem[] {
   const go = (mode: TackleMode) => () => void tackleCards(board.path, [id], mode)
@@ -209,6 +220,12 @@ export function listMenu(board: LoadedBoard, list: ListDef, hooks: ListMenuHooks
     { label: 'Rename list', hint: 'double-click the title', onSelect: hooks.rename },
     'separator',
     { label: 'Tackle all', disabled: !work.length, items: tackleAllItems(board, work.map(c => c.id), list.title) },
+    {
+      label: 'Discuss / triage',
+      hint: 'no implementing',
+      disabled: !work.length,
+      items: discussItems(board, work.map(c => c.id), list.title),
+    },
     {
       label: 'Select all cards',
       disabled: !work.length,

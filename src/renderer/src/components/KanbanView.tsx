@@ -584,7 +584,8 @@ export function CardFace({
   const linked = commitsFor(commits, card.id).length
   // Sessions are worth a badge while the work is open; a finished card keeps them in its drawer.
   const finished = card.complete || (!!board.meta.flow?.done && card.list === board.meta.flow.done)
-  const running = finished ? 0 : card.sessions.length
+  const running = finished ? 0 : card.sessions.filter(s => s.purpose !== 'discuss').length
+  const talks = finished ? 0 : card.sessions.filter(s => s.purpose === 'discuss').length
   return (
     <div
       className={`card${selected ? ' selected' : ''}${open ? ' open' : ''}${dragging ? ' dragging' : ''}${card.complete ? ' complete' : ''}`}
@@ -603,6 +604,7 @@ export function CardFace({
         {card.links.length > 0 && <span className="badge" title="Linked cards">⛓ {card.links.length}</span>}
         {linked > 0 && <span className="badge commit" title="Commits naming this card">⎇ {linked}</span>}
         {running > 0 && <span className="badge session" title="Claude sessions started for it">▶ {running}</span>}
+        {talks > 0 && <span className="badge discuss" title="Discussions about it">✎ {talks}</span>}
         {card.due && <span className="badge" title="Due">⏰ {card.due.slice(0, 10)}</span>}
       </div>
     </div>

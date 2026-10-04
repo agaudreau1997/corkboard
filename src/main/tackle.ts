@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { isDivider, slugify } from '@shared/cardfile'
-import { sessionName, tacklePrompt } from '@shared/prompts'
+import { discussPrompt, sessionName, tacklePrompt } from '@shared/prompts'
 import type { Card, PtyInfo, SessionRef, TackleRequest } from '@shared/types'
 import {
   continueUrl,
@@ -33,15 +33,21 @@ export async function tackle(
   const cards = req.cardIds
     .map(id => board.cards.find(c => c.id === id))
     .filter((c): c is Card => !!c && !c.archived && !isDivider(c))
-  if (!cards.length) throw new Error('No cards to tackle (dividers and archived cards are skipped).')
+  if (!cards.length) throw new Error('No cards to work on (dividers and archived cards are skipped).')
+  const discuss = req.purpose === 'discuss'
+  if (discuss && (req.mode === 'cloud' || req.mode === 'local-worktree')) {
+    throw new Error('A discussion runs in Claude desktop or a terminal.')
+  }
   const cwd = board.codeRepo && existsSync(board.codeRepo) ? board.codeRepo : store.root
-  const groups = req.split === 'each' ? cards.map(c => [c]) : [cards]
+  // A discussion of several cards is one conversation: triage needs them side by side.
+  const groups = req.split === 'each' && !discuss ? cards.map(c => [c]) : [cards]
   const opened: PtyInfo[] = []
 
   for (const group of groups) {
     const ids = group.map(c => c.id)
     const cloud = req.mode === 'cloud'
-    const prompt = tacklePrompt(group, {
+    const build = discuss ? discussPrompt : tacklePrompt
+    const prompt = build(group, {
       meta: board.meta,
       boardRoot: store.root,
       cardFile: id => store.cardFile(req.boardPath, id),
@@ -49,7 +55,8 @@ export async function tackle(
       cloud,
       listTitle: req.listTitle,
     })
-    const name = sessionName(group, req.listTitle)
+    const name = sessionName(group, req.listTitle, discuss ? 'discuss' : 'tackle')
+    const purpose = discuss ? ({ purpose: 'discuss' } as const) : {}
     const started = new Date().toISOString()
     let ref: SessionRef
     let command: string[]
@@ -58,7 +65,7 @@ export async function tackle(
       // A new session in the Claude desktop app, in the code repo with the board repo beside it.
       const folders = store.root === cwd ? [cwd] : [cwd, store.root]
       const { url, marker } = newSessionUrl(prompt, folders)
-      await recordSession(store, req.boardPath, group, { kind: 'desktop', started, cwd, cards: ids, name })
+      await recordSession(store, req.boardPath, group, { kind: 'desktop', started, cwd, cards: ids, name, ...purpose })
       await openUrl(url, open)
       watchForDesktopSession(store, req.boardPath, ids, started, cwd, marker)
       continue
@@ -72,7 +79,7 @@ export async function tackle(
       const worktree = req.mode === 'local-worktree' ? worktreeName(group, req.listTitle) : undefined
       command = localCommand({ claude: CLAUDE, boardRoot: store.root, name, sessionId: id, worktree, prompt })
       const sessionCwd = worktree ? path.join(cwd, '.claude', 'worktrees', worktree) : cwd
-      ref = { id, kind: req.mode, started, cwd: sessionCwd, cards: ids, name }
+      ref = { id, kind: req.mode, started, cwd: sessionCwd, cards: ids, name, ...purpose }
     }
 
     const info = ptys.create({ title: cloud ? `☁ ${name}` : name, cwd, command, cardIds: ids })
@@ -202,7 +209,8 @@ export function stopDesktopWatches(): void {
 
 async function recordSession(store: BoardStore, boardPath: string, cards: Card[], ref: SessionRef): Promise<void> {
   const board = store.board(boardPath)
-  const doing = board.meta.flow?.doing
+  // Only a tackle moves its cards to the doing list; a discussion leaves them where they are.
+  const doing = ref.purpose === 'discuss' ? undefined : board.meta.flow?.doing
   for (const card of cards) {
     const fresh = board.cards.find(c => c.id === card.id) ?? card
     const patch: Partial<Card> = { sessions: [...fresh.sessions, ref] }
