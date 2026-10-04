@@ -183,6 +183,8 @@ export type ProjectNode = {
   sync: SyncStatus
   /** Its colours, from `theme.json` at the board repo's root; none means the app's own. */
   theme?: ProjectTheme
+  /** Whether the repo has its CLAUDE.md (the card format, for sessions and hand edits). */
+  guide: boolean
   boards: BoardNode[]
 }
 

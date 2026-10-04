@@ -32,6 +32,8 @@ type UiPrefs = {
   expanded: string[]
   /** Projects folded shut in the side panel. */
   foldedProjects: string[]
+  /** Projects whose offer of a CLAUDE.md was turned down. */
+  noGuide: string[]
   /** Collapsed list ids, per board path. */
   collapsed: Record<string, string[]>
 }
@@ -47,6 +49,7 @@ function loadPrefs(): UiPrefs {
     drawerWidth: 440,
     expanded: [],
     foldedProjects: [],
+    noGuide: [],
     collapsed: {},
   }
   try {
@@ -133,6 +136,7 @@ useStore.subscribe(state => {
     drawerWidth: state.drawerWidth,
     expanded: state.expanded,
     foldedProjects: state.foldedProjects,
+    noGuide: state.noGuide,
     collapsed: state.collapsed,
   }
   try {
@@ -369,6 +373,16 @@ export const actions = {
     }))
     const status = await api.sync.now(projectId)
     if (status.state === 'conflict' || status.state === 'offline') actions.toast(status.message ?? status.state, 'error')
+  },
+
+  async addGuide(projectId: string) {
+    try {
+      await api.projects.addGuide(projectId)
+      await actions.refreshTree()
+      actions.toast('Added CLAUDE.md to the board repo')
+    } catch (error) {
+      actions.toast((error as Error).message, 'error')
+    }
   },
 
   copy(text: string, what = text) {

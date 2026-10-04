@@ -10,6 +10,8 @@ export type PromptContext = {
   /** Title of a linked card anywhere in the repo, when it exists. */
   linkTitle: (id: string) => string | undefined
   cloud: boolean
+  /** Whether the board repo has its CLAUDE.md, which the prompt then points to. */
+  guide?: boolean
   listTitle?: string
   /** Title of the board, when the cards are a whole board. */
   boardTitle?: string
@@ -48,7 +50,7 @@ export function discussPrompt(cards: Card[], ctx: PromptContext): string {
     if (body) parts.push(body)
     const links = linkLines(card, ctx)
     if (links) parts.push(`Related cards:\n${links}`)
-    parts.push(`The card is ${ctx.cardFile(card.id)} in the board repo ${ctx.boardRoot} (its CLAUDE.md describes the card format).`)
+    parts.push(`The card is ${ctx.cardFile(card.id)} in the board repo ${ctx.boardRoot}${guideNote(ctx)}.`)
   } else {
     if (ctx.boardTitle && !ctx.listTitle) {
       parts.push(`Let's triage the whole "${ctx.boardTitle}" board of the task board, its ${cards.length} cards:`)
@@ -69,7 +71,7 @@ export function discussPrompt(cards: Card[], ctx: PromptContext): string {
         })
         .join('\n\n'),
     )
-    parts.push(`The cards are Markdown files in the board repo ${ctx.boardRoot} (its CLAUDE.md describes the card format).`)
+    parts.push(`The cards are Markdown files in the board repo ${ctx.boardRoot}${guideNote(ctx)}.`)
   }
   if (ctx.workDir) parts.push(folderCheck(ctx.workDir))
 
@@ -121,8 +123,8 @@ export function tacklePrompt(cards: Card[], ctx: PromptContext): string {
   if (!ctx.cloud) {
     parts.push(
       one
-        ? `The card is ${ctx.cardFile(cards[0].id)} in the board repo ${ctx.boardRoot} (its CLAUDE.md describes the card format).`
-        : `The cards are Markdown files in the board repo ${ctx.boardRoot} (its CLAUDE.md describes the card format).`,
+        ? `The card is ${ctx.cardFile(cards[0].id)} in the board repo ${ctx.boardRoot}${guideNote(ctx)}.`
+        : `The cards are Markdown files in the board repo ${ctx.boardRoot}${guideNote(ctx)}.`,
     )
   }
   if (ctx.workDir) parts.push(folderCheck(ctx.workDir))
@@ -149,6 +151,11 @@ export function tacklePrompt(cards: Card[], ctx: PromptContext): string {
 
 function folderCheck(dir: string): string {
   return `Work in ${dir}. The Claude desktop app can open a session in the last folder it used: if your working directory is not ${dir}, stop and tell me before doing anything else.`
+}
+
+// A pointer to a file that isn't there sends the session looking for it.
+function guideNote(ctx: PromptContext): string {
+  return ctx.guide ? ' (its CLAUDE.md describes the card format)' : ''
 }
 
 function listName(card: Card, meta: BoardMeta): string {

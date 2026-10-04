@@ -3,6 +3,7 @@
 
 import { existsSync, promises as fs } from 'node:fs'
 import path from 'node:path'
+import { BOARD_GUIDE_FILE, boardGuide } from '@shared/boardguide'
 import { slugify } from '@shared/cardfile'
 import type {
   BoardDelta,
@@ -95,6 +96,7 @@ export class Project {
       codeRepo: this.codeRepo,
       sync: this.sync.status,
       ...(this.store.theme ? { theme: this.store.theme } : {}),
+      guide: this.hasGuide(),
       boards: rekey(this.store.tree()),
     }
   }
@@ -107,6 +109,19 @@ export class Project {
     return { ...delta, path: this.key(delta.path) }
   }
 
+  /** Whether the repo has the CLAUDE.md the prompts point sessions to. */
+  hasGuide(): boolean {
+    return existsSync(path.join(this.root, BOARD_GUIDE_FILE))
+  }
+
+  /** Adds the board guide when it is missing (never over one written by hand). */
+  async addGuide(): Promise<void> {
+    if (this.hasGuide()) return
+    await writeGuide(this.root)
+    // The watch reports board files only: the commit has to be asked for.
+    this.committer.touch()
+  }
+
   setCodeRepo(codeRepo: string | undefined, localRepos: Record<string, string>): void {
     this.codeRepo = codeRepo
     this.store.setLocalRepos(localRepos, codeRepo)
@@ -115,7 +130,7 @@ export class Project {
 
 /**
  * A folder for a new project's board repo: made if missing, and a git repo afterwards (an empty
- * folder is initialised; an existing repo is used as it is).
+ * folder is initialised, with a README and the board guide; an existing repo is used as it is).
  */
 export async function prepareBoardRepo(root: string): Promise<void> {
   await fs.mkdir(root, { recursive: true })
@@ -125,6 +140,11 @@ export async function prepareBoardRepo(root: string): Promise<void> {
   if (!existsSync(readme)) {
     await fs.writeFile(readme, `# ${path.basename(root)}\n\nTask boards, opened with Corkboard.\n`)
   }
+  if (!existsSync(path.join(root, BOARD_GUIDE_FILE))) await writeGuide(root)
+}
+
+async function writeGuide(root: string): Promise<void> {
+  await fs.writeFile(path.join(root, BOARD_GUIDE_FILE), boardGuide(path.basename(root)))
 }
 
 export function projectId(name: string, taken: Set<string>): string {

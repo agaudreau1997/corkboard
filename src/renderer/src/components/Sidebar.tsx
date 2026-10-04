@@ -64,6 +64,7 @@ function syncText(sync: SyncStatus): string {
 function ProjectRow({ project }: { project: ProjectNode }) {
   const folded = useStore(s => s.foldedProjects.includes(project.id))
   const lastCommit = useStore(s => (s.lastCommit?.projectId === project.id ? s.lastCommit : null))
+  const declined = useStore(s => s.noGuide.includes(project.id))
   const tip = [
     project.root,
     project.codeRepo ? `Code folder: ${project.codeRepo}` : 'No code folder set on this machine',
@@ -114,8 +115,34 @@ function ProjectRow({ project }: { project: ProjectNode }) {
               + New board
             </button>
           )}
+          {!project.guide && !declined && <GuideOffer project={project} />}
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * A board repo made before the app wrote a CLAUDE.md (or by hand) has none, and the prompts then
+ * say nothing about the card format. The app adds files to a repo only when asked: it offers, once
+ * per project; the project's menu keeps the offer after a "No".
+ */
+function GuideOffer({ project }: { project: ProjectNode }) {
+  const decline = () => useStore.setState(s => ({ noGuide: [...s.noGuide, project.id] }))
+  return (
+    <div
+      className="guide-offer"
+      title={`A CLAUDE.md in ${project.root} tells the Claude sessions started for its cards (and anyone editing them by hand) how a card file is written.`}
+    >
+      <span>No CLAUDE.md describes the card format to Claude sessions.</span>
+      <span className="guide-offer-actions">
+        <button className="link" onClick={() => void actions.addGuide(project.id)}>
+          Add one
+        </button>
+        <button className="link muted" onClick={decline}>
+          No thanks
+        </button>
+      </span>
     </div>
   )
 }
@@ -136,6 +163,9 @@ function projectMenu(project: ProjectNode): MenuItem[] {
       onSelect: () => actions.setModal({ kind: 'projectSettings', id: project.id }),
     },
     { label: 'Open the board repo folder', onSelect: () => api.shell.openPath(project.root) },
+    ...(project.guide
+      ? []
+      : [{ label: 'Add a CLAUDE.md', hint: 'the card format, for Claude', onSelect: () => void actions.addGuide(project.id) }]),
     'separator',
     {
       label: 'Remove from Corkboard…',

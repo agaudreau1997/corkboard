@@ -34,6 +34,8 @@ export type CorkboardApi = {
     update(id: string, patch: { name?: string; codeRepo?: string | null }): Promise<void>
     /** Writes the project's `theme.json` (shared through the repo); null removes it. */
     setTheme(id: string, theme: ProjectTheme | null): Promise<void>
+    /** Writes the board repo's CLAUDE.md (the card format) when it has none. */
+    addGuide(id: string): Promise<void>
     /** Takes it out of the app; its folder stays. */
     remove(id: string): Promise<void>
     pickFolder(title: string): Promise<string | null>
