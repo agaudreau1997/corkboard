@@ -1199,6 +1199,12 @@ tr.selected td {
   gap: 12px;
 }
 
+/* A flex column would squeeze its rows to fit before scrolling, crushing the title and the
+   description boxes whenever a card has a long body; let it scroll instead. */
+.drawer > * {
+  flex: none;
+}
+
 /* Straddles the drawer's left border without taking room from either side. */
 .drawer-resize {
   position: relative;
@@ -1232,6 +1238,8 @@ tr.selected td {
   background: transparent;
   border-color: transparent;
   resize: none;
+  /* Grow with the title, so a long one shows whole rather than scrolling inside two rows. */
+  field-sizing: content;
   padding: 4px 6px;
   margin: 0 -6px;
 }
