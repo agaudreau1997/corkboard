@@ -77,3 +77,11 @@ Environment seams: `CORKBOARD_ROOT` (a test's only project), `CORKBOARD_USER_DAT
 ```bash
 node scripts/import-trello.mts <export dir> <board repo>
 ```
+
+## License
+
+Corkboard is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License in [LICENSE](LICENSE) for more details.
+
+Copyright (C) 2026 agaudreau1997 and contributors.
+
+Every package carries the same `LICENSE` beside the executable (`extraFiles` in `electron-builder.yml`), and the rpm names `GPL-3.0-or-later` in its metadata. Contributing: [CONTRIBUTING.md](CONTRIBUTING.md).

@@ -6,6 +6,7 @@
     "name": "agaudreau1997",
     "email": "alexpwnser@live.ca"
   },
+  "license": "GPL-3.0-or-later",
   "main": "./out/main/index.js",
   "private": true,
   "scripts": {

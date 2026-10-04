@@ -7,6 +7,11 @@ files:
   - out/**
   # The window icon: index.ts loads it from ../../build/icon.png.
   - build/icon.png
+# The GPL travels with every build: Corkboard's LICENSE beside the executable, next to Electron's
+# LICENSE.electron.txt and LICENSES.chromium.html.
+extraFiles:
+  - from: LICENSE
+    to: LICENSE
 # node-pty is an N-API addon, so it never needs compiling against Electron's headers: Windows
 # and macOS use its prebuilds, Linux the pty.node that `npm install` compiled.
 npmRebuild: false
