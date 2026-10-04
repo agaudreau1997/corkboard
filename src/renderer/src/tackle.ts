@@ -1,4 +1,4 @@
-import { isDivider, sortCards } from '@shared/cardfile'
+import { isDivider, listSort, orderList, sortCards } from '@shared/cardfile'
 import type { TackleMode } from '@shared/types'
 import { actions, api, useStore } from './state'
 
@@ -93,7 +93,10 @@ export async function discussBoard(boardPath: string, mode: 'desktop' | 'local')
   const board = useStore.getState().boards[boardPath]
   if (!board) return
   const live = board.cards.filter(c => !c.archived && !isDivider(c))
-  const groups = [...board.meta.lists.filter(l => !l.archived).map(l => l.id), null]
-  const ids = groups.flatMap(list => sortCards(live.filter(c => c.list === list)).map(c => c.id))
+  const lists = board.meta.lists.filter(l => !l.archived)
+  const ids = [
+    ...lists.flatMap(list => orderList(live.filter(c => c.list === list.id), listSort(list))),
+    ...sortCards(live.filter(c => c.list === null)),
+  ].map(c => c.id)
   await discussCards(boardPath, ids, mode, { boardTitle: board.meta.title })
 }

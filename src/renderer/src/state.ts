@@ -9,6 +9,7 @@ import type {
   ClaudeInfo,
   CodeCommit,
   ListDef,
+  ListSort,
   LoadedBoard,
   ProjectNode,
   PtyInfo,
@@ -384,6 +385,13 @@ export const actions = {
     })
   },
 
+  /** The order a list keeps its cards in, from now on. */
+  async setListSort(boardPath: string, listId: string, sort: ListSort) {
+    const board = get().boards[boardPath]
+    if (!board) return
+    await actions.setLists(boardPath, board.meta.lists.map(l => (l.id === listId ? { ...l, sort } : l)))
+  },
+
   /** New list order (or titles) for a board: on screen at once, then written. */
   async setLists(boardPath: string, lists: ListDef[]) {
     set(s => {
@@ -487,29 +495,38 @@ export const actions = {
   },
 }
 
+/**
+ * Deltas that came in since the last render. A burst (a whole board's cards written at once, by a
+ * triage or a sync) arrives as hundreds of deltas; applied one by one, each re-rendered every board
+ * and re-sorted its lists, and React gave up on the chain of renders. Batched, a burst is a few.
+ */
+let pendingDeltas: BoardDelta[] = []
+const DELTA_BATCH_MS = 20
+
 function applyDelta(delta: BoardDelta): void {
+  if (!pendingDeltas.length) setTimeout(flushDeltas, DELTA_BATCH_MS)
+  pendingDeltas.push(delta)
+}
+
+function flushDeltas(): void {
+  const deltas = pendingDeltas
+  pendingDeltas = []
   set(s => {
-    const board = s.boards[delta.path]
-    if (!board) return s
-    const changed = new Set(delta.cards.map(c => c.id))
-    const removed = new Set(delta.removed)
-    const cards = sortCards([
-      ...board.cards.filter(c => !changed.has(c.id) && !removed.has(c.id)),
-      ...delta.cards,
-    ])
-    return {
-      boards: {
-        ...s.boards,
-        [delta.path]: {
-          ...board,
-          cards,
-          meta: delta.meta ?? board.meta,
-          map: delta.map ?? board.map,
-        },
-      },
+    const boards = { ...s.boards }
+    for (const delta of deltas) {
+      const board = boards[delta.path]
+      if (!board) continue
+      const changed = new Set(delta.cards.map(c => c.id))
+      const removed = new Set(delta.removed)
+      const cards = [...board.cards.filter(c => !changed.has(c.id) && !removed.has(c.id)), ...delta.cards]
+      boards[delta.path] = { ...board, cards, meta: delta.meta ?? board.meta, map: delta.map ?? board.map }
     }
+    for (const path of new Set(deltas.map(d => d.path))) {
+      if (boards[path]) boards[path] = { ...boards[path], cards: sortCards(boards[path].cards) }
+    }
+    return { boards }
   })
-  if (delta.meta) void actions.loadBoard(delta.path)
+  for (const path of new Set(deltas.filter(d => d.meta).map(d => d.path))) void actions.loadBoard(path)
 }
 
 export function flatten(nodes: BoardNode[]): BoardNode[] {

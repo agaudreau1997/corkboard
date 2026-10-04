@@ -22,7 +22,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
-import { between, freezeListColors, isDivider, reorderLists, slugify } from '@shared/cardfile'
+import { between, freezeListColors, isDivider, listSort, orderList, reorderLists, slugify } from '@shared/cardfile'
 import type { Card, CodeCommit, ListDef, LoadedBoard } from '@shared/types'
 import { useGrabScroll } from '../grabScroll'
 import { cardMenu, listMenu } from '../menus'
@@ -76,13 +76,15 @@ export function KanbanView({ board, matches }: { board: LoadedBoard; matches: (c
 
   const byId = useMemo(() => new Map(board.cards.map(c => [c.id, c])), [board.cards])
   const columns = useMemo(() => {
-    const cols: Columns = { [UNLISTED]: [] }
-    for (const list of board.meta.lists) cols[list.id] = []
+    const cards: Record<string, Card[]> = { [UNLISTED]: [] }
+    for (const list of board.meta.lists) cards[list.id] = []
     for (const card of board.cards) {
       if (card.archived || !matches(card)) continue
       const key = card.list === null ? UNLISTED : card.list
-      if (cols[key]) cols[key].push(card.id)
+      if (cards[key]) cards[key].push(card)
     }
+    const cols: Columns = { [UNLISTED]: cards[UNLISTED].map(c => c.id) }
+    for (const list of board.meta.lists) cols[list.id] = orderList(cards[list.id], listSort(list)).map(c => c.id)
     return cols
   }, [board, matches])
   const shown = draft ?? columns
@@ -146,11 +148,24 @@ export function KanbanView({ board, matches }: { board: LoadedBoard; matches: (c
       list = arrayMove(list, list.indexOf(id), list.indexOf(overId))
     }
     const index = list.indexOf(id)
-    const prev = index > 0 ? byId.get(list[index - 1])?.pos : undefined
-    const next = index < list.length - 1 ? byId.get(list[index + 1])?.pos : undefined
     const targetList = to === UNLISTED ? null : to
     if (card.list === targetList && columns[to]?.indexOf(id) === index) return
+    const sorted = targetList !== null && listSort(board.meta.lists.find(l => l.id === targetList)) !== 'manual'
+    if (sorted && card.list === targetList) {
+      // Renumbering the list to keep the drop would rewrite (and restamp) every card in it.
+      actions.toast('This list sorts itself; choose Sort cards by › Manual in its menu to order it by hand')
+      return
+    }
+    // A sorted list places a card that lands in it itself; its pos only matters if it goes manual.
+    const prev = sorted ? sortedEnd(targetList) : index > 0 ? byId.get(list[index - 1])?.pos : undefined
+    const next = sorted ? undefined : index < list.length - 1 ? byId.get(list[index + 1])?.pos : undefined
     void actions.updateCard(board.path, id, { list: targetList, pos: between(prev, next) })
+  }
+
+  /** The highest pos in a list, so a card landing in a sorted one goes last in its manual order. */
+  const sortedEnd = (listId: string): number | undefined => {
+    const pos = board.cards.filter(c => c.list === listId && !c.archived).map(c => c.pos)
+    return pos.length ? Math.max(...pos) : undefined
   }
 
   /** Moves a list to where another one stood (archived lists keep their places in board.json). */
