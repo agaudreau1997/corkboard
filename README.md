@@ -86,16 +86,14 @@ The side panel's foot shows the Corkboard version running; click it for its rele
 
 ```bash
 npm test           # unit tests: card files, the store and its watch, git, sync between two clones, prompts, terminal titles, themes
-npm run e2e        # builds, then drives the real app on a scratch clone of the board repo
+npm run e2e        # builds, then drives the real app on a made-up board repo
 ```
 
-CI (`.github/workflows/ci.yml`) runs the typecheck and the unit tests on Ubuntu and Windows for every push and pull request. The end-to-end test isn't there yet: it seeds its board repo from one on the author's machine.
+CI (`.github/workflows/ci.yml`) runs the typecheck, the unit tests and the end-to-end test on Ubuntu (in a virtual display, `xvfb-run`) and Windows for every push and pull request.
 
-The end-to-end test (`tests/e2e/smoke.mjs`) clones a board repo to a temporary folder, points the app at it with a hidden window, and replaces `claude` with a stand-in that records its arguments (`CORKBOARD_CLAUDE_BIN`), so nothing real is started or billed. Screenshots go to `test-results/` (`SHOT_DIR` to change).
+The end-to-end test (`tests/e2e/smoke.mjs`) writes a made-up board repo in a temporary folder (`tests/e2e/fixture.mjs`: a game's boards, with child boards, a map, long lists, archived cards and a second board, nothing from anyone's real boards), points the app at it with a hidden window, and replaces `claude` with a stand-in that records its arguments (`CORKBOARD_CLAUDE_BIN`), so nothing real is started or billed. Screenshots go to `test-results/` (`SHOT_DIR` to change). `node tests/e2e/smoke.mjs <board repo>` starts from another board repo's first commit instead, which must have the fixture's shape: the checks name its boards, lists and ids.
 
-The test clones the board repo into a scratch bare remote and works on a clone of that, so the app's sync pushes there, never to the real remote; a second clone plays the other machine.
-
-The test starts from the board repo's first commit (the Trello import), so what the boards hold today never changes what it checks, and it never opens the real board repo: `CORKBOARD_ROOT` is its only project. The app's own output is saved as `main-process.log` beside the screenshots.
+The test clones the board repo into a scratch bare remote and works on a clone of that, so the app's sync pushes there, never to a real remote; a second clone plays the other machine. `CORKBOARD_ROOT` is its only project, and the app commits under git's `GIT_AUTHOR_*` and `GIT_COMMITTER_*` variables, so it runs on a machine with no git identity. The app's own output is saved as `main-process.log` beside the screenshots.
 
 Environment seams: `CORKBOARD_ROOT` (a test's only project), `CORKBOARD_USER_DATA` (profile folder), `CORKBOARD_PICK_FOLDER` (what the folder picker answers), `CORKBOARD_HIDDEN=1` (an offscreen window: a hidden one stops animating after its first screenshot), `CORKBOARD_COMMIT_DELAY_MS`, `CORKBOARD_SYNC_INTERVAL_MS` (0 = no periodic sync), `CORKBOARD_CLAUDE_BIN`, `CORKBOARD_UPDATES=0` (never look for Corkboard updates).
 

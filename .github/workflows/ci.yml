@@ -1,5 +1,5 @@
-# Typecheck and unit tests on every push and pull request, on both systems Corkboard is built for.
-# The e2e test joins once it no longer needs a board repo from the author's machine (CORK-16).
+# Typecheck, unit tests and the end-to-end test on every push and pull request, on both systems
+# Corkboard is built for.
 name: CI
 
 on:
@@ -23,3 +23,32 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+
+  # Builds the app and drives it on a made-up board repo (tests/e2e/fixture.mjs), with a stand-in
+  # for `claude`.
+  e2e:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # Ubuntu's AppArmor keeps Electron's sandbox from the user namespaces it needs, and the window
+      # needs a display: a virtual one.
+      - if: runner.os == 'Linux'
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          xvfb-run --auto-servernum npm run e2e
+      - if: runner.os == 'Windows'
+        run: npm run e2e
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-${{ matrix.os }}
+          path: test-results/

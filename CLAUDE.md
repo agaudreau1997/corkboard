@@ -13,7 +13,7 @@ npx vitest run tests/store.test.ts   # one file
 npm run e2e          # builds, then drives the built app with Playwright (tests/e2e/smoke.mjs)
 ```
 
-Before calling a change done: `npm run typecheck` and `npm test`, and `npm run e2e` for anything a person sees or clicks. The e2e test clones a board repo (its first argument; the default is a path on the author's machine) into a scratch folder with a scratch bare remote, and replaces `claude` with a stand-in that records its arguments, so it never touches the real board repo, its remote, or a real Claude session. Screenshots and `main-process.log` go to `test-results/`.
+Before calling a change done: `npm run typecheck` and `npm test`, and `npm run e2e` for anything a person sees or clicks. The e2e test writes a made-up board repo (`tests/e2e/fixture.mjs`, whose exports name the boards and ids the checks use; a board repo given as its first argument replaces it) into a scratch folder with a scratch bare remote, and replaces `claude` with a stand-in that records its arguments, so it never touches the real board repo, its remote, or a real Claude session. Screenshots and `main-process.log` go to `test-results/`.
 
 ## Layout
 
