@@ -19,7 +19,9 @@ function card(id: string, list: string, updated: string, title = id): Card {
 
 function clone(name: string): string {
   const at = path.join(dir, name)
-  run(dir, 'clone', '-q', path.join(dir, 'remote.git'), at)
+  // Files as written, whatever this machine's git does with line endings (Git for Windows
+  // checks out CRLF by default).
+  run(dir, 'clone', '-q', '-c', 'core.autocrlf=false', path.join(dir, 'remote.git'), at)
   run(at, 'config', 'user.email', `${name}@example.com`)
   run(at, 'config', 'user.name', name)
   return at

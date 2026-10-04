@@ -602,6 +602,9 @@ export class BoardStore {
         delta(boardPath).cards.push(card)
         if (isNew) treeChanged = true
       } else if (name === 'cards' && this.boards.has(parts.slice(0, -1).join('/'))) {
+        // Windows also reports a watched folder's subfolder whenever a file in it changes: once the
+        // cards folder has a watch of its own, that watch has the file.
+        if (this.watchers.has(rel) && (await exists(abs))) continue
         // A board's cards folder appeared (its first card, written by a session): read it whole,
         // since the cards in it may have landed before its watch did.
         const boardPath = parts.slice(0, -1).join('/')
