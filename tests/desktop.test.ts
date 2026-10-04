@@ -72,8 +72,8 @@ describe('Claude desktop links', () => {
   })
 
   it('names transcript folders the way Claude Code does', () => {
-    expect(transcriptFile('/home/alex/Documents/Godot/Projects/godot-shooter', 'abc')).toBe(
-      path.join(dir, 'projects', '-home-alex-Documents-Godot-Projects-godot-shooter', 'abc.jsonl'),
+    expect(transcriptFile('/home/someone/projects/my-game', 'abc')).toBe(
+      path.join(dir, 'projects', '-home-someone-projects-my-game', 'abc.jsonl'),
     )
   })
 })

@@ -45,7 +45,7 @@ npm run dev        # development, with hot reload
 npm run build && npm start
 ```
 
-The first launch opens `~/Documents/Godot/Projects/deus-board` if it exists, or asks for the board repo folder (the sidebar's footer changes it later).
+The first launch asks for a project: *Add project…* takes a board repo (a clone of one) or an empty or new folder, which becomes one. The side panel's *+ Add project* adds more.
 
 To start it from the desktop menu (and get its icon on the taskbar, which a Wayland session takes from the menu entry): `npm run install-launcher` (`bash scripts/install-launcher.sh --remove` takes it out). The icon is `build/icon.svg`, drawn by `scripts/make-icon.py` (`npm run icon` re-renders the PNGs with Inkscape).
 

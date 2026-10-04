@@ -12,7 +12,8 @@ import path from 'node:path'
 import { serializeCard, slugify } from '../src/shared/cardfile.ts'
 import type { BoardMap, BoardMeta, Card, ListDef } from '../src/shared/types.ts'
 
-const GAME_REPO = '/home/alex/Documents/Godot/Projects/godot-shooter'
+// The game's code repo, relative to the board repo (a board's codeRepo may be), as on my machines.
+const GAME_REPO = '../godot-shooter'
 
 type Plan = {
   short: string

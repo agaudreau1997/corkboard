@@ -29,7 +29,6 @@ const TIMING = {
   commitDelayMs: Number(process.env.CORKBOARD_COMMIT_DELAY_MS ?? 8000),
   syncIntervalMs: Number(process.env.CORKBOARD_SYNC_INTERVAL_MS ?? 60_000),
 }
-const DEFAULT_ROOT = path.join(os.homedir(), 'Documents/Godot/Projects/deus-board')
 
 let win: BrowserWindow | undefined
 const projects = new Map<string, Project>()
@@ -70,24 +69,19 @@ async function readSavedConfig(): Promise<AppConfig> {
 
 /**
  * What the app opens: the saved projects, with CORKBOARD_ROOT (tests) first when set. With
- * nothing saved, the deus-board folder if there is one, but never beside a test's own board.
+ * nothing saved there is none, and the window asks for one (*Add project…*).
  */
 async function readConfig(): Promise<AppConfig> {
   const saved = await readSavedConfig()
   const env = process.env.CORKBOARD_ROOT
-  if (!env) {
-    if (!saved.projects.length && existsSync(DEFAULT_ROOT)) {
-      return { ...saved, projects: [{ id: 'deus-board', name: 'deus-board', boardRoot: DEFAULT_ROOT }] }
-    }
-    return saved
-  }
+  if (!env) return saved
   const others = saved.projects.filter(p => path.resolve(p.boardRoot) !== path.resolve(env))
   const id = projectId(path.basename(env), new Set(others.map(p => p.id)))
   return { ...saved, projects: [{ id, name: path.basename(env), boardRoot: env }, ...others] }
 }
 
 async function writeConfig(update: (config: AppConfig) => AppConfig): Promise<AppConfig> {
-  // Starts from what the app has open, so a default project gets saved with the first change.
+  // Starts from what the app has open, the test's project included (left out of the file below).
   const next = update(await readConfig())
   const env = process.env.CORKBOARD_ROOT
   // The test's project is not saved: it comes from the environment every time.
