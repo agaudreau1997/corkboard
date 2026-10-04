@@ -96,6 +96,8 @@ export type CorkboardApi = {
   }
   tackle: {
     start(req: TackleRequest): Promise<PtyInfo[]>
+    /** The prompt `start` would hand Claude, for copying; nothing is started or recorded. */
+    prompt(req: TackleRequest): Promise<string>
     /** Opens a recorded session again; null when the desktop app took it. */
     resume(boardPath: string, ref: SessionRef): Promise<PtyInfo | null>
     /** Opens a terminal session in the Claude desktop app. */

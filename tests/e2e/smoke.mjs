@@ -613,6 +613,18 @@ try {
   const copied = await app.evaluate(({ clipboard }) => clipboard.readText())
   check(copied === moverId, `Copy › Identifier put ${copied} on the clipboard`)
 
+  const promptCardFile = path.join(root, 'robot-shooter/cards', `${moverId}.md`)
+  const moverBefore = readFileSync(promptCardFile, 'utf8')
+  await mover.click({ button: 'right' })
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Copy' }).hover()
+  await page.getByRole('menuitem', { name: /Tackle prompt/ }).click()
+  const copiedPrompt = await until(async () => {
+    const text = await app.evaluate(({ clipboard }) => clipboard.readText())
+    return text.includes(`Card: ${moverId}`) ? text : null
+  })
+  check(!!copiedPrompt, `Copy › Tackle prompt put ${moverId}'s tackle prompt on the clipboard`)
+  check(readFileSync(promptCardFile, 'utf8') === moverBefore, 'copying the prompt left the card as it was')
+
   await page.locator(`.card[data-card="${moverId}"]`).click({ button: 'right' })
   await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Move to board' }).hover()
   await page.getByRole('menuitem', { name: 'Robot shooter / Ideas' }).hover()

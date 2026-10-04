@@ -46,16 +46,7 @@ export async function tackle(
   for (const group of groups) {
     const ids = group.map(c => c.id)
     const cloud = req.mode === 'cloud'
-    const build = discuss ? discussPrompt : tacklePrompt
-    const prompt = build(group, {
-      meta: board.meta,
-      boardRoot: store.root,
-      cardFile: id => store.cardFile(req.boardPath, id),
-      linkTitle: id => store.findCard(id)?.card.title,
-      cloud,
-      listTitle: req.listTitle,
-      boardTitle: req.boardTitle,
-    })
+    const prompt = buildPrompt(store, req, group)
     const name = sessionName(group, req.listTitle ?? req.boardTitle, discuss ? 'discuss' : 'tackle')
     const purpose = discuss ? ({ purpose: 'discuss' } as const) : {}
     const started = new Date().toISOString()
@@ -100,6 +91,32 @@ export async function tackle(
     }
   }
   return opened
+}
+
+/**
+ * The prompt a tackle or discussion would start with, without starting anything: for pasting into
+ * a session of one's own. The cards make one prompt, as a single session would get.
+ */
+export function promptFor(req: TackleRequest, store: BoardStore): string {
+  const board = store.board(req.boardPath)
+  const cards = req.cardIds
+    .map(id => board.cards.find(c => c.id === id))
+    .filter((c): c is Card => !!c && !c.archived && !isDivider(c))
+  if (!cards.length) throw new Error('No cards to write a prompt for (dividers and archived cards are skipped).')
+  return buildPrompt(store, req, cards)
+}
+
+function buildPrompt(store: BoardStore, req: TackleRequest, cards: Card[]): string {
+  const build = req.purpose === 'discuss' ? discussPrompt : tacklePrompt
+  return build(cards, {
+    meta: store.board(req.boardPath).meta,
+    boardRoot: store.root,
+    cardFile: id => store.cardFile(req.boardPath, id),
+    linkTitle: id => store.findCard(id)?.card.title,
+    cloud: req.mode === 'cloud',
+    listTitle: req.listTitle,
+    boardTitle: req.boardTitle,
+  })
 }
 
 /**

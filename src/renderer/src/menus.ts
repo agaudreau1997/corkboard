@@ -111,6 +111,17 @@ export function cardMenu(board: LoadedBoard, card: Card): MenuItem[] {
           label: 'File path',
           onSelect: async () => actions.copy(await api.cards.filePath(board.path, card.id), 'the file path'),
         },
+        ...(divider || card.archived
+          ? []
+          : [
+              'separator' as const,
+              {
+                label: 'Tackle prompt',
+                hint: 'to paste into Claude',
+                onSelect: () => void copyPrompt(board, card.id, 'tackle'),
+              },
+              { label: 'Discuss prompt', onSelect: () => void copyPrompt(board, card.id, 'discuss') },
+            ]),
       ],
     },
     {
@@ -139,6 +150,16 @@ export function cardMenu(board: LoadedBoard, card: Card): MenuItem[] {
     },
   )
   return items
+}
+
+/** Copies the prompt a tackle or discussion in a terminal would start with. */
+async function copyPrompt(board: LoadedBoard, id: string, purpose: 'tackle' | 'discuss'): Promise<void> {
+  try {
+    const prompt = await api.tackle.prompt({ boardPath: board.path, cardIds: [id], mode: 'local', purpose })
+    actions.copy(prompt, `the ${purpose} prompt`)
+  } catch (e) {
+    actions.toast((e as Error).message, 'error')
+  }
 }
 
 /** Where cards can be talked through: one card, or a list or selection to triage together. */

@@ -70,6 +70,7 @@ const api: CorkboardApi = {
   },
   tackle: {
     start: req => invoke('tackle:start', req),
+    prompt: req => invoke('tackle:prompt', req),
     resume: (boardPath, ref) => invoke('tackle:resume', boardPath, ref),
     openInDesktop: ref => invoke('tackle:openInDesktop', ref),
   },

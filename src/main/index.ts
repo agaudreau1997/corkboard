@@ -20,7 +20,7 @@ import { codeCommits, commitFiles } from './git'
 import { boardKey, prepareBoardRepo, Project, projectId, splitKey } from './projects'
 import { PtyManager } from './pty'
 import { shellProbe } from './shell'
-import { CLAUDE, openInDesktop, resume, stopDesktopWatches, tackle } from './tackle'
+import { CLAUDE, openInDesktop, promptFor, resume, stopDesktopWatches, tackle } from './tackle'
 
 // Test seams: a scratch profile, a board root, a hidden window, short delays, a folder picker.
 if (process.env.CORKBOARD_USER_DATA) app.setPath('userData', process.env.CORKBOARD_USER_DATA)
@@ -389,6 +389,10 @@ function registerIpc(): void {
   ipcMain.handle('tackle:start', (_e, req: TackleRequest) => {
     const { project, rel } = projectOf(req.boardPath)
     return tackle({ ...req, boardPath: rel }, project.store, ptys, open)
+  })
+  ipcMain.handle('tackle:prompt', (_e, req: TackleRequest) => {
+    const { project, rel } = projectOf(req.boardPath)
+    return promptFor({ ...req, boardPath: rel }, project.store)
   })
   ipcMain.handle('tackle:resume', (_e, key: string, ref: SessionRef) => {
     const { project, rel } = projectOf(key)
