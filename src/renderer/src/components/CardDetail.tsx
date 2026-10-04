@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm'
 import type { Card, CodeCommit, LoadedBoard, SessionRef } from '@shared/types'
 import { discussCards, tackleCards } from '../tackle'
 import { actions, api, commitsFor, listColor, localTime, useStore } from '../state'
+import { openContextMenu } from './ContextMenu'
 
 type IndexEntry = { id: string; title: string; boardPath: string; boardTitle: string }
 
@@ -337,16 +338,31 @@ function LinkPicker({ index, onPick }: { index: IndexEntry[]; onPick: (id: strin
 
 function CommitRow({ boardPath, commit }: { boardPath: string; commit: CodeCommit }) {
   const [files, setFiles] = useState<{ status: string; file: string }[] | null>(null)
+  const menu = (e: React.MouseEvent) =>
+    openContextMenu(e, [
+      { label: 'Copy SHA', hint: commit.short, onSelect: () => actions.copy(commit.sha, `SHA ${commit.short}`) },
+      { label: 'Copy short SHA', onSelect: () => actions.copy(commit.short) },
+      { label: 'Copy subject', onSelect: () => actions.copy(commit.subject, 'the subject') },
+    ])
   return (
-    <li>
-      <button
-        className="commit-line"
-        onClick={async () => setFiles(files ? null : await api.git.commitFiles(boardPath, commit.sha))}
-      >
-        <span className="mono sha">{commit.short}</span>
-        <span className="subject">{commit.subject}</span>
-        <span className="muted">{localTime(commit.date, false)}</span>
-      </button>
+    <li onContextMenu={menu}>
+      <div className="commit-row">
+        <button
+          className="commit-line"
+          onClick={async () => setFiles(files ? null : await api.git.commitFiles(boardPath, commit.sha))}
+        >
+          <span className="mono sha">{commit.short}</span>
+          <span className="subject">{commit.subject}</span>
+          <span className="muted">{localTime(commit.date, false)}</span>
+        </button>
+        <button
+          className="link copy-sha"
+          title={`Copy the full SHA (${commit.sha})`}
+          onClick={() => actions.copy(commit.sha, `SHA ${commit.short}`)}
+        >
+          Copy
+        </button>
+      </div>
       {files && (
         <ul className="files">
           {files.map(f => (
