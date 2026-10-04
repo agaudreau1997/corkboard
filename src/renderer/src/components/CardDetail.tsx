@@ -76,201 +76,205 @@ function Drawer({ board, card }: { board: LoadedBoard; card: Card }) {
 
   return (
     <aside className="drawer" aria-label={`Card ${card.id}`} style={{ width }}>
-      <div className="drawer-head">
-        <span className="card-id big">{card.id}</span>
-        <span className="muted">{board.meta.title}</span>
-        <span className="spacer" />
-        <button className="icon-button" aria-label="Close" onClick={() => actions.closeCard()}>
-          ×
-        </button>
-      </div>
-
-      <textarea
-        className="title-input"
-        data-field="title"
-        rows={2}
-        value={title}
-        onChange={e => setTitle(e.target.value)}
-        onBlur={() => title.trim() && title !== card.title && save({ title: title.trim() })}
-        onKeyDown={e => {
-          if (e.key === 'Enter') {
-            e.preventDefault()
-            ;(e.target as HTMLTextAreaElement).blur()
-          }
-        }}
-      />
-
-      <div className="field-row">
-        <label>List</label>
-        <select
-          value={card.list ?? ''}
-          style={{ borderLeftColor: listColor(board, card.list) }}
-          onChange={e => save({ list: e.target.value || null })}
-        >
-          <option value="">Map only (idea)</option>
-          {board.meta.lists.map(l => (
-            <option key={l.id} value={l.id}>
-              {l.title}
-            </option>
-          ))}
-        </select>
-        <label className="check">
-          <input type="checkbox" checked={!!card.complete} onChange={e => save({ complete: e.target.checked || undefined })} />
-          Complete
-        </label>
-      </div>
-
-      <div className="tackle-row">
-        {desktop && (
-          <button className="accent" title="A new Code session in the Claude desktop app" onClick={() => void tackleCards(board.path, [card.id], 'desktop')}>
-            Claude desktop
-          </button>
-        )}
-        <button
-          className={desktop ? '' : 'accent'}
-          title="A Claude Code session in the terminal panel"
-          onClick={() => void tackleCards(board.path, [card.id], 'local')}
-        >
-          Terminal
-        </button>
-        <button title="A terminal session in its own git worktree" onClick={() => void tackleCards(board.path, [card.id], 'local-worktree')}>
-          Worktree
-        </button>
-        <button title="A claude.ai/code session on the pushed branch" onClick={() => void tackleCards(board.path, [card.id], 'cloud')}>
-          Cloud
-        </button>
-        <span className="spacer" />
-        <button
-          className="ghost"
-          title={`Talk the card through ${desktop ? 'in Claude desktop' : 'in a terminal'}: questions, scope, details for the card; nothing is implemented unless you ask`}
-          onClick={() => void discussCards(board.path, [card.id], desktop ? 'desktop' : 'local')}
-        >
-          Discuss
-        </button>
-      </div>
-
-      <section>
-        <div className="section-head">
-          <h3>Description</h3>
-          <button className="link" onClick={() => setEditing(e => !e)}>
-            {editing ? 'Preview' : 'Edit'}
+      <div className="drawer-top">
+        <div className="drawer-head">
+          <span className="card-id big">{card.id}</span>
+          <span className="muted">{board.meta.title}</span>
+          <span className="spacer" />
+          <button className="icon-button" aria-label="Close" onClick={() => actions.closeCard()}>
+            ×
           </button>
         </div>
-        {editing ? (
-          <textarea
-            className="body-input"
-            data-field="body"
-            value={body}
-            placeholder="Markdown"
-            rows={Math.min(24, Math.max(6, body.split('\n').length + 1))}
-            onChange={e => setBody(e.target.value)}
-            onBlur={() => body !== card.body && save({ body })}
-          />
-        ) : (
-          <div className="markdown" onDoubleClick={() => setEditing(true)}>
-            {card.body.trim() ? (
-              <Markdown remarkPlugins={[remarkGfm]}>{card.body}</Markdown>
-            ) : (
-              <p className="muted">No description.</p>
-            )}
-          </div>
-        )}
-      </section>
 
-      <section>
-        <h3>Linked cards</h3>
-        <div className="links">
-          {card.links.map(id => {
-            const entry = titleOf(id)
-            return (
-              <span key={id} className="link-chip">
-                <button className="link" onClick={() => void openLinked(id, entry)}>
-                  {id}
-                </button>
-                <span className="link-title">{entry?.title ?? 'not found'}</span>
-                <button
-                  className="icon-button small"
-                  aria-label={`Unlink ${id}`}
-                  onClick={() => save({ links: card.links.filter(l => l !== id) })}
-                >
-                  ×
-                </button>
-              </span>
-            )
-          })}
-        </div>
-        <LinkPicker
-          index={index.filter(e => e.id !== card.id && !card.links.includes(e.id))}
-          onPick={id => save({ links: [...card.links, id] })}
+        <textarea
+          className="title-input"
+          data-field="title"
+          rows={2}
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+          onBlur={() => title.trim() && title !== card.title && save({ title: title.trim() })}
+          onKeyDown={e => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              ;(e.target as HTMLTextAreaElement).blur()
+            }
+          }}
         />
-      </section>
+      </div>
 
-      <section>
-        <h3>Commits</h3>
-        {commits.length ? (
-          <ul className="commits">
-            {commits.map(c => (
-              <CommitRow key={c.sha} boardPath={board.path} commit={c} />
+      <div className="drawer-body">
+        <div className="field-row">
+          <label>List</label>
+          <select
+            value={card.list ?? ''}
+            style={{ borderLeftColor: listColor(board, card.list) }}
+            onChange={e => save({ list: e.target.value || null })}
+          >
+            <option value="">Map only (idea)</option>
+            {board.meta.lists.map(l => (
+              <option key={l.id} value={l.id}>
+                {l.title}
+              </option>
             ))}
-          </ul>
-        ) : (
-          <p className="muted small">
-            None yet. Commits whose message has a <code>Card: {card.id}</code> line show up here.
-          </p>
-        )}
-      </section>
+          </select>
+          <label className="check">
+            <input type="checkbox" checked={!!card.complete} onChange={e => save({ complete: e.target.checked || undefined })} />
+            Complete
+          </label>
+        </div>
 
-      {card.sessions.length > 0 && (
+        <div className="tackle-row">
+          {desktop && (
+            <button className="accent" title="A new Code session in the Claude desktop app" onClick={() => void tackleCards(board.path, [card.id], 'desktop')}>
+              Claude desktop
+            </button>
+          )}
+          <button
+            className={desktop ? '' : 'accent'}
+            title="A Claude Code session in the terminal panel"
+            onClick={() => void tackleCards(board.path, [card.id], 'local')}
+          >
+            Terminal
+          </button>
+          <button title="A terminal session in its own git worktree" onClick={() => void tackleCards(board.path, [card.id], 'local-worktree')}>
+            Worktree
+          </button>
+          <button title="A claude.ai/code session on the pushed branch" onClick={() => void tackleCards(board.path, [card.id], 'cloud')}>
+            Cloud
+          </button>
+          <span className="spacer" />
+          <button
+            className="ghost"
+            title={`Talk the card through ${desktop ? 'in Claude desktop' : 'in a terminal'}: questions, scope, details for the card; nothing is implemented unless you ask`}
+            onClick={() => void discussCards(board.path, [card.id], desktop ? 'desktop' : 'local')}
+          >
+            Discuss
+          </button>
+        </div>
+
         <section>
           <div className="section-head">
-            <h3>Claude sessions</h3>
-            {card.sessions.length > 1 && (
-              <button
-                className="link"
-                title="Take every session off this card; the conversations themselves stay in Claude Code"
-                onClick={() => save({ sessions: [] })}
-              >
-                Forget all
-              </button>
-            )}
+            <h3>Description</h3>
+            <button className="link" onClick={() => setEditing(e => !e)}>
+              {editing ? 'Preview' : 'Edit'}
+            </button>
           </div>
-          <ul className="sessions">
-            {card.sessions
-              .map((s, index) => ({ s, index }))
-              .reverse()
-              .map(({ s, index }) => (
-                <SessionRow
-                  key={`${s.started}-${index}`}
-                  boardPath={board.path}
-                  session={s}
-                  onForget={() => save({ sessions: card.sessions.filter((_, i) => i !== index) })}
-                />
-              ))}
-          </ul>
+          {editing ? (
+            <textarea
+              className="body-input"
+              data-field="body"
+              value={body}
+              placeholder="Markdown"
+              rows={Math.min(24, Math.max(6, body.split('\n').length + 1))}
+              onChange={e => setBody(e.target.value)}
+              onBlur={() => body !== card.body && save({ body })}
+            />
+          ) : (
+            <div className="markdown" onDoubleClick={() => setEditing(true)}>
+              {card.body.trim() ? (
+                <Markdown remarkPlugins={[remarkGfm]}>{card.body}</Markdown>
+              ) : (
+                <p className="muted">No description.</p>
+              )}
+            </div>
+          )}
         </section>
-      )}
 
-      <div className="drawer-foot">
-        <button
-          className="ghost"
-          onClick={async () => api.shell.openPath(await api.cards.filePath(board.path, card.id))}
-        >
-          Open file
-        </button>
-        {card.trello && (
-          <button className="ghost" onClick={() => api.shell.openExternal(card.trello!)}>
-            Trello
-          </button>
+        <section>
+          <h3>Linked cards</h3>
+          <div className="links">
+            {card.links.map(id => {
+              const entry = titleOf(id)
+              return (
+                <span key={id} className="link-chip">
+                  <button className="link" onClick={() => void openLinked(id, entry)}>
+                    {id}
+                  </button>
+                  <span className="link-title">{entry?.title ?? 'not found'}</span>
+                  <button
+                    className="icon-button small"
+                    aria-label={`Unlink ${id}`}
+                    onClick={() => save({ links: card.links.filter(l => l !== id) })}
+                  >
+                    ×
+                  </button>
+                </span>
+              )
+            })}
+          </div>
+          <LinkPicker
+            index={index.filter(e => e.id !== card.id && !card.links.includes(e.id))}
+            onPick={id => save({ links: [...card.links, id] })}
+          />
+        </section>
+
+        <section>
+          <h3>Commits</h3>
+          {commits.length ? (
+            <ul className="commits">
+              {commits.map(c => (
+                <CommitRow key={c.sha} boardPath={board.path} commit={c} />
+              ))}
+            </ul>
+          ) : (
+            <p className="muted small">
+              None yet. Commits whose message has a <code>Card: {card.id}</code> line show up here.
+            </p>
+          )}
+        </section>
+
+        {card.sessions.length > 0 && (
+          <section>
+            <div className="section-head">
+              <h3>Claude sessions</h3>
+              {card.sessions.length > 1 && (
+                <button
+                  className="link"
+                  title="Take every session off this card; the conversations themselves stay in Claude Code"
+                  onClick={() => save({ sessions: [] })}
+                >
+                  Forget all
+                </button>
+              )}
+            </div>
+            <ul className="sessions">
+              {card.sessions
+                .map((s, index) => ({ s, index }))
+                .reverse()
+                .map(({ s, index }) => (
+                  <SessionRow
+                    key={`${s.started}-${index}`}
+                    boardPath={board.path}
+                    session={s}
+                    onForget={() => save({ sessions: card.sessions.filter((_, i) => i !== index) })}
+                  />
+                ))}
+            </ul>
+          </section>
         )}
-        <span className="spacer" />
-        <button className="ghost danger" onClick={() => save({ archived: card.archived ? undefined : true })}>
-          {card.archived ? 'Unarchive' : 'Archive'}
-        </button>
+
+        <div className="drawer-foot">
+          <button
+            className="ghost"
+            onClick={async () => api.shell.openPath(await api.cards.filePath(board.path, card.id))}
+          >
+            Open file
+          </button>
+          {card.trello && (
+            <button className="ghost" onClick={() => api.shell.openExternal(card.trello!)}>
+              Trello
+            </button>
+          )}
+          <span className="spacer" />
+          <button className="ghost danger" onClick={() => save({ archived: card.archived ? undefined : true })}>
+            {card.archived ? 'Unarchive' : 'Archive'}
+          </button>
+        </div>
+        <p className="muted tiny">
+          Created {localTime(card.created, false)}
+          {card.updated ? ` · updated ${localTime(card.updated)}` : ''}
+        </p>
       </div>
-      <p className="muted tiny">
-        Created {localTime(card.created, false)}
-        {card.updated ? ` · updated ${localTime(card.updated)}` : ''}
-      </p>
     </aside>
   )
 }
