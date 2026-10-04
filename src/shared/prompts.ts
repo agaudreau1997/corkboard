@@ -13,6 +13,11 @@ export type PromptContext = {
   listTitle?: string
   /** Title of the board, when the cards are a whole board. */
   boardTitle?: string
+  /**
+   * The folder a session the Claude desktop app starts should be in: the app can open it in the
+   * last folder it used instead, so the prompt asks the session to check before anything else.
+   */
+  workDir?: string
 }
 
 export type Purpose = 'tackle' | 'discuss'
@@ -66,6 +71,7 @@ export function discussPrompt(cards: Card[], ctx: PromptContext): string {
     )
     parts.push(`The cards are Markdown files in the board repo ${ctx.boardRoot} (its CLAUDE.md describes the card format).`)
   }
+  if (ctx.workDir) parts.push(folderCheck(ctx.workDir))
 
   const rules = [
     'This is a discussion, not a tackle. Do not implement anything: no code changes, no new files, no commits in the code repo, unless I explicitly ask you to in this conversation.',
@@ -119,6 +125,7 @@ export function tacklePrompt(cards: Card[], ctx: PromptContext): string {
         : `The cards are Markdown files in the board repo ${ctx.boardRoot} (its CLAUDE.md describes the card format).`,
     )
   }
+  if (ctx.workDir) parts.push(folderCheck(ctx.workDir))
   if (!one) rules.push('Work through them one at a time.')
   rules.push(
     one
@@ -138,6 +145,10 @@ export function tacklePrompt(cards: Card[], ctx: PromptContext): string {
   const notes = ctx.meta.promptNotes?.trim()
   if (notes) parts.push(notes)
   return parts.join('\n\n')
+}
+
+function folderCheck(dir: string): string {
+  return `Work in ${dir}. The Claude desktop app can open a session in the last folder it used: if your working directory is not ${dir}, stop and tell me before doing anything else.`
 }
 
 function listName(card: Card, meta: BoardMeta): string {

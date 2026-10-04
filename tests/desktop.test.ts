@@ -41,20 +41,21 @@ function desktopSession(opts: { local: string; cli: string; cwd: string; created
 }
 
 describe('Claude desktop links', () => {
-  it('opens a new Code session with the prompt and every folder', () => {
-    const { url, marker } = newSessionUrl('Tackle card RS-961: fix "stuck" enemies\n\nmore', ['/code', '/board'])
+  it('opens a new Code session with the prompt, in one folder', () => {
+    const { url, marker } = newSessionUrl('Tackle card RS-961: fix "stuck" enemies\n\nmore', '/code')
     const parsed = new URL(url)
     expect(parsed.protocol).toBe('claude:')
     expect(parsed.host).toBe('code')
     expect(parsed.pathname).toBe('/new')
     expect(parsed.searchParams.get('q')).toBe('Tackle card RS-961: fix "stuck" enemies\n\nmore')
-    expect(parsed.searchParams.getAll('folder')).toEqual(['/code', '/board'])
+    // Given two folders, the desktop app ignores both and opens the last folder it used.
+    expect(parsed.searchParams.getAll('folder')).toEqual(['/code'])
     expect(marker).toBe('Tackle card RS-961: fix "stuck" enemies')
   })
 
   it('hands a prompt too long for a link over in a file', () => {
     const long = `Tackle these 40 cards\n${'x'.repeat(20_000)}`
-    const { url, marker } = newSessionUrl(long, ['/code'])
+    const { url, marker } = newSessionUrl(long, '/code')
     const q = new URL(url).searchParams.get('q')!
     expect(q.length).toBeLessThan(500)
     expect(q).toContain(marker)

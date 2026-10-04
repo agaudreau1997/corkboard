@@ -149,6 +149,13 @@ describe('tackle prompts', () => {
     expect(prompt).not.toContain('list:')
   })
 
+  it('in Claude desktop: names the folder, which the session checks first', () => {
+    const prompt = tacklePrompt([base], { ...ctx, workDir: '/code' })
+    expect(prompt).toContain('Work in /code.')
+    expect(prompt).toContain('if your working directory is not /code, stop and tell me')
+    expect(tacklePrompt([base], ctx)).not.toContain('Work in')
+  })
+
   it('appends the board prompt notes', () => {
     const prompt = tacklePrompt([base], { ...ctx, meta: { ...meta, promptNotes: 'Use opus-xhigh.' } })
     expect(prompt.endsWith('Use opus-xhigh.')).toBe(true)

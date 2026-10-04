@@ -505,7 +505,8 @@ try {
   check(!!newLink, 'Claude desktop opened a claude://code/new link')
   const linkParams = new URL(newLink).searchParams
   check(linkParams.get('q')?.startsWith(`Tackle card ${tackleId}`) ?? false, 'the link carries the prompt')
-  check(linkParams.getAll('folder').join() === [codeRepo, root].join(), `with the code repo and the board repo as folders`)
+  check(linkParams.getAll('folder').join() === codeRepo, 'in the code repo, its only folder')
+  check(linkParams.get('q')?.includes(`if your working directory is not ${codeRepo}, stop`) ?? false, 'the prompt asks the session to check its folder')
   check(await until(() => readFileSync(cardFileOf(tackleId), 'utf8').includes('kind: desktop')), 'the desktop session is recorded')
   check((await page.locator('.drawer .sessions li', { hasText: 'waiting' }).count()) === 1, 'waiting until its prompt is sent')
   // The desktop app indexes the session and writes its transcript once the prompt is sent.

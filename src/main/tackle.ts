@@ -38,7 +38,7 @@ export async function tackle(
   if (discuss && (req.mode === 'cloud' || req.mode === 'local-worktree')) {
     throw new Error('A discussion runs in Claude desktop or a terminal.')
   }
-  const cwd = board.codeRepo && existsSync(board.codeRepo) ? board.codeRepo : store.root
+  const cwd = sessionDir(store, req.boardPath)
   // A discussion of several cards is one conversation: triage needs them side by side.
   const groups = req.split === 'each' && !discuss ? cards.map(c => [c]) : [cards]
   const opened: PtyInfo[] = []
@@ -54,9 +54,10 @@ export async function tackle(
     let command: string[]
 
     if (req.mode === 'desktop') {
-      // A new session in the Claude desktop app, in the code repo with the board repo beside it.
-      const folders = store.root === cwd ? [cwd] : [cwd, store.root]
-      const { url, marker } = newSessionUrl(prompt, folders)
+      // A new session in the Claude desktop app, in the code repo. One folder only: given the board
+      // repo as a second, the app ignored both and opened the last folder it used. The session
+      // reaches the cards by the paths in the prompt.
+      const { url, marker } = newSessionUrl(prompt, cwd)
       await recordSession(store, req.boardPath, group, { kind: 'desktop', started, cwd, cards: ids, name, ...purpose })
       await openUrl(url, open)
       watchForDesktopSession(store, req.boardPath, ids, started, cwd, marker)
@@ -116,7 +117,14 @@ function buildPrompt(store: BoardStore, req: TackleRequest, cards: Card[]): stri
     cloud: req.mode === 'cloud',
     listTitle: req.listTitle,
     boardTitle: req.boardTitle,
+    workDir: req.mode === 'desktop' ? sessionDir(store, req.boardPath) : undefined,
   })
+}
+
+/** Where a board's sessions start: its code repo when that is on this machine, else the board repo. */
+function sessionDir(store: BoardStore, boardPath: string): string {
+  const board = store.board(boardPath)
+  return board.codeRepo && existsSync(board.codeRepo) ? board.codeRepo : store.root
 }
 
 /**
@@ -155,9 +163,7 @@ export async function resume(
     else throw new Error('The desktop app has not shown this session yet: send its prompt there first.')
     return null
   }
-  const board = store.board(boardPath)
-  const fallback = board.codeRepo && existsSync(board.codeRepo) ? board.codeRepo : store.root
-  const cwd = ref.cwd && existsSync(ref.cwd) ? ref.cwd : fallback
+  const cwd = ref.cwd && existsSync(ref.cwd) ? ref.cwd : sessionDir(store, boardPath)
   const label = ref.cards?.join(' ') ?? 'session'
   if (ref.kind === 'cloud') {
     const target = ref.id ?? ref.url

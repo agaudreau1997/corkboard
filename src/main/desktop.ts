@@ -1,8 +1,10 @@
 // The Claude desktop app, reached through its `claude://` links (read from the app itself; none
 // of this is a documented API):
-//   claude://code/new?q=<prompt>&folder=<path>[&folder=<path>]   a new Code session, prompt filled in
-//   claude://code/continue?session=local_<id>                       opens one of its sessions
-//   claude://resume?session=<cli uuid>                              imports a CLI session
+//   claude://code/new?q=<prompt>&folder=<path>   a new Code session, prompt filled in
+//   claude://code/continue?session=local_<id>      opens one of its sessions
+//   claude://resume?session=<cli uuid>             imports a CLI session
+// The link takes one folder: given two, the app ignores both and opens the last folder it used. It
+// asks to trust a folder that comes from a link, every time, trusted or not.
 // The app keeps an index of its Code sessions, one `local_<id>.json` per session (with the CLI
 // session id, its folder and when it started), which is how a tackle finds the session it opened.
 
@@ -32,7 +34,7 @@ export function desktopAvailable(): boolean {
  * The link that opens a new Code session. A prompt longer than the app takes is written to a file
  * and the link asks the session to read it.
  */
-export function newSessionUrl(prompt: string, folders: string[]): { url: string; marker: string } {
+export function newSessionUrl(prompt: string, folder: string): { url: string; marker: string } {
   let q = prompt
   let marker = prompt.split('\n')[0].slice(0, 80)
   if (prompt.length > PROMPT_BUDGET) {
@@ -43,7 +45,7 @@ export function newSessionUrl(prompt: string, folders: string[]): { url: string;
   }
   const params = new URLSearchParams()
   params.set('q', q)
-  for (const folder of folders) params.append('folder', folder)
+  params.set('folder', folder)
   return { url: `claude://code/new?${params}`, marker }
 }
 
