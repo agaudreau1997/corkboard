@@ -4,7 +4,7 @@
 
 import { existsSync, promises as fs, watch, type FSWatcher } from 'node:fs'
 import path from 'node:path'
-import { between, cardNumber, parseCard, serializeCard, slugify, sortCards } from '@shared/cardfile'
+import { between, cardNumber, parseCard, serializeCard, slugify, sortCards, tryParseCard } from '@shared/cardfile'
 import { isEmptyTheme, parseTheme, THEME_FILE, themeText } from '@shared/theme'
 import type {
   BoardDelta,
@@ -592,7 +592,9 @@ export class BoardStore {
         }
         if (this.texts.get(abs) === text) continue
         this.texts.set(abs, text)
-        const card = parseCard(text, id)
+        const card = tryParseCard(text, id)
+        // Saved half-way (front matter that does not parse): the card stays as it was until the next save.
+        if (!card) continue
         const isNew = !board.cards.some(c => c.id === card.id)
         board.cards = sortCards([...board.cards.filter(c => c.id !== card.id), card])
         delta(boardPath).cards.push(card)

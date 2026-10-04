@@ -2,14 +2,17 @@
 //
 // A sync commits what is pending, fetches, rebases the local commits onto the remote branch and
 // pushes. It runs at start, every minute, when the window gets focus and a moment after every
-// auto-commit. Conflicts are rare (one file per card) and resolved without asking where the
-// answer is clear: a card keeps the side edited last (its `updated` stamp), a map keeps every
-// position, a board.json keeps every list, the theme.json keeps this machine's. Anything else
-// aborts the rebase and reports it.
+// auto-commit. It never rebases over uncommitted changes: a write that lands mid-sync is
+// committed first, or the sync waits and goes round again. (Stashing them instead put them back
+// on top of the rebased files, and where both sides had changed a card, left conflict markers in
+// it, which stopped every commit after.) Conflicts are rare (one file per card) and resolved
+// without asking where the answer is clear: a card keeps the side edited last (its `updated`
+// stamp), a map keeps every position, a board.json keeps every list, the theme.json keeps this
+// machine's. Anything else aborts the rebase and reports it.
 
 import { existsSync, promises as fs } from 'node:fs'
 import path from 'node:path'
-import { parseCard } from '@shared/cardfile'
+import { tryParseCard } from '@shared/cardfile'
 import { THEME_FILE } from '@shared/theme'
 import type { BoardMap, BoardMeta, SyncStatus } from '@shared/types'
 import { type AutoCommitter, git, isRepo } from './git'
@@ -102,6 +105,10 @@ export class BoardSync {
       const { behind } = await this.counts(upstream)
       if (behind > 0) {
         const outcome = await this.rebase(upstream)
+        if (outcome === 'busy') {
+          this.schedulePush(2000)
+          return this.set({ ...this.status, state: 'syncing', message: "Waiting for the board's changes to be committed" })
+        }
         if (outcome !== true) return this.set({ state: 'conflict', at: last, message: outcome })
         pulled = behind
       }
@@ -126,6 +133,19 @@ export class BoardSync {
     return { ahead: ahead || 0, behind: behind || 0 }
   }
 
+  /** Commits what waits (a card dragged, a session recorded since the last commit); false if it stays. */
+  private async commitPending(): Promise<boolean> {
+    for (let tries = 0; tries < 3; tries++) {
+      if (await this.clean()) return true
+      await this.committer.flush()
+    }
+    return this.clean()
+  }
+
+  private async clean(): Promise<boolean> {
+    return !(await git(this.root, ['status', '--porcelain', '--untracked-files=all'])).trim()
+  }
+
   private rebaseInProgress(): boolean {
     return (
       existsSync(path.join(this.root, '.git', 'rebase-merge')) ||
@@ -133,12 +153,18 @@ export class BoardSync {
     )
   }
 
-  /** true, or why it gave up (the rebase is aborted then, leaving the repo as it was). */
-  private async rebase(upstream: string): Promise<true | string> {
+  /**
+   * true; 'busy' when changes it could not commit keep it from starting; or why it gave up (the
+   * rebase is aborted then, leaving the repo as it was).
+   */
+  private async rebase(upstream: string): Promise<true | 'busy' | string> {
+    if (!(await this.commitPending())) return 'busy'
     try {
-      await git(this.root, ['rebase', '--autostash', upstream])
+      await git(this.root, ['rebase', upstream])
       return true
-    } catch {
+    } catch (error) {
+      // Refused before it began: a write landed between the commit and the rebase, or worse.
+      if (!this.rebaseInProgress()) return (await this.clean()) ? `The rebase failed: ${firstLine(error)}` : 'busy'
       /* conflicts: resolve them below, commit by commit */
     }
     for (let round = 0; round < 200 && this.rebaseInProgress(); round++) {
@@ -209,11 +235,15 @@ export class BoardSync {
   }
 }
 
-/** The side whose card was edited last; the local one on a tie or with no stamps. */
-export function newerCard(remote: string, local: string): string {
-  const r = parseCard(remote).updated ?? ''
-  const l = parseCard(local).updated ?? ''
-  return r > l ? remote : local
+/**
+ * The side whose card was edited last; the local one on a tie or with no stamps. A side that does
+ * not parse (saved half-way) loses; with neither readable there is no merge.
+ */
+export function newerCard(remote: string, local: string): string | undefined {
+  const r = tryParseCard(remote)
+  const l = tryParseCard(local)
+  if (!r || !l) return l ? local : r ? remote : undefined
+  return (r.updated ?? '') > (l.updated ?? '') ? remote : local
 }
 
 /** Every position from both sides (the local one where both moved a card), local settings. */

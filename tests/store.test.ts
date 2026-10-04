@@ -183,6 +183,13 @@ describe('BoardStore', () => {
     await until(() => deltas.find(d => d.cards.some(c => c.id === 'G-7')))
     expect(treeChanges).toBeGreaterThan(0)
 
+    // ...saves one half-way (front matter that does not parse): the card stays as it was...
+    writeFileSync(store.cardFile(p, 'G-7'), '---\nid: G-7\ntitle: [unclosed\nlist: done\n---\n')
+    await sleep(300)
+    expect(store.board(p).cards.find(c => c.id === 'G-7')?.list).toBe('todo')
+    writeFileSync(store.cardFile(p, 'G-7'), '---\nid: G-7\ntitle: Written by hand\nlist: done\npos: 5\n---\n')
+    await until(() => deltas.find(d => d.cards.some(c => c.id === 'G-7' && c.list === 'done')))
+
     // ...and removes one.
     rmSync(store.cardFile(p, 'G-7'))
     await until(() => deltas.find(d => d.removed.includes('G-7')))
@@ -316,6 +323,9 @@ describe('git', () => {
     await store.updateCard(p, 'G-1', { archived: true })
     expect(await committer.flush()).toBe('Archive G-1')
     expect(await committer.flush()).toBeUndefined()
+    // A card that does not parse (saved half-way by hand) is still committed, never stuck.
+    writeFileSync(store.cardFile(p, 'G-1'), '---\nid: G-1\ntitle: [unclosed\n---\n')
+    expect(await committer.flush()).toBe('Edit G-1')
     await store.saveTheme({ colors: { accent: '#d9a46c' } })
     expect(await committer.flush()).toBe("Add the project's theme")
     await store.saveTheme({ colors: { accent: '#5ec4d6' } })
@@ -324,7 +334,27 @@ describe('git', () => {
     expect(await committer.flush()).toBe("Remove the project's theme")
     const log = await git(root, ['log', '--format=%s'])
     expect(log.trim().split('\n').slice(-3)).toEqual(['Archive G-1', 'Move G-1: todo → done', 'Board: 2 changes'])
-    expect(committed.length).toBe(6)
+    expect(committed.length).toBe(7)
+  })
+
+  it('waits for a commit in flight, then commits what came after it', async () => {
+    execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: root })
+    execFileSync('git', ['config', 'user.email', 't@example.com'], { cwd: root })
+    execFileSync('git', ['config', 'user.name', 'Test'], { cwd: root })
+    const store = new BoardStore(root)
+    await store.init()
+    const p = await store.createBoard('', 'Game', 'G')
+    await store.createCard(p, { title: 'First', list: 'todo' })
+    const committer = new AutoCommitter(root, 10_000, () => {})
+    const first = committer.flush()
+    await store.createCard(p, { title: 'Second', list: 'todo' })
+    await committer.flush()
+    // Whoever asked (the sync, before it rebases) finds nothing left to commit.
+    expect(await git(root, ['status', '--porcelain'])).toBe('')
+    await first
+    const log = await git(root, ['log', '--format=%B'])
+    expect(log).toContain('Add G-1: First')
+    expect(log).toContain('Add G-2: Second')
   })
 
   it('reads Card trailers from every branch of a code repo', async () => {

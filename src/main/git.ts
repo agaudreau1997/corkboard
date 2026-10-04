@@ -4,7 +4,7 @@
 import { execFile } from 'node:child_process'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
-import { parseCard } from '@shared/cardfile'
+import { tryParseCard } from '@shared/cardfile'
 import { THEME_FILE } from '@shared/theme'
 import type { CodeCommit } from '@shared/types'
 
@@ -79,8 +79,8 @@ export async function commitFiles(repo: string, sha: string): Promise<{ status: 
  */
 export class AutoCommitter {
   private timer?: NodeJS.Timeout
-  private running = false
-  private again = false
+  /** The commit under way, which a flush waits for. */
+  private current?: Promise<string | undefined>
 
   constructor(
     private root: string,
@@ -93,13 +93,20 @@ export class AutoCommitter {
     this.timer = setTimeout(() => void this.flush(), this.delayMs)
   }
 
+  /**
+   * Commits what is pending now. A commit already under way may have staged before the latest
+   * writes, so this waits for it and then commits what is left: once it resolves, everything
+   * written before the call is committed (or the commit failed, and a retry is scheduled). The
+   * sync relies on that: it must not rebase over changes still waiting for a commit.
+   */
   async flush(): Promise<string | undefined> {
     clearTimeout(this.timer)
-    if (this.running) {
-      this.again = true
-      return undefined
-    }
-    this.running = true
+    while (this.current) await this.current
+    this.current = this.commit().finally(() => (this.current = undefined))
+    return this.current
+  }
+
+  private async commit(): Promise<string | undefined> {
     try {
       if (!(await isRepo(this.root))) return undefined
       const status = await git(this.root, ['status', '--porcelain=v1', '-z', '--untracked-files=all'])
@@ -122,12 +129,6 @@ export class AutoCommitter {
       console.warn('[corkboard] board auto-commit failed:', (error as Error).message)
       this.touch()
       return undefined
-    } finally {
-      this.running = false
-      if (this.again) {
-        this.again = false
-        this.touch()
-      }
     }
   }
 
@@ -151,13 +152,16 @@ export class AutoCommitter {
           lines.push(`Remove ${id}`)
           continue
         }
-        const now = parseCard(await fs.readFile(path.join(this.root, file), 'utf8'), id)
+        const now = tryParseCard(await fs.readFile(path.join(this.root, file), 'utf8'), id)
         if (status === 'A' || !hasHead) {
-          lines.push(`Add ${id}: ${now.title}`)
+          lines.push(now ? `Add ${id}: ${now.title}` : `Add ${id}`)
           continue
         }
-        const before = parseCard(await git(this.root, ['show', `HEAD:${file}`]).catch(() => ''), id)
-        if (before.list !== now.list) lines.push(`Move ${id}: ${before.list ?? 'map'} → ${now.list ?? 'map'}`)
+        const before = tryParseCard(await git(this.root, ['show', `HEAD:${file}`]).catch(() => ''), id)
+        // A card saved half-way is committed all the same: one unreadable file must not stop
+        // every commit (and push) after it.
+        if (!now || !before) lines.push(`Edit ${id}`)
+        else if (before.list !== now.list) lines.push(`Move ${id}: ${before.list ?? 'map'} → ${now.list ?? 'map'}`)
         else if (!before.archived && now.archived) lines.push(`Archive ${id}`)
         else if (now.sessions.length > before.sessions.length) {
           const last = now.sessions.at(-1)

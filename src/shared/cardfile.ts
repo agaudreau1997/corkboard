@@ -51,6 +51,15 @@ export function parseCard(text: string, fallbackId = ''): Card {
   }
 }
 
+/** parseCard, or undefined for front matter that does not parse (a file saved half-way by hand). */
+export function tryParseCard(text: string, fallbackId = ''): Card | undefined {
+  try {
+    return parseCard(text, fallbackId)
+  } catch {
+    return undefined
+  }
+}
+
 export function serializeCard(card: Card): string {
   const front: Record<string, unknown> = {
     id: card.id,

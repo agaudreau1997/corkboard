@@ -28,7 +28,7 @@ function clone(name: string): string {
 function machine(root: string) {
   const committer = new AutoCommitter(root, 10_000, () => {})
   const sync = new BoardSync(root, committer, () => {}, 0)
-  return { root, sync, file: (rel: string) => path.join(root, rel) }
+  return { root, committer, sync, file: (rel: string) => path.join(root, rel) }
 }
 
 beforeEach(() => {
@@ -76,6 +76,49 @@ describe('BoardSync', () => {
     await a.sync.sync()
     expect(parseCard(readFileSync(a.file('game/cards/G-1.md'), 'utf8')).title).toBe('Renamed on B')
     expect(run(a.root, 'status', '--porcelain')).toBe('')
+  })
+
+  it('commits a write that lands mid-sync before rebasing over the same card', async () => {
+    const a = machine(clone('a'))
+    const b = machine(clone('b'))
+    const g1 = (m: typeof a) => m.file('game/cards/G-1.md')
+    // A moved the card at 12:00 and synced. B renamed it at 11:00 (the sync commits that), and
+    // at 12:10, while the sync fetched, moved it again (a drag, a session recorded on it).
+    writeFileSync(g1(a), serializeCard(card('G-1', 'done', '2026-10-02T12:00:00.000Z', 'Moved on A')))
+    await a.sync.sync()
+    writeFileSync(g1(b), serializeCard(card('G-1', 'todo', '2026-10-02T11:00:00.000Z', 'Renamed on B')))
+    const flush = b.committer.flush.bind(b.committer)
+    let late = true
+    b.committer.flush = async () => {
+      const out = await flush()
+      if (late) {
+        late = false
+        writeFileSync(g1(b), serializeCard(card('G-1', 'doing', '2026-10-02T12:10:00.000Z', 'Renamed on B')))
+      }
+      return out
+    }
+    const status = await b.sync.sync()
+    const text = readFileSync(g1(b), 'utf8')
+    expect(text).not.toContain('<<<<<<<')
+    expect(parseCard(text)).toMatchObject({ list: 'doing', title: 'Renamed on B' })
+    expect(status.state).toBe('synced')
+    expect(run(b.root, 'status', '--porcelain')).toBe('')
+  })
+
+  it('waits rather than rebase over a change it could not commit', async () => {
+    const a = machine(clone('a'))
+    const b = machine(clone('b'))
+    writeFileSync(a.file('game/cards/G-1.md'), serializeCard(card('G-1', 'done', '2026-10-02T12:00:00.000Z')))
+    await a.sync.sync()
+    // Something holds the board repo (a git process of its own): B's change stays uncommitted.
+    b.committer.flush = async () => undefined
+    const mine = serializeCard(card('G-1', 'todo', '2026-10-02T12:10:00.000Z', 'Not committed yet'))
+    writeFileSync(b.file('game/cards/G-1.md'), mine)
+    const status = await b.sync.sync()
+    b.sync.stop()
+    expect(status.state).toBe('syncing')
+    expect(readFileSync(b.file('game/cards/G-1.md'), 'utf8')).toBe(mine)
+    expect(run(b.root, 'rev-list', '--count', 'HEAD..origin/main').trim()).toBe('1')
   })
 
   it('merges map positions and lists from both sides', async () => {
@@ -145,6 +188,11 @@ describe('merge helpers', () => {
     expect(newerCard(old, fresh)).toBe(fresh)
     expect(newerCard(fresh, old)).toBe(fresh)
     expect(newerCard(old, old.replace('old', 'mine'))).toContain('mine')
+    // A side that does not parse (a half-saved hand edit) loses; with both broken, no merge.
+    const broken = '---\nid: G-1\ntitle: [unclosed\n---\n'
+    expect(newerCard(broken, old)).toBe(old)
+    expect(newerCard(fresh, broken)).toBe(fresh)
+    expect(newerCard(broken, broken)).toBeUndefined()
   })
 
   it('mergeMaps and mergeBoards refuse broken JSON', () => {
