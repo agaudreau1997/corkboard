@@ -1,0 +1,23 @@
+appId: com.corkboard.app
+productName: Corkboard
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**
+  # The window icon: index.ts loads it from ../../build/icon.png.
+  - build/icon.png
+# node-pty ships N-API prebuilds, so there is nothing to compile against Electron's headers.
+npmRebuild: false
+# node-pty starts conpty.dll, OpenConsole.exe and winpty-agent.exe from its own folder,
+# which can't live inside the asar archive.
+asarUnpack:
+  - node_modules/node-pty/**
+win:
+  icon: build/icon.png
+  target:
+    - nsis
+    - portable
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

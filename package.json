@@ -13,7 +13,8 @@
     "e2e": "electron-vite build && node tests/e2e/smoke.mjs",
     "import-trello": "node scripts/import-trello.mts",
     "install-launcher": "npm run build && bash scripts/install-launcher.sh",
-    "icon": "python3 scripts/make-icon.py"
+    "icon": "python3 scripts/make-icon.py",
+    "dist": "electron-vite build && electron-builder --win"
   },
   "dependencies": {
     "node-pty": "1.1.0",
@@ -31,6 +32,7 @@
     "@xterm/xterm": "^6.0.0",
     "@xyflow/react": "^12.12.0",
     "electron": "^44.5.1",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "playwright": "^1.63.0",
     "react": "^19.3.0",

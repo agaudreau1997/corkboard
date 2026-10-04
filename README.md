@@ -51,6 +51,8 @@ To start it from the desktop menu (and get its icon on the taskbar, which a Wayl
 
 **Windows.** The terminals run PowerShell there (`pwsh` when installed: Windows PowerShell 5.1 drops the double quotes inside an argument it passes to a program, and prompts have quotes), with the command handed over as JSON in an environment variable rather than pasted into a command line. That path is written but not yet run on Windows.
 
+`npm run dist` packages it for Windows into `dist/`: `Corkboard Setup <version>.exe` (an installer with a Start menu entry and an uninstaller), `Corkboard <version>.exe` (a single portable exe that unpacks itself on each start), and `win-unpacked/Corkboard.exe` (the app as a plain folder). The settings are in `electron-builder.yml`. The exes are unsigned, so SmartScreen warns on first run (*More info → Run anyway*).
+
 ## Tests
 
 ```bash
