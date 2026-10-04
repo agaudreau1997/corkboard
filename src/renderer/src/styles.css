@@ -1390,8 +1390,26 @@ tr.selected td {
   padding: 0;
 }
 
+.commit-row {
+  display: flex;
+  align-items: center;
+}
+
+/* Shown on hover only, so a list of commits stays a list of subjects. */
+.commit-row .copy-sha {
+  visibility: hidden;
+  padding: 4px;
+}
+
+.commit-row:hover .copy-sha,
+.commit-row .copy-sha:focus-visible {
+  visibility: visible;
+}
+
 .commit-line {
   display: flex;
+  flex: 1;
+  min-width: 0;
   gap: 8px;
   width: 100%;
   background: none;
