@@ -846,6 +846,13 @@ code,
   white-space: pre-wrap;
 }
 
+.rename-card {
+  display: block;
+  width: 100%;
+  resize: vertical;
+  font: inherit;
+}
+
 .card-meta {
   display: flex;
   flex-wrap: wrap;

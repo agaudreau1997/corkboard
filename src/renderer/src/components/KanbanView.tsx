@@ -541,7 +541,12 @@ const SortableCard = memo(function SortableCard(props: {
   commits: CodeCommit[] | undefined
   selected: boolean
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.card.id })
+  const [renaming, setRenaming] = useState(false)
+  // Not draggable while its title is being edited, so selecting text in the field moves nothing.
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: props.card.id,
+    disabled: renaming,
+  })
   return (
     <div
       ref={setNodeRef}
@@ -549,10 +554,43 @@ const SortableCard = memo(function SortableCard(props: {
       {...attributes}
       {...listeners}
     >
-      <CardFace {...props} />
+      <CardFace {...props} renaming={renaming} setRenaming={setRenaming} />
     </div>
   )
 })
+
+/** The title of a card being edited on the board. Enter or leaving it saves; Escape keeps the old one. */
+function RenameCard({ board, card, onDone }: { board: LoadedBoard; card: Card; onDone: () => void }) {
+  const [title, setTitle] = useState(card.title)
+  const save = () => {
+    const text = title.trim()
+    onDone()
+    if (text && text !== card.title) void actions.updateCard(board.path, card.id, { title: text })
+  }
+  return (
+    <textarea
+      className="rename-card"
+      autoFocus
+      rows={2}
+      value={title}
+      onFocus={e => e.target.select()}
+      onChange={e => setTitle(e.target.value)}
+      onBlur={save}
+      onClick={e => e.stopPropagation()}
+      onDoubleClick={e => e.stopPropagation()}
+      onKeyDown={e => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault()
+          ;(e.target as HTMLTextAreaElement).blur()
+        } else if (e.key === 'Escape') {
+          e.stopPropagation()
+          setTitle(card.title)
+          onDone()
+        }
+      }}
+    />
+  )
+}
 
 export function CardFace({
   board,
@@ -560,12 +598,16 @@ export function CardFace({
   commits,
   selected,
   dragging,
+  renaming,
+  setRenaming,
 }: {
   board: LoadedBoard
   card: Card
   commits: CodeCommit[] | undefined
   selected: boolean
   dragging?: boolean
+  renaming?: boolean
+  setRenaming?: (on: boolean) => void
 }) {
   const open = useStore(s => s.openCard?.boardPath === board.path && s.openCard.id === card.id)
   const menu = (e: React.MouseEvent) => openContextMenu(e, cardMenu(board, card))
@@ -594,9 +636,16 @@ export function CardFace({
         if (e.ctrlKey || e.metaKey || e.shiftKey) actions.toggleSelected(board.path, card.id)
         else actions.openCard(board.path, card.id)
       }}
+      onDoubleClick={e => {
+        if (setRenaming && !(e.ctrlKey || e.metaKey || e.shiftKey)) setRenaming(true)
+      }}
       onContextMenu={menu}
     >
-      <div className="card-title">{card.title}</div>
+      {renaming && setRenaming ? (
+        <RenameCard board={board} card={card} onDone={() => setRenaming(false)} />
+      ) : (
+        <div className="card-title">{card.title}</div>
+      )}
       <div className="card-meta">
         <span className="card-id">{card.id}</span>
         {card.complete && <span className="badge ok" title="Marked complete">✓</span>}

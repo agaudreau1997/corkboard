@@ -390,6 +390,19 @@ try {
   await page.keyboard.press('Control+a')
   await page.keyboard.type('Known bugs\n')
   check(await until(() => readFileSync(path.join(root, 'scratch-board/board.json'), 'utf8').includes('"Known bugs"')), 'double-clicking a list title renames it')
+  const renamed = page.locator('.card[data-card="SB-1"]')
+  await renamed.locator('.card-title').dblclick()
+  await page.keyboard.type('Thrown away')
+  await page.keyboard.press('Escape')
+  check((await renamed.locator('.rename-card').count()) === 0 && (await renamed.locator('.card-title').textContent()) === 'Drag me to done', 'Escape leaves a card title as it was')
+  await renamed.locator('.card-title').dblclick()
+  await page.keyboard.press('Control+a')
+  await page.keyboard.type('Drag me to done, renamed\n')
+  check(
+    await until(() => readFileSync(path.join(root, 'scratch-board/cards/SB-1.md'), 'utf8').includes('title: Drag me to done, renamed')),
+    'double-clicking a card edits its title',
+  )
+  await page.keyboard.press('Escape')
   await page.locator('.column[data-list="bugs"] .column-head').click({ button: 'right' })
   await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Collapse list' }).click()
   check((await page.locator('.column.collapsed[data-list="bugs"]').count()) === 1, 'the list menu collapses a list')
