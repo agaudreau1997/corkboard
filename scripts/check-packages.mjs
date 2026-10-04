@@ -63,6 +63,9 @@ if (platform === 'linux') {
     const files = execFileSync('rpm', ['-qlp', path.join(dist, rpm)]).toString()
     check(/\/resources\/app-update\.yml$/m.test(files), 'the rpm has no resources/app-update.yml')
     check(/\/resources\/package-type$/m.test(files), 'the rpm has no resources/package-type')
+    // Electron's files have the build ids of every other Electron app's, and dnf won't install two
+    // packages that both own a link to one.
+    check(!/^\/usr\/lib\/\.build-id\//m.test(files), 'the rpm has /usr/lib/.build-id links, which clash with other Electron apps')
   }
 } else if (platform === 'win') {
   // GitHub gets the installer under a name without spaces, which is the one latest.yml gives.

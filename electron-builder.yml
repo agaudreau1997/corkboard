@@ -36,6 +36,13 @@ win:
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
+# rpmbuild links every ELF file it packages under /usr/lib/.build-id, by build id. Electron's own
+# files (chrome-sandbox, ...) are byte for byte those of other Electron apps packaged the same way,
+# and dnf refuses two packages owning one link: the rpm built on Ubuntu wouldn't install beside
+# Slack's. No links, then.
+rpm:
+  fpm:
+    - --rpm-rpmbuild-define=_build_id_links none
 linux:
   icon: build/icon.png
   category: Development
