@@ -11,6 +11,7 @@ import type {
   CodeCommit,
   LoadedBoard,
   ProjectNode,
+  ProjectTheme,
   PtyInfo,
   SessionRef,
   SyncStatus,
@@ -31,6 +32,8 @@ export type CorkboardApi = {
     /** Adds a board repo (an empty or new folder becomes a git repo); answers its id. */
     add(opts: { boardRoot: string; name?: string; codeRepo?: string }): Promise<string>
     update(id: string, patch: { name?: string; codeRepo?: string | null }): Promise<void>
+    /** Writes the project's `theme.json` (shared through the repo); null removes it. */
+    setTheme(id: string, theme: ProjectTheme | null): Promise<void>
     /** Takes it out of the app; its folder stays. */
     remove(id: string): Promise<void>
     pickFolder(title: string): Promise<string | null>

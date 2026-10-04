@@ -3,6 +3,7 @@ import { Terminal } from '@xterm/xterm'
 import { useEffect, useRef } from 'react'
 import type { PtyInfo, TerminalStatus } from '@shared/types'
 import { actions, api, attachTerminalSink, useStore } from '../state'
+import { cssToken, onThemeApplied } from '../theme'
 
 export function TerminalPanel() {
   const terminals = useStore(s => s.terminals)
@@ -117,6 +118,16 @@ function tabState(status: TerminalStatus | undefined, exitCode: number | undefin
   return { kind: 'shell', label: 'Shell' }
 }
 
+/** The terminal's colours: its panel's background and the accent for the cursor, from the theme. */
+function terminalTheme() {
+  return {
+    background: cssToken('--term-bg') || '#101216',
+    foreground: '#d7dae0',
+    cursor: cssToken('--accent') || '#f0c674',
+    selectionBackground: '#3a4252',
+  }
+}
+
 function XTerm({ info, visible }: { info: PtyInfo; visible: boolean }) {
   const host = useRef<HTMLDivElement>(null)
   const term = useRef<Terminal | null>(null)
@@ -130,7 +141,7 @@ function XTerm({ info, visible }: { info: PtyInfo; visible: boolean }) {
       cursorBlink: true,
       allowProposedApi: true,
       scrollback: 10000,
-      theme: { background: '#101216', foreground: '#d7dae0', cursor: '#f0c674', selectionBackground: '#3a4252' },
+      theme: terminalTheme(),
     })
     const fitAddon = new FitAddon()
     terminal.loadAddon(fitAddon)
@@ -149,7 +160,9 @@ function XTerm({ info, visible }: { info: PtyInfo; visible: boolean }) {
       }
     })
     observer.observe(host.current!)
+    const retheme = onThemeApplied(() => (terminal.options.theme = terminalTheme()))
     return () => {
+      retheme()
       observer.disconnect()
       input.dispose()
       detach()

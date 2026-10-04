@@ -99,6 +99,18 @@ describe('BoardSync', () => {
     expect(lists).toEqual(['todo', 'done', 'ideas', 'bugs'])
   })
 
+  it("keeps this machine's theme when both changed it", async () => {
+    const a = machine(clone('a'))
+    const b = machine(clone('b'))
+    writeFileSync(a.file('theme.json'), '{ "name": "Moss", "colors": { "accent": "#8fcf7a" } }\n')
+    await a.sync.sync()
+    writeFileSync(b.file('theme.json'), '{ "name": "Tide", "colors": { "accent": "#5ec4d6" } }\n')
+    expect((await b.sync.sync()).state).toBe('synced')
+    expect(JSON.parse(readFileSync(b.file('theme.json'), 'utf8')).name).toBe('Tide')
+    expect((await a.sync.sync()).state).toBe('synced')
+    expect(JSON.parse(readFileSync(a.file('theme.json'), 'utf8')).name).toBe('Tide')
+  })
+
   it('stops on a conflict it cannot settle and leaves the repo as it was', async () => {
     const a = machine(clone('a'))
     const b = machine(clone('b'))

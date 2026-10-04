@@ -1,10 +1,11 @@
-// The board repo on disk: every board is read into memory at start, kept current by a
-// recursive watch on the repo (so a Claude session editing a card file moves it on screen),
-// and every write goes through here.
+// The board repo on disk: every board (and the project's theme.json) is read into memory at
+// start, kept current by a recursive watch on the repo (so a Claude session editing a card file
+// moves it on screen), and every write goes through here.
 
 import { existsSync, promises as fs, watch, type FSWatcher } from 'node:fs'
 import path from 'node:path'
 import { between, cardNumber, parseCard, serializeCard, slugify, sortCards } from '@shared/cardfile'
+import { isEmptyTheme, parseTheme, THEME_FILE, themeText } from '@shared/theme'
 import type {
   BoardDelta,
   BoardMap,
@@ -13,6 +14,7 @@ import type {
   Card,
   CardPatch,
   LoadedBoard,
+  ProjectTheme,
 } from '@shared/types'
 
 const SKIP_DIRS = new Set(['.git', 'node_modules', 'cards'])
@@ -29,6 +31,8 @@ export type StoreEvents = {
 
 export class BoardStore {
   readonly root: string
+  /** The project's colours (`theme.json` at the root), when it has any. */
+  theme?: ProjectTheme
   private boards = new Map<string, LoadedBoard>()
   /** Last text read or written per absolute file path: a watch event that changes nothing is dropped. */
   private texts = new Map<string, string>()
@@ -68,6 +72,9 @@ export class BoardStore {
     this.texts.clear()
     for (const boardPath of await this.findBoards('')) await this.readBoard(boardPath)
     this.resolveInheritance()
+    const theme = await readOrUndefined(this.themeFile())
+    if (theme !== undefined) this.texts.set(this.themeFile(), theme)
+    this.theme = readTheme(theme) ?? undefined
   }
 
   private async findBoards(rel: string): Promise<string[]> {
@@ -219,6 +226,10 @@ export class BoardStore {
 
   private mapFile(boardPath: string): string {
     return path.join(this.root, boardPath, 'map.json')
+  }
+
+  private themeFile(): string {
+    return path.join(this.root, THEME_FILE)
   }
 
   // ---- writing -------------------------------------------------------------------------------
@@ -416,6 +427,21 @@ export class BoardStore {
     await this.writeText(this.mapFile(boardPath), formatJson(board.map))
   }
 
+  /** Writes the project's theme; an empty one (or null) removes the file: the app's own colours. */
+  async saveTheme(theme: ProjectTheme | null): Promise<void> {
+    const file = this.themeFile()
+    if (isEmptyTheme(theme)) {
+      this.texts.delete(file)
+      await fs.rm(file, { force: true })
+      this.theme = undefined
+    } else {
+      const text = themeText(theme!, this.texts.get(file))
+      await this.writeText(file, text)
+      this.theme = readTheme(text) ?? undefined
+    }
+    this.events?.onTreeChanged()
+  }
+
   private async writeCard(boardPath: string, card: Card): Promise<void> {
     const board = this.board(boardPath)
     await fs.mkdir(path.join(this.root, boardPath, 'cards'), { recursive: true })
@@ -503,7 +529,17 @@ export class BoardStore {
       const abs = path.join(this.root, rel)
       const parts = rel.split('/')
       const name = parts.at(-1)!
-      if (name === 'board.json') {
+      if (rel === THEME_FILE) {
+        const text = await readOrUndefined(abs)
+        if (this.texts.get(abs) === text) continue
+        if (text === undefined) this.texts.delete(abs)
+        else this.texts.set(abs, text)
+        const theme = readTheme(text)
+        // A half-saved hand edit keeps the colours on screen until the next save.
+        if (theme === null) continue
+        this.theme = theme
+        treeChanged = true
+      } else if (name === 'board.json') {
         const boardPath = parts.slice(0, -1).join('/')
         const text = await readOrUndefined(abs)
         if (text === undefined) {
@@ -585,6 +621,14 @@ export class BoardStore {
     for (const d of deltas.values()) this.events?.onDelta(d)
     if (treeChanged) this.events?.onTreeChanged()
   }
+}
+
+/** A theme.json's text as the project's theme: undefined for none (or no colour), null when unreadable. */
+function readTheme(text: string | undefined): ProjectTheme | undefined | null {
+  if (text === undefined) return undefined
+  const theme = parseTheme(text)
+  if (!theme) return null
+  return isEmptyTheme(theme) ? undefined : theme
 }
 
 export function parentPath(p: string): string | undefined {

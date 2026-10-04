@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { slugify } from '@shared/cardfile'
-import type { BoardMeta, ListDef } from '@shared/types'
-import { actions, api, findNode, useStore } from '../state'
+import { isEmptyTheme } from '@shared/theme'
+import type { BoardMeta, ListDef, ProjectTheme } from '@shared/types'
+import { actions, api, findNode, projectIdOf, useStore } from '../state'
+import { ThemeEditor, ThemeSwatch } from './ThemeEditor'
 
 export function Modals() {
   const modal = useStore(s => s.modal)
@@ -127,6 +129,7 @@ function Settings({ path }: { path: string }) {
   const [repoInherited] = useState(board?.codeRepo && !board.meta.codeRepo ? board.codeRepo : undefined)
   const savedLocal = useStore(s => s.config?.codeRepos?.[path] ?? '')
   const [localRepo, setLocalRepo] = useState(savedLocal)
+  const project = useStore(s => s.projects.find(p => p.id === projectIdOf(path)))
   if (!board || !meta) return <p>Loading…</p>
   const counts = new Map<string, number>()
   for (const card of board.cards) if (card.list && !card.archived) counts.set(card.list, (counts.get(card.list) ?? 0) + 1)
@@ -256,6 +259,24 @@ function Settings({ path }: { path: string }) {
           </select>
         </label>
       </div>
+      {project && (
+        <div className="field">
+          <span>Colours</span>
+          <div className="theme-pointer">
+            <ThemeSwatch theme={project.theme} />
+            <span className="muted">
+              {project.theme ? (project.theme.name ?? 'Custom') : 'Default'}, the colours of every board in {project.name}
+            </span>
+            <button
+              type="button"
+              className="small"
+              onClick={() => actions.setModal({ kind: 'projectSettings', id: project.id })}
+            >
+              Project colours…
+            </button>
+          </div>
+        </div>
+      )}
       <label className="field">
         <span>Prompt notes</span>
         <textarea
@@ -410,9 +431,17 @@ function ProjectSettings({ id }: { id: string }) {
   const project = useStore(s => s.projects.find(p => p.id === id))
   const [name, setName] = useState(project?.name ?? '')
   const [codeRepo, setCodeRepo] = useState(project?.codeRepo ?? '')
+  const [theme, setTheme] = useState<ProjectTheme | null>(project?.theme ?? null)
+  const [themeEdited, setThemeEdited] = useState(false)
+  // The window wears the theme as it is edited, and its own again once the settings close.
+  useEffect(() => {
+    if (themeEdited) useStore.setState({ themePreview: { projectId: id, theme } })
+  }, [id, theme, themeEdited])
+  useEffect(() => () => useStore.setState({ themePreview: null }), [])
   if (!project) return <p>That project is gone.</p>
   const save = async () => {
     try {
+      if (themeEdited) await api.projects.setTheme(id, isEmptyTheme(theme) ? null : theme)
       await api.projects.update(id, { name, codeRepo: codeRepo.trim() || null })
       await actions.refreshTree()
       for (const key of Object.keys(useStore.getState().boards)) if (key.startsWith(`${id}:`)) await actions.loadBoard(key)
@@ -457,6 +486,13 @@ function ProjectSettings({ id }: { id: string }) {
           settings).
         </small>
       </label>
+      <ThemeEditor
+        theme={theme}
+        onChange={next => {
+          setTheme(next)
+          setThemeEdited(true)
+        }}
+      />
       <div className="modal-actions">
         <button type="button" className="ghost" onClick={() => actions.setModal(null)}>
           Cancel

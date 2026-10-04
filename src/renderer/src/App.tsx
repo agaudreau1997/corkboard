@@ -7,12 +7,14 @@ import { Sidebar } from './components/Sidebar'
 import { TabBar } from './components/TabBar'
 import { TerminalPanel } from './components/TerminalPanel'
 import { actions, useStore } from './state'
+import { useProjectTheme } from './theme'
 
 export function App() {
   const config = useStore(s => s.config)
   const activeTab = useStore(s => s.activeTab)
   const toast = useStore(s => s.toast)
   const sidebarWidth = useStore(s => s.sidebarWidth)
+  useProjectTheme()
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

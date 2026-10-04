@@ -743,6 +743,43 @@ try {
   await page.locator('.filter').fill('')
   check((await page.locator('.column[data-list="todo"] .badge.session').count()) > 0, 'an open card with sessions shows the badge')
 
+  // ---- project colours: a theme picked in the settings, shown at once, saved to theme.json ----
+  const rootToken = name => page.evaluate(n => document.documentElement.style.getPropertyValue(n), name)
+  const openProjectSettings = async () => {
+    await page.locator('.project-row').first().click({ button: 'right' })
+    await page.locator('.ctx-menu').getByRole('menuitem', { name: /Settings/ }).click()
+  }
+  await openProjectSettings()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByRole('button', { name: 'Cork' }).click()
+  check((await rootToken('--bg')) === '#1f1610', 'picking Cork repaints the window before saving')
+  await dialog.getByRole('button', { name: 'Tide' }).click()
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  check((await rootToken('--bg')) === '', 'Cancel puts the colours back')
+  await openProjectSettings()
+  await dialog.getByRole('button', { name: 'Cork' }).click()
+  await dialog.getByLabel('Accent hex').fill('#e0a96d')
+  check((await rootToken('--accent')) === '#e0a96d', 'a hex typed in a colour field shows at once')
+  await shot('18-theme-settings')
+  await dialog.getByRole('button', { name: 'Save' }).click()
+  const themeFile = path.join(root, 'theme.json')
+  const savedTheme = await until(() => existsSync(themeFile) && JSON.parse(readFileSync(themeFile, 'utf8')))
+  check(savedTheme?.colors?.background === '#1f1610' && savedTheme?.colors?.accent === '#e0a96d' && !savedTheme?.name, `Save writes theme.json at the board repo's root (${JSON.stringify(savedTheme)})`)
+  check((await rootToken('--bg')) === '#1f1610', 'and the window keeps the colours')
+  check((await page.locator('.project-row .theme-swatch').count()) === 1, 'the side panel shows the project its swatch')
+  const boardLogHas = text => execFileSync('git', ['log', '--format=%B', '-10'], { cwd: root }).toString().includes(text)
+  check(!!(await until(() => boardLogHas("Add the project's theme"), 12000)), 'the board repo commits the theme')
+  await shot('19-theme-cork')
+  // A Claude session (or the other machine) changes the file: the window follows.
+  writeFileSync(themeFile, `${JSON.stringify({ name: 'Cork', colors: { background: '#1f1610', accent: '#d9a46c' } }, null, 2)}\n`)
+  check(!!(await until(async () => (await rootToken('--accent')) === '#d9a46c')), 'a theme.json edited on disk shows up live')
+  await page.locator('.tab[title$=":robot-shooter"]').first().click()
+  await page.locator('.board-head').getByRole('button', { name: 'Settings', exact: true }).click()
+  check((await dialog.locator('.theme-pointer').textContent()).includes('Cork'), 'board settings name the project colours')
+  await dialog.getByRole('button', { name: 'Project colours…' }).click()
+  check((await dialog.getByRole('heading').textContent()).includes('Project settings'), 'and open them in the project settings')
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+
   // ---- projects: add one, move a board into it, delete a board with cards ----
   const second = path.join(scratch, 'second-board')
   await page.locator('.sidebar-foot').getByRole('button', { name: '+ Add project' }).click()
@@ -768,7 +805,14 @@ try {
     }
   }
   check(!!(await until(() => secondLogHas('Create board untitled-shooter'), 12000)), 'the other project commits the board it received')
+  // Each project wears its own colours: the board in front decides.
+  await page.locator('.project[data-project] .tree-row', { hasText: 'Untitled shooter' }).click()
+  check(!!(await until(async () => (await rootToken('--bg')) === '')), 'a board of a project with no theme shows the app colours')
+  check((await page.locator('.tab .theme-swatch').count()) >= 1, 'tabs of a themed project carry its swatch')
   await shot('14-projects')
+  await page.locator('.tab[title$=":robot-shooter"]').first().click()
+  check(!!(await until(async () => (await rootToken('--bg')) === '#1f1610')), 'back on the themed project, its colours return')
+  await page.locator('.tab', { hasText: 'Untitled shooter' }).locator('.tab-close').click()
   await page.locator('.tree-row', { hasText: 'Untitled shooter' }).click({ button: 'right' })
   await page.locator('.ctx-menu').getByRole('menuitem', { name: /Delete board/ }).click()
   const deleteButton = page.getByRole('dialog').getByRole('button', { name: 'Delete board' })

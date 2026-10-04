@@ -5,6 +5,7 @@ import { execFile } from 'node:child_process'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { parseCard } from '@shared/cardfile'
+import { THEME_FILE } from '@shared/theme'
 import type { CodeCommit } from '@shared/types'
 
 export function git(cwd: string, args: string[], timeoutMs = 0): Promise<string> {
@@ -179,6 +180,8 @@ export class AutoCommitter {
         lines.push(`${status === 'A' ? 'Create' : status === 'D' ? 'Delete' : 'Edit'} board ${dir}`)
       } else if (name === 'map.json') {
         lines.push(`Arrange map of ${dir}`)
+      } else if (file === THEME_FILE) {
+        lines.push(`${status === 'A' ? 'Add' : status === 'D' ? 'Remove' : 'Edit'} the project's theme`)
       } else {
         lines.push(`${status === 'A' ? 'Add' : status === 'D' ? 'Remove' : 'Edit'} ${file}`)
       }

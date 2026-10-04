@@ -94,6 +94,7 @@ export class Project {
       root: this.root,
       codeRepo: this.codeRepo,
       sync: this.sync.status,
+      ...(this.store.theme ? { theme: this.store.theme } : {}),
       boards: rekey(this.store.tree()),
     }
   }

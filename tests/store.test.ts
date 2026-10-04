@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -190,6 +190,49 @@ describe('BoardStore', () => {
     store.close()
   })
 
+  it('reads, writes and watches the project theme at the root', async () => {
+    writeFileSync(path.join(root, 'theme.json'), '{\n  "colors": { "accent": "#D9A46C" },\n  "fonts": "kept"\n}\n')
+    const store = new BoardStore(root)
+    await store.init()
+    expect(store.theme).toEqual({ colors: { accent: '#d9a46c' } })
+    let treeChanges = 0
+    store.watch({ onDelta: () => {}, onTreeChanged: () => treeChanges++ })
+    await sleep(100)
+
+    // Saved from the settings: the file keeps what this app does not know, and is not echoed back.
+    await store.saveTheme({ name: 'Cork', colors: { background: '#1f1610', accent: '#d9a46c' } })
+    expect(JSON.parse(readFileSync(path.join(root, 'theme.json'), 'utf8'))).toEqual({
+      name: 'Cork',
+      colors: { background: '#1f1610', accent: '#d9a46c' },
+      fonts: 'kept',
+    })
+    expect(treeChanges).toBe(1)
+    await sleep(300)
+    expect(treeChanges).toBe(1)
+
+    // Edited by hand (or pulled from the other machine): the theme follows the file.
+    writeFileSync(path.join(root, 'theme.json'), '{ "colors": { "accent": "#5ec4d6" } }\n')
+    await until(() => store.theme?.colors.accent === '#5ec4d6')
+    expect(treeChanges).toBe(2)
+    // Half saved: the colours on screen stay until the file reads again.
+    writeFileSync(path.join(root, 'theme.json'), '{ "colors": { "acc')
+    await sleep(300)
+    expect(store.theme?.colors.accent).toBe('#5ec4d6')
+    rmSync(path.join(root, 'theme.json'))
+    await until(() => store.theme === undefined)
+
+    // A file with no colour is no theme; an empty theme is no file at all.
+    writeFileSync(path.join(root, 'theme.json'), '{ "name": "Nothing yet" }\n')
+    await until(() => treeChanges === 4)
+    expect(store.theme).toBeUndefined()
+    await store.saveTheme({ colors: { text: '#ffffff' } })
+    await store.saveTheme({ colors: {} })
+    expect(existsSync(path.join(root, 'theme.json'))).toBe(false)
+    expect(store.theme).toBeUndefined()
+    await store.saveTheme(null)
+    store.close()
+  })
+
   it('drops the watch echo of its own writes', async () => {
     const store = new BoardStore(root)
     await store.init()
@@ -273,9 +316,15 @@ describe('git', () => {
     await store.updateCard(p, 'G-1', { archived: true })
     expect(await committer.flush()).toBe('Archive G-1')
     expect(await committer.flush()).toBeUndefined()
+    await store.saveTheme({ colors: { accent: '#d9a46c' } })
+    expect(await committer.flush()).toBe("Add the project's theme")
+    await store.saveTheme({ colors: { accent: '#5ec4d6' } })
+    expect(await committer.flush()).toBe("Edit the project's theme")
+    await store.saveTheme(null)
+    expect(await committer.flush()).toBe("Remove the project's theme")
     const log = await git(root, ['log', '--format=%s'])
-    expect(log.trim().split('\n')).toEqual(['Archive G-1', 'Move G-1: todo → done', 'Board: 2 changes'])
-    expect(committed.length).toBe(3)
+    expect(log.trim().split('\n').slice(-3)).toEqual(['Archive G-1', 'Move G-1: todo → done', 'Board: 2 changes'])
+    expect(committed.length).toBe(6)
   })
 
   it('reads Card trailers from every branch of a code repo', async () => {

@@ -11,6 +11,7 @@ import type {
   ListDef,
   LoadedBoard,
   ProjectNode,
+  ProjectTheme,
   PtyInfo,
   TerminalStatus,
 } from '@shared/types'
@@ -91,6 +92,8 @@ type State = UiPrefs & {
   contextMenu: { x: number; y: number; items: MenuItem[] } | null
   /** Set to open the card drawer with its link picker focused. */
   focusLinks: number
+  /** A project's theme as its settings edit it, shown on the whole window until they close. */
+  themePreview: { projectId: string; theme: ProjectTheme | null } | null
 }
 
 export const useStore = create<State>(() => ({
@@ -115,6 +118,7 @@ export const useStore = create<State>(() => ({
   desktop: false,
   contextMenu: null,
   focusLinks: 0,
+  themePreview: null,
 }))
 
 const set = useStore.setState

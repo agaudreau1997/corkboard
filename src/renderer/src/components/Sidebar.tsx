@@ -2,6 +2,7 @@ import type { BoardNode, ProjectNode, SyncStatus } from '@shared/types'
 import { actions, api, projectIdOf, useStore } from '../state'
 import { discussBoard } from '../tackle'
 import { openContextMenu, type MenuItem } from './ContextMenu'
+import { ThemeSwatch } from './ThemeEditor'
 
 export function Sidebar() {
   const projects = useStore(s => s.projects)
@@ -86,6 +87,7 @@ function ProjectRow({ project }: { project: ProjectNode }) {
         onContextMenu={e => openContextMenu(e, projectMenu(project))}
       >
         <span className="twisty-mark">{folded ? '▸' : '▾'}</span>
+        {project.theme && <ThemeSwatch theme={project.theme} title={`Colours: ${project.theme.name ?? 'custom'}`} />}
         <span className="project-name">{project.name}</span>
         <span className="dot" aria-label={syncText(project.sync)} />
         <button
@@ -130,7 +132,7 @@ function projectMenu(project: ProjectNode): MenuItem[] {
     },
     {
       label: 'Settings…',
-      hint: 'name, code folder',
+      hint: 'name, code folder, colours',
       onSelect: () => actions.setModal({ kind: 'projectSettings', id: project.id }),
     },
     { label: 'Open the board repo folder', onSelect: () => api.shell.openPath(project.root) },

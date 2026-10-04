@@ -181,7 +181,21 @@ export type ProjectNode = {
   root: string
   codeRepo?: string
   sync: SyncStatus
+  /** Its colours, from `theme.json` at the board repo's root; none means the app's own. */
+  theme?: ProjectTheme
   boards: BoardNode[]
+}
+
+export type ThemeColor = 'background' | 'surface' | 'line' | 'text' | 'accent' | 'link' | 'success' | 'danger'
+
+/** A project's colours (`theme.json`); `src/shared/theme.ts` turns them into the stylesheet's. */
+export type ProjectTheme = {
+  /** What the settings call it, e.g. "Cork". */
+  name?: string
+  /** `#rrggbb` per base colour; an unset one keeps the app's own (or follows the others). */
+  colors: Partial<Record<ThemeColor, string>>
+  /** Stylesheet tokens set exactly (`"--panel": "#16161d"`), over what the colours make. */
+  tokens?: Record<string, string>
 }
 
 export type SyncStatus = {

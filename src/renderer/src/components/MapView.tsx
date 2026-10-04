@@ -457,7 +457,7 @@ function MapCanvas({ board, matches }: { board: LoadedBoard; matches: (c: Card) 
             pannable
             zoomable
             nodeColor={n => (n.type === 'area' ? `${(n.data as AreaNodeData).color}40` : (n.data as CardNodeData).color)}
-            maskColor="rgba(10,12,16,0.7)"
+            maskColor="color-mix(in srgb, var(--bg) 70%, transparent)"
           />
         </ReactFlow>
         {draft && (
@@ -584,7 +584,7 @@ function FloatingEdge({ id, source, target, selected }: EdgeProps) {
       id={id}
       path={path}
       interactionWidth={14}
-      style={{ stroke: selected ? '#f0c674' : '#7b8496', strokeWidth: selected ? 2.5 : 1.6 }}
+      style={{ stroke: selected ? 'var(--accent)' : 'var(--muted)', strokeWidth: selected ? 2.5 : 1.6 }}
     />
   )
 }
