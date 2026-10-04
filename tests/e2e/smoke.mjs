@@ -644,8 +644,10 @@ try {
   check(!!cloudEach, `cloud one-per-card started ${primeCount} cloud sessions`)
 
   // ---- card menu: copy the id, move the card to another board ----
-  const mover = page.locator('.column[data-list="todo"] .card').first()
-  const moverId = await mover.getAttribute('data-card')
+  // Pinned by its id: lists sort by last update, so the cloud sessions still being recorded from
+  // the step above can lift another card to the top of the list between two clicks.
+  const moverId = await page.locator('.column[data-list="todo"] .card').first().getAttribute('data-card')
+  const mover = page.locator(`.column[data-list="todo"] .card[data-card="${moverId}"]`)
   await mover.click({ button: 'right' })
   await shot('09-card-menu')
   await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Copy' }).hover()
