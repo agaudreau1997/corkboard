@@ -56,6 +56,16 @@ export class BoardSync {
     if (!this.status.at || Date.now() - this.status.at > minGapMs) void this.sync()
   }
 
+  /**
+   * A sync that starts after this call, so once it resolves everything written before it is
+   * committed and pushed. sync() hands back a sync already under way, which may have committed
+   * before the latest writes and, once stopped, never goes round again. The quit relies on this.
+   */
+  async flush(): Promise<SyncStatus> {
+    while (this.running) await this.running
+    return this.sync()
+  }
+
   sync(): Promise<SyncStatus> {
     if (this.running) {
       this.again = true
