@@ -3,7 +3,7 @@
 // one-line diff and a hand edit by a person or a Claude session round-trips unchanged.
 
 import YAML from 'yaml'
-import type { Card, ListDef, ListSort, SessionRef } from './types'
+import type { BoardMeta, Card, ListDef, ListSort, SessionRef } from './types'
 
 const KNOWN = [
   'id',
@@ -122,9 +122,6 @@ export function sortCards(cards: Card[]): Card[] {
   return [...cards].sort((a, b) => a.pos - b.pos || cardNumber(a.id) - cardNumber(b.id))
 }
 
-/** The order a list gets when board.json names none. */
-export const DEFAULT_SORT: ListSort = 'updated'
-
 /** The orders a list can keep, as its menu offers them. */
 export const LIST_SORTS: { id: ListSort; label: string; compare?: (a: Card, b: Card) => number }[] = [
   { id: 'updated', label: 'Last updated', compare: (a, b) => touched(b).localeCompare(touched(a)) },
@@ -140,9 +137,13 @@ function touched(card: Card): string {
   return card.updated ?? card.created ?? ''
 }
 
-/** The sort a list keeps, unset meaning the default. */
-export function listSort(list: Pick<ListDef, 'sort'> | undefined): ListSort {
-  return list?.sort ?? DEFAULT_SORT
+/**
+ * The sort a list keeps. Unset, the board's done list shows what was finished last first, and
+ * every other list keeps the order its cards are dragged into: there the order is the plan.
+ */
+export function listSort(meta: Pick<BoardMeta, 'flow'>, list: Pick<ListDef, 'id' | 'sort'> | undefined): ListSort {
+  if (list?.sort) return list.sort
+  return list && list.id === meta.flow?.done ? 'updated' : 'manual'
 }
 
 /**

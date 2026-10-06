@@ -95,7 +95,7 @@ export async function discussBoard(boardPath: string, mode: 'desktop' | 'local')
   const live = board.cards.filter(c => !c.archived && !isDivider(c))
   const lists = board.meta.lists.filter(l => !l.archived)
   const ids = [
-    ...lists.flatMap(list => orderList(live.filter(c => c.list === list.id), listSort(list))),
+    ...lists.flatMap(list => orderList(live.filter(c => c.list === list.id), listSort(board.meta, list))),
     ...sortCards(live.filter(c => c.list === null)),
   ].map(c => c.id)
   await discussCards(boardPath, ids, mode, { boardTitle: board.meta.title })

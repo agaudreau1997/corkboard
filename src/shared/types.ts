@@ -12,7 +12,7 @@ export type ListDef = {
   archived?: boolean
   /** Its colour; unset, the colour of its place in the board's palette. */
   color?: string
-  /** How its cards are ordered; unset, by last update (see `orderList`). */
+  /** How its cards are ordered; unset, by hand, or by last update in the done list (`listSort`). */
   sort?: ListSort
 }
 

@@ -84,7 +84,7 @@ export function KanbanView({ board, matches }: { board: LoadedBoard; matches: (c
       if (cards[key]) cards[key].push(card)
     }
     const cols: Columns = { [UNLISTED]: cards[UNLISTED].map(c => c.id) }
-    for (const list of board.meta.lists) cols[list.id] = orderList(cards[list.id], listSort(list)).map(c => c.id)
+    for (const list of board.meta.lists) cols[list.id] = orderList(cards[list.id], listSort(board.meta, list)).map(c => c.id)
     return cols
   }, [board, matches])
   const shown = draft ?? columns
@@ -150,7 +150,7 @@ export function KanbanView({ board, matches }: { board: LoadedBoard; matches: (c
     const index = list.indexOf(id)
     const targetList = to === UNLISTED ? null : to
     if (card.list === targetList && columns[to]?.indexOf(id) === index) return
-    const sorted = targetList !== null && listSort(board.meta.lists.find(l => l.id === targetList)) !== 'manual'
+    const sorted = targetList !== null && listSort(board.meta, board.meta.lists.find(l => l.id === targetList)) !== 'manual'
     if (sorted && card.list === targetList) {
       // Renumbering the list to keep the drop would rewrite (and restamp) every card in it.
       actions.toast('This list sorts itself; choose Sort cards by › Manual in its menu to order it by hand')

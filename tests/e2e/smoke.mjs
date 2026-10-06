@@ -222,6 +222,10 @@ try {
   check(columns[0] === 'To do' && columns.includes('Next up') && columns.includes('Done'), `kanban columns: ${columns.join(' | ')}`)
   const done = page.locator('.column[data-list="done"]')
   check((await done.locator('.card').count()) === 60 && (await done.getByText(/Show all/).count()) === 1, 'Done column capped at 60 with a Show all')
+  // No list names a sort: the done list goes by last update, the others by their positions.
+  const firstCard = list => page.locator(`.column[data-list="${list}"] .card`).first().getAttribute('data-card')
+  check((await firstCard('done')) === COMMITTED, `the done list shows its last updated card first (${await firstCard('done')})`)
+  check((await firstCard('todo')) === `${MAIN.key}-1`, `the other lists keep their cards in their positions (${await firstCard('todo')})`)
   check((await page.locator('.divider-card').count()) > 0, 'dashes cards draw as dividers')
   await shot('01-kanban')
 
@@ -479,7 +483,7 @@ try {
   const live = await until(async () => (await page.locator('.column[data-list="doing"] .card', { hasText: 'Drag me to done' }).count()) === 1)
   check(live, 'a card file edited on disk moved columns on screen')
 
-  // ---- a list keeps itself sorted by last update; a change on disk re-sorts it ----
+  // ---- a list sorted by last update keeps itself sorted; a change on disk re-sorts it ----
   for (const title of ['Sorted older', 'Sorted newer']) {
     await todo.getByText('+ Add a card').click()
     await page.keyboard.type(title)
@@ -489,13 +493,16 @@ try {
     await sleep(20)
   }
   const firstInTodo = async () => (await todo.locator('.card .card-title').first().textContent())?.trim()
-  check((await firstInTodo()) === 'Sorted newer', `a list shows its last updated card first (${await firstInTodo()})`)
+  check((await firstInTodo()) === 'Sorted older', `a new board's To do keeps its cards in their positions (${await firstInTodo()})`)
   const sortTodo = async name => {
     await todo.locator('.column-head').click({ button: 'right' })
     await page.locator('.ctx-menu').getByRole('menuitem', { name: /Sort cards by/ }).hover()
     await page.locator('.ctx-menu').getByRole('menuitem', { name }).click()
   }
   const todoSort = () => JSON.parse(readFileSync(path.join(root, 'scratch-board/board.json'), 'utf8')).lists.find(l => l.id === 'todo')?.sort
+  await sortTodo(/Last updated/)
+  check(await until(() => todoSort() === 'updated'), 'Sort cards by › Last updated is kept in board.json')
+  check(await until(async () => (await firstInTodo()) === 'Sorted newer'), 'a list sorted by last update shows its last updated card first')
   await sortTodo(/Manual/)
   check(await until(() => todoSort() === 'manual'), 'Sort cards by › Manual is kept in board.json')
   check(await until(async () => (await firstInTodo()) === 'Sorted older'), 'a manual list shows its cards in their positions')
@@ -683,8 +690,8 @@ try {
   check(!!cloudEach, `cloud one-per-card started ${primeCount} cloud sessions`)
 
   // ---- card menu: copy the id, move the card to another board ----
-  // Pinned by its id: lists sort by last update, so the cloud sessions still being recorded from
-  // the step above can lift another card to the top of the list between two clicks.
+  // Pinned by its id, so a card the cloud sessions still being recorded from the step above move
+  // or touch between two clicks can't take its place.
   const moverId = await page.locator('.column[data-list="todo"] .card').first().getAttribute('data-card')
   const mover = page.locator(`.column[data-list="todo"] .card[data-card="${moverId}"]`)
   await mover.click({ button: 'right' })

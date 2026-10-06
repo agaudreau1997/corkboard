@@ -14,7 +14,7 @@ Task boards, read and edited by the Corkboard app. Plain files, versioned in git
 ## Layout
 
 - Every folder holding a \`board.json\` is a board. A board folder may hold other board folders: those are its child boards.
-- \`board.json\`: \`key\` (the card id prefix, unique in the repo), \`title\`, \`lists\` (ordered \`{ id, title, sort }\`: \`sort\` is how the list orders its cards, unset meaning \`updated\`, last changed first; also \`newest\`, \`oldest\`, \`number\`, \`title\`, and \`manual\`, by \`pos\`), \`codeRepo\` (the code repo its cards' commits live in; child boards inherit it), \`flow.doing\` / \`flow.done\` (the list ids the app's tackle buttons move cards to), \`promptNotes\` (added to every prompt the app sends for its cards).
+- \`board.json\`: \`key\` (the card id prefix, unique in the repo), \`title\`, \`lists\` (ordered \`{ id, title, sort }\`: \`sort\` is how the list orders its cards: \`manual\`, by \`pos\`; \`updated\`, last changed first; \`newest\`, \`oldest\`, \`number\` or \`title\`. Unset, the list \`flow.done\` names sorts by \`updated\` and the others are \`manual\`), \`codeRepo\` (the code repo its cards' commits live in; child boards inherit it), \`flow.doing\` / \`flow.done\` (the list ids the app's tackle buttons move cards to), \`promptNotes\` (added to every prompt the app sends for its cards).
 - \`cards/<ID>.md\`: one card per file, named by its id (\`TASK-12.md\`). YAML front matter, then the description in Markdown.
 - \`map.json\`: the map view's node positions and filters. Leave it to the app.
 
@@ -37,7 +37,7 @@ Description.
 
 Other keys the app knows: \`due\` (a date), \`complete: true\`, \`archived: true\`. Keys it does not know are kept as they are.
 
-- **Move a card**: change \`list:\` to another list id of its board. Keep \`pos:\`: most lists sort by \`updated:\`, and in a \`manual\` one the old number sorts the card among the others.
+- **Move a card**: change \`list:\` to another list id of its board. Keep \`pos:\`: most lists are \`manual\`, where the old number sorts the card among the others, and a sorted one places the card itself.
 - **New card**: \`cards/<KEY>-<n>.md\` with the next free number on that board, and \`id\`, \`title\`, \`list\`, \`pos\`, \`created\` and \`updated\` set.
 - **Archive** a card with \`archived: true\`; never delete card files.
 - **Move a card to another board** by moving its file into that board's \`cards/\` folder and setting \`list:\` to one of that board's lists. It keeps its id, so its commits and links still find it.

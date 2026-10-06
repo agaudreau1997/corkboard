@@ -84,15 +84,26 @@ describe('helpers', () => {
     expect(sortCards(cards).map(c => c.id)).toEqual(['RS-2', 'RS-1', 'RS-3'])
   })
 
-  it('orders a list by its sort, last updated first unless it says otherwise', () => {
+  it('defaults the done list to last updated and every other list to manual', () => {
+    const meta = { flow: { doing: 'doing', done: 'done' } }
+    expect(listSort(meta, { id: 'done' })).toBe('updated')
+    expect(listSort(meta, { id: 'todo' })).toBe('manual')
+    expect(listSort(meta, { id: 'doing' })).toBe('manual')
+    expect(listSort(meta, undefined)).toBe('manual')
+    // A board with no done list has every list manual; a sort board.json names always wins.
+    expect(listSort({}, { id: 'done' })).toBe('manual')
+    expect(listSort(meta, { id: 'done', sort: 'manual' })).toBe('manual')
+    expect(listSort(meta, { id: 'todo', sort: 'title' })).toBe('title')
+  })
+
+  it('orders a list by its sort', () => {
     const cards = [
       { ...base, id: 'RS-1', pos: 1, title: 'b', created: '2026-01-01', updated: '2026-03-01' },
       { ...base, id: 'RS-2', pos: 2, title: 'a', created: '2026-01-02', updated: '2026-03-03' },
       { ...base, id: 'RS-3', pos: 3, title: 'c', created: '2026-01-03', updated: '2026-03-02' },
     ]
     const ids = (sort: Parameters<typeof orderList>[1]) => orderList(cards, sort).map(c => c.id)
-    expect(listSort({})).toBe('updated')
-    expect(ids(listSort({}))).toEqual(['RS-2', 'RS-3', 'RS-1'])
+    expect(ids('updated')).toEqual(['RS-2', 'RS-3', 'RS-1'])
     expect(ids('manual')).toEqual(['RS-1', 'RS-2', 'RS-3'])
     expect(ids('newest')).toEqual(['RS-3', 'RS-2', 'RS-1'])
     expect(ids('oldest')).toEqual(['RS-1', 'RS-2', 'RS-3'])

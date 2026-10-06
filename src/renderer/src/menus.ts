@@ -30,7 +30,7 @@ export function cardMenu(board: LoadedBoard, card: Card): MenuItem[] {
   const selected = useStore.getState().selected[board.path] ?? []
   const isSelected = selected.includes(card.id)
   const inList = sortCards(board.cards.filter(c => c.list === card.list && !c.archived))
-  const sorted = card.list !== null && listSort(board.meta.lists.find(l => l.id === card.list)) !== 'manual'
+  const sorted = card.list !== null && listSort(board.meta, board.meta.lists.find(l => l.id === card.list)) !== 'manual'
   const tackle = (mode: TackleMode) => () => void tackleCards(board.path, [card.id], mode)
   const divider = isDivider(card)
 
@@ -216,7 +216,7 @@ function endOf(board: LoadedBoard, listId: string): number {
 export type ListMenuHooks = { addCard: () => void; rename: () => void }
 
 export function listMenu(board: LoadedBoard, list: ListDef, hooks: ListMenuHooks): MenuItem[] {
-  const sort = listSort(list)
+  const sort = listSort(board.meta, list)
   const cards = orderList(board.cards.filter(c => c.list === list.id && !c.archived), sort)
   const work = cards.filter(c => !isDivider(c))
   const collapsed = (useStore.getState().collapsed[board.path] ?? []).includes(list.id)
