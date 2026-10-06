@@ -1,7 +1,7 @@
 // Two clones of one bare remote stand in for two machines.
 
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -37,7 +37,7 @@ beforeEach(() => {
   dir = mkdtempSync(path.join(os.tmpdir(), 'corkboard-sync-'))
   run(dir, 'init', '-q', '--bare', '-b', 'main', 'remote.git')
   const seed = clone('seed')
-  execFileSync('mkdir', ['-p', 'game/cards'], { cwd: seed })
+  mkdirSync(path.join(seed, 'game/cards'), { recursive: true })
   writeFileSync(path.join(seed, 'game/board.json'), JSON.stringify({ key: 'G', title: 'Game', lists: [{ id: 'todo', title: 'To do' }, { id: 'done', title: 'Done' }] }, null, 2) + '\n')
   writeFileSync(path.join(seed, 'game/map.json'), JSON.stringify({ nodes: { 'G-1': { x: 0, y: 0 } } }, null, 2) + '\n')
   writeFileSync(path.join(seed, 'game/cards/G-1.md'), serializeCard(card('G-1', 'todo', '2026-10-01T10:00:00.000Z')))
