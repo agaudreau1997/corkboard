@@ -52,7 +52,7 @@ The first launch asks for a project: *Add project…* takes a board repo (a clon
 
 To start it from the desktop menu (and get its icon on the taskbar, which a Wayland session takes from the menu entry): `npm run install-launcher` (`bash scripts/install-launcher.sh --remove` takes it out). The icon is `build/icon.svg`, drawn by `scripts/make-icon.py` (`npm run icon` re-renders the PNGs with Inkscape).
 
-**Windows.** The terminals run PowerShell there (`pwsh` when installed: Windows PowerShell 5.1 drops the double quotes inside an argument it passes to a program, and prompts have quotes), with the command handed over as JSON in an environment variable rather than pasted into a command line. That path is written but not yet run on Windows.
+**Windows.** The terminals run PowerShell there (`pwsh` when installed, else Windows PowerShell 5.1), with the command handed over as JSON in an environment variable rather than pasted into a command line. PowerShell before 7.3 drops the double quotes inside an argument it passes to a program, and prompts have quotes, so it gets the arguments escaped for that. Tackling a card in a terminal works on Windows 11 under 5.1; the rest of the Windows path is less tried.
 
 `npm run dist` packages it for Windows into `dist/`: `Corkboard Setup <version>.exe` (an installer with a Start menu entry and an uninstaller), `Corkboard <version>.exe` (a single portable exe that unpacks itself on each start), and `win-unpacked/Corkboard.exe` (the app as a plain folder). The settings are in `electron-builder.yml`. The exes are unsigned, so SmartScreen warns on first run (*More info → Run anyway*).
 
