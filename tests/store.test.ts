@@ -254,6 +254,47 @@ describe('BoardStore', () => {
     store.close()
   })
 
+  it('reads, writes and watches project.json at the root', async () => {
+    const file = path.join(root, 'project.json')
+    const store = new BoardStore(root)
+    await store.init()
+    expect(store.settings).toEqual({})
+    let treeChanges = 0
+    store.watch({ onDelta: () => {}, onTreeChanged: () => treeChanges++ })
+    await sleep(100)
+
+    await store.saveSettings({ work: true })
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ work: true })
+    expect(store.settings.work).toBe(true)
+    expect(treeChanges).toBe(1)
+    await sleep(300)
+    expect(treeChanges).toBe(1)
+
+    // Pulled from the other machine, or edited by hand: the settings follow the file.
+    writeFileSync(file, '{ "work": false, "jira": { "site": "https://example.atlassian.net" } }\n')
+    await until(() => (store.settings.work ? undefined : true))
+    expect(treeChanges).toBe(2)
+    writeFileSync(file, '{ "work": tr')
+    await sleep(300)
+    expect(store.settings).toEqual({})
+    // Turned on again from the settings: the key this build does not know stays in the file.
+    writeFileSync(file, '{ "jira": { "site": "https://example.atlassian.net" } }\n')
+    await until(() => (treeChanges === 3 ? true : undefined))
+    await store.saveSettings({ work: true })
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ work: true, jira: { site: 'https://example.atlassian.net' } })
+    // Nothing set and nothing else in it: no file, a personal project.
+    writeFileSync(file, '{ "work": true }\n')
+    await until(() => (treeChanges === 5 ? true : undefined))
+    await store.saveSettings({ work: false })
+    expect(existsSync(file)).toBe(false)
+    expect(store.settings).toEqual({})
+    const fresh = new BoardStore(root)
+    writeFileSync(file, '{ "work": true }\n')
+    await fresh.init()
+    expect(fresh.settings).toEqual({ work: true })
+    store.close()
+  })
+
   it('drops the watch echo of its own writes', async () => {
     const store = new BoardStore(root)
     await store.init()
@@ -365,9 +406,17 @@ describe('git', () => {
     expect(await committer.flush()).toBe("Edit the project's theme")
     await store.saveTheme(null)
     expect(await committer.flush()).toBe("Remove the project's theme")
+    await store.saveSettings({ work: true })
+    expect(await committer.flush()).toBe('Turn work mode on')
+    writeFileSync(path.join(root, 'project.json'), '{ "work": true, "jira": { "site": "https://x" } }\n')
+    expect(await committer.flush()).toBe("Edit the project's settings")
+    writeFileSync(path.join(root, 'project.json'), '{ "work": false, "jira": { "site": "https://x" } }\n')
+    expect(await committer.flush()).toBe('Turn work mode off')
+    rmSync(path.join(root, 'project.json'))
+    expect(await committer.flush()).toBe("Remove the project's settings")
     const log = await git(root, ['log', '--format=%s'])
     expect(log.trim().split('\n').slice(-3)).toEqual(['Archive G-1', 'Move G-1: todo → done', 'Board: 2 changes'])
-    expect(committed.length).toBe(7)
+    expect(committed.length).toBe(11)
   })
 
   it('waits for a commit in flight, then commits what came after it', async () => {
@@ -404,5 +453,30 @@ describe('git', () => {
       ['Two at once', ['RS-20', 'RS-21']],
       ['Fix the eye attack', ['RS-12']],
     ])
+    expect(commits.every(c => c.keys.length === 0)).toBe(true)
+  })
+
+  it('finds a work project\'s commits by the Jira keys their message names, whole', async () => {
+    const run = (...args: string[]) => execFileSync('git', args, { cwd: root, env: { ...process.env, GIT_COMMITTER_DATE: '2026-01-01T00:00:00Z' } })
+    run('init', '-q', '-b', 'main')
+    run('config', 'user.email', 't@example.com')
+    run('config', 'user.name', 'Test')
+    run('commit', '-q', '--allow-empty', '--date=2026-01-01T10:00:00Z', '-m', 'SPDI-123 Rename the login page')
+    run('commit', '-q', '--allow-empty', '--date=2026-01-01T11:00:00Z', '-m', 'Fix the login (spdi-12)')
+    run('commit', '-q', '--allow-empty', '--date=2026-01-01T12:00:00Z', '-m', 'Both at once\n\nSPDI-12 and SPDI-7, plus a trailer\n\nCard: RS-5')
+    // A branch named after the key: its own commits don't count (the message is what is read), but
+    // the merge commit's subject names the branch, and so the key.
+    run('checkout', '-q', '-b', 'SPDI-7-cleanup')
+    run('commit', '-q', '--allow-empty', '--date=2026-01-01T13:00:00Z', '-m', 'Tidy up')
+    run('checkout', '-q', 'main')
+    run('merge', '-q', '--no-ff', '-m', "Merge branch 'SPDI-7-cleanup'", 'SPDI-7-cleanup')
+    const commits = await codeCommits(root, ['SPDI-12', 'spdi-7'])
+    expect(commits.map(c => [c.subject, c.cards, c.keys])).toEqual([
+      ["Merge branch 'SPDI-7-cleanup'", [], ['SPDI-7']],
+      ['Both at once', ['RS-5'], ['SPDI-12', 'SPDI-7']],
+      ['Fix the login (spdi-12)', [], ['SPDI-12']],
+    ])
+    // With no keys asked for, only the trailers count, as for a personal project.
+    expect((await codeCommits(root)).map(c => c.subject)).toEqual(['Both at once'])
   })
 })

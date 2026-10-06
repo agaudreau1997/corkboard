@@ -1,10 +1,11 @@
-// The board repo on disk: every board (and the project's theme.json) is read into memory at
-// start, kept current by a recursive watch on the repo (so a Claude session editing a card file
-// moves it on screen), and every write goes through here.
+// The board repo on disk: every board (and the project's theme.json and project.json) is read into
+// memory at start, kept current by a recursive watch on the repo (so a Claude session editing a
+// card file moves it on screen), and every write goes through here.
 
 import { existsSync, promises as fs, watch, type FSWatcher } from 'node:fs'
 import path from 'node:path'
 import { between, cardNumber, parseCard, serializeCard, slugify, sortCards, tryParseCard } from '@shared/cardfile'
+import { parseProjectSettings, PROJECT_FILE, projectSettingsText } from '@shared/project'
 import { isEmptyTheme, parseTheme, THEME_FILE, themeText } from '@shared/theme'
 import type {
   BoardDelta,
@@ -14,6 +15,7 @@ import type {
   Card,
   CardPatch,
   LoadedBoard,
+  ProjectSettings,
   ProjectTheme,
 } from '@shared/types'
 
@@ -33,6 +35,8 @@ export class BoardStore {
   readonly root: string
   /** The project's colours (`theme.json` at the root), when it has any. */
   theme?: ProjectTheme
+  /** The project's settings (`project.json` at the root); `{}` without the file. */
+  settings: ProjectSettings = {}
   private boards = new Map<string, LoadedBoard>()
   /** Last text read or written per absolute file path: a watch event that changes nothing is dropped. */
   private texts = new Map<string, string>()
@@ -76,6 +80,9 @@ export class BoardStore {
     const theme = await readOrUndefined(this.themeFile())
     if (theme !== undefined) this.texts.set(this.themeFile(), theme)
     this.theme = readTheme(theme) ?? undefined
+    const settings = await readOrUndefined(this.settingsFile())
+    if (settings !== undefined) this.texts.set(this.settingsFile(), settings)
+    this.settings = (settings === undefined ? undefined : parseProjectSettings(settings)) ?? {}
   }
 
   private async findBoards(rel: string): Promise<string[]> {
@@ -231,6 +238,10 @@ export class BoardStore {
 
   private themeFile(): string {
     return path.join(this.root, THEME_FILE)
+  }
+
+  private settingsFile(): string {
+    return path.join(this.root, PROJECT_FILE)
   }
 
   // ---- writing -------------------------------------------------------------------------------
@@ -445,6 +456,24 @@ export class BoardStore {
     this.events?.onTreeChanged()
   }
 
+  /**
+   * Writes the project's settings. With nothing set (and nothing in the file this app does not
+   * know) the file goes: a project without one is a personal project, as every project was before.
+   */
+  async saveSettings(settings: ProjectSettings): Promise<void> {
+    const file = this.settingsFile()
+    const text = projectSettingsText(settings, this.texts.get(file))
+    if (text === null) {
+      this.texts.delete(file)
+      await fs.rm(file, { force: true })
+      this.settings = {}
+    } else {
+      await this.writeText(file, text)
+      this.settings = parseProjectSettings(text) ?? {}
+    }
+    this.events?.onTreeChanged()
+  }
+
   private async writeCard(boardPath: string, card: Card): Promise<void> {
     const board = this.board(boardPath)
     await fs.mkdir(path.join(this.root, boardPath, 'cards'), { recursive: true })
@@ -553,6 +582,16 @@ export class BoardStore {
         // A half-saved hand edit keeps the colours on screen until the next save.
         if (theme === null) continue
         this.theme = theme
+        treeChanged = true
+      } else if (rel === PROJECT_FILE) {
+        const text = await readOrUndefined(abs)
+        if (this.texts.get(abs) === text) continue
+        if (text === undefined) this.texts.delete(abs)
+        else this.texts.set(abs, text)
+        const settings = text === undefined ? {} : parseProjectSettings(text)
+        // A half-saved hand edit keeps the settings until the next save.
+        if (!settings) continue
+        this.settings = settings
         treeChanged = true
       } else if (name === 'board.json') {
         const boardPath = parts.slice(0, -1).join('/')

@@ -1,6 +1,6 @@
 import { isDivider, listSort, orderList, sortCards } from '@shared/cardfile'
 import type { TackleMode } from '@shared/types'
-import { actions, api, useStore } from './state'
+import { actions, api, isWork, useStore } from './state'
 
 /** Starts Claude on cards; a cloud run asks first, since it works from GitHub's copy and is billed. */
 export async function tackleCards(
@@ -40,7 +40,7 @@ export async function tackleCards(
   } else if (opts.split === 'each' && count > 1) {
     const ok = await actions.confirm(
       `Start ${count} parallel sessions?`,
-      `Each card gets its own Claude Code session in its own git worktree (.claude/worktrees/card-<id>), each in a terminal tab.`,
+      `Each card gets its own Claude Code session in its own git worktree (.claude/worktrees/${isWork(boardPath) ? '<Jira key>' : 'card-<id>'}), each in a terminal tab.`,
       `Start ${count} sessions`,
     )
     if (!ok) return

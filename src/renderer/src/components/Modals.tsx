@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { slugify } from '@shared/cardfile'
 import { isEmptyTheme } from '@shared/theme'
-import type { BoardMeta, ListDef, ProjectTheme } from '@shared/types'
+import type { BoardMeta, ListDef, ProjectSettings, ProjectTheme } from '@shared/types'
 import { actions, api, findNode, projectIdOf, useStore } from '../state'
 import { ThemeEditor, ThemeSwatch } from './ThemeEditor'
 
@@ -203,7 +203,8 @@ function Settings({ path }: { path: string }) {
         />
         <small className="muted">
           Shared through the repo; may be relative to the board repo (<code>../godot-shooter</code>). Tackled sessions start
-          there, and its commits with Card: trailers show on the cards.
+          there, and its commits {project?.work ? "whose message names a card's Jira key" : 'with Card: trailers'} show on
+          the cards.
         </small>
       </label>
       <label className="field">
@@ -517,6 +518,7 @@ function ProjectSettings({ id }: { id: string }) {
   const [codeRepo, setCodeRepo] = useState(project?.codeRepo ?? '')
   const [theme, setTheme] = useState<ProjectTheme | null>(project?.theme ?? null)
   const [themeEdited, setThemeEdited] = useState(false)
+  const [work, setWork] = useState(!!project?.work)
   // The window wears the theme as it is edited, and its own again once the settings close.
   useEffect(() => {
     if (themeEdited) useStore.setState({ themePreview: { projectId: id, theme } })
@@ -526,6 +528,7 @@ function ProjectSettings({ id }: { id: string }) {
   const save = async () => {
     try {
       if (themeEdited) await api.projects.setTheme(id, isEmptyTheme(theme) ? null : theme)
+      if (work !== project.work) await api.projects.setSettings(id, { work } satisfies ProjectSettings)
       await api.projects.update(id, { name, codeRepo: codeRepo.trim() || null })
       await actions.refreshTree()
       for (const key of Object.keys(useStore.getState().boards)) if (key.startsWith(`${id}:`)) await actions.loadBoard(key)
@@ -570,6 +573,18 @@ function ProjectSettings({ id }: { id: string }) {
           settings).
         </small>
       </label>
+      <div className="field">
+        <label className="check">
+          <input type="checkbox" checked={work} onChange={e => setWork(e.target.checked)} />
+          Work mode
+        </label>
+        <small className="muted">
+          For code repos shared with teammates or clients, where Jira tracks the work. Every session of every board of
+          the project keeps the board's card ids out of the code repo (commits, branches, PRs, code) and names the
+          card's Jira key instead; a card shows the commits that name its key. Kept in <code>project.json</code> in the
+          board repo, so every machine follows it, as long as it runs a build that knows the flag.
+        </small>
+      </div>
       <ThemeEditor
         theme={theme}
         onChange={next => {

@@ -8,11 +8,13 @@
 // it, which stopped every commit after.) Conflicts are rare (one file per card) and resolved
 // without asking where the answer is clear: a card keeps the side edited last (its `updated`
 // stamp), a map keeps every position, a board.json keeps every list, the theme.json keeps this
-// machine's. Anything else aborts the rebase and reports it.
+// machine's, the project.json keeps this machine's flags and every key either side has. Anything
+// else aborts the rebase and reports it.
 
 import { existsSync, promises as fs } from 'node:fs'
 import path from 'node:path'
 import { tryParseCard } from '@shared/cardfile'
+import { mergeProjectSettings, PROJECT_FILE } from '@shared/project'
 import { THEME_FILE } from '@shared/theme'
 import type { BoardMap, BoardMeta, SyncStatus } from '@shared/types'
 import { type AutoCommitter, git, isRepo } from './git'
@@ -227,6 +229,8 @@ export class BoardSync {
     } else if (file === THEME_FILE) {
       // One person's palette: mixing two edits colour by colour would make a third nobody chose.
       merged = local
+    } else if (file === PROJECT_FILE) {
+      merged = mergeProjectSettings(remote, local) ?? local
     } else {
       return false
     }

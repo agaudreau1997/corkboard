@@ -97,6 +97,7 @@ export class Project {
       sync: this.sync.status,
       ...(this.store.theme ? { theme: this.store.theme } : {}),
       guide: this.hasGuide(),
+      work: !!this.store.settings.work,
       boards: rekey(this.store.tree()),
     }
   }
@@ -117,7 +118,7 @@ export class Project {
   /** Adds the board guide when it is missing (never over one written by hand). */
   async addGuide(): Promise<void> {
     if (this.hasGuide()) return
-    await writeGuide(this.root)
+    await writeGuide(this.root, { work: !!this.store.settings.work })
     // The watch reports board files only: the commit has to be asked for.
     this.committer.touch()
   }
@@ -143,8 +144,8 @@ export async function prepareBoardRepo(root: string): Promise<void> {
   if (!existsSync(path.join(root, BOARD_GUIDE_FILE))) await writeGuide(root)
 }
 
-async function writeGuide(root: string): Promise<void> {
-  await fs.writeFile(path.join(root, BOARD_GUIDE_FILE), boardGuide(path.basename(root)))
+async function writeGuide(root: string, opts: { work?: boolean } = {}): Promise<void> {
+  await fs.writeFile(path.join(root, BOARD_GUIDE_FILE), boardGuide(path.basename(root), opts))
 }
 
 export function projectId(name: string, taken: Set<string>): string {

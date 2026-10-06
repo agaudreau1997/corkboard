@@ -71,7 +71,7 @@ export async function tackle(
       command = [CLAUDE, '--cloud', prompt]
     } else {
       const id = randomUUID()
-      const worktree = req.mode === 'local-worktree' ? worktreeName(group, req.listTitle) : undefined
+      const worktree = req.mode === 'local-worktree' ? worktreeName(group, req.listTitle, !!store.settings.work) : undefined
       command = localCommand({ claude: CLAUDE, boardRoot: store.root, name, sessionId: id, worktree, prompt })
       const sessionCwd = worktree ? path.join(cwd, '.claude', 'worktrees', worktree) : cwd
       ref = { id, kind: req.mode, started, cwd: sessionCwd, cards: ids, name, ...purpose }
@@ -116,8 +116,10 @@ function buildPrompt(store: BoardStore, req: TackleRequest, cards: Card[]): stri
     boardRoot: store.root,
     cardFile: id => store.cardFile(req.boardPath, id),
     linkTitle: id => store.findCard(id)?.card.title,
+    linkKey: id => store.findCard(id)?.card.jira,
     cloud: req.mode === 'cloud',
     guide: existsSync(path.join(store.root, BOARD_GUIDE_FILE)),
+    work: !!store.settings.work,
     listTitle: req.listTitle,
     boardTitle: req.boardTitle,
     workDir: req.mode === 'desktop' ? sessionDir(store, req.boardPath) : undefined,
@@ -263,10 +265,21 @@ async function recordCloudUrl(
   }
 }
 
-function worktreeName(cards: Card[], listTitle?: string): string {
+/**
+ * The worktree (and so the branch, `worktree-<name>`) a session gets. A work project's is named
+ * after the Jira key as written (`SPDI-42`, not slugified to lower case: the key is what teammates
+ * look for), else after the title or the list: a card id would be a branch name in the shared repo.
+ */
+export function worktreeName(cards: Card[], listTitle?: string, work = false): string {
+  const stamp = () => new Date().toISOString().slice(5, 16).replace(/[-:T]/g, '')
+  if (work) {
+    const keys = cards.flatMap(c => (c.jira ? [c.jira.trim()] : []))
+    if (keys.length === cards.length) return keys.join('-')
+    if (cards.length === 1) return slugify(cards[0].title)
+    return `cards-${slugify(listTitle ?? cards[0].title).slice(0, 24)}-${stamp()}`
+  }
   if (cards.length === 1) return `card-${cards[0].id.toLowerCase()}`
-  const stamp = new Date().toISOString().slice(5, 16).replace(/[-:T]/g, '')
-  return `cards-${slugify(listTitle ?? cards[0].id).slice(0, 24)}-${stamp}`
+  return `cards-${slugify(listTitle ?? cards[0].id).slice(0, 24)}-${stamp()}`
 }
 
 function stripAnsi(text: string): string {

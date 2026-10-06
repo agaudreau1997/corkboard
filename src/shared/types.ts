@@ -69,6 +69,8 @@ export type Card = {
   /** Ids of related cards (any board): the map view's edges. */
   links: string[]
   trello?: string
+  /** The Jira issue the card is tracked as (`SPDI-42`): what a work project names in its code repo. */
+  jira?: string
   sessions: SessionRef[]
   /** Markdown body: the description. */
   body: string
@@ -122,6 +124,8 @@ export type CodeCommit = {
   subject: string
   /** Card ids from the commit's `Card:` trailers. */
   cards: string[]
+  /** The Jira keys of the board the message names, for a work project's cards. */
+  keys: string[]
 }
 
 export type CardPatch = Partial<Omit<Card, 'id' | 'extra'>>
@@ -212,7 +216,21 @@ export type ProjectNode = {
   theme?: ProjectTheme
   /** Whether the repo has its CLAUDE.md (the card format, for sessions and hand edits). */
   guide: boolean
+  /** Work mode (`project.json`): its sessions keep card ids out of the code repo and name Jira keys. */
+  work: boolean
   boards: BoardNode[]
+}
+
+/**
+ * A project's settings (`project.json` at the board repo's root, so every machine sees them);
+ * `src/shared/project.ts` reads and writes the file.
+ */
+export type ProjectSettings = {
+  /**
+   * The code repos are shared with people who never see this board (teammates, clients) and Jira
+   * tracks the work: every card id stays out of them, and the card's `jira` key is named instead.
+   */
+  work?: boolean
 }
 
 export type ThemeColor = 'background' | 'surface' | 'line' | 'text' | 'accent' | 'link' | 'success' | 'danger'

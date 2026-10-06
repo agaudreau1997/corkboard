@@ -594,8 +594,16 @@ export function listColor(board: LoadedBoard, listId: string | null): string {
   return index < 0 ? '#6b7280' : listColorAt(board.meta.lists, index)
 }
 
-export function commitsFor(commits: CodeCommit[] | undefined, id: string): CodeCommit[] {
-  return (commits ?? []).filter(c => c.cards.includes(id.toUpperCase()))
+/** A card's commits: those whose trailer names its id, and those whose message names its Jira key. */
+export function commitsFor(commits: CodeCommit[] | undefined, card: Pick<Card, 'id' | 'jira'>): CodeCommit[] {
+  const id = card.id.toUpperCase()
+  const key = card.jira?.trim().toUpperCase()
+  return (commits ?? []).filter(c => c.cards.includes(id) || (!!key && c.keys.includes(key)))
+}
+
+/** Whether a board's project is in work mode (card ids stay out of its code repo; Jira keys are named). */
+export function isWork(boardPath: string): boolean {
+  return !!useStore.getState().projects.find(p => p.id === projectIdOf(boardPath))?.work
 }
 
 /** A shared empty list for selectors: a fresh `[]` per call would re-render forever. */
