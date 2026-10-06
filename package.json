@@ -1,6 +1,6 @@
 {
   "name": "corkboard",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "A git-backed kanban and mind-map board that hands cards to Claude Code",
   "author": {
     "name": "agaudreau1997",
