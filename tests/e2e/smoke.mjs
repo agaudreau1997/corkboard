@@ -784,7 +784,17 @@ try {
   const otherCard = path.join(otherMachine, MAIN.path, 'cards', `${TO_FIX}.md`)
   writeFileSync(otherCard, readFileSync(otherCard, 'utf8').replace(/^title: .*$/m, 'title: Renamed on the other machine').replace(/^updated: .*$/m, `updated: ${new Date().toISOString()}`))
   execFileSync('git', ['commit', '-qam', `Rename ${TO_FIX} elsewhere`], { cwd: otherMachine })
-  execFileSync('git', ['push', '-q'], { cwd: otherMachine })
+  // The app may push a commit of its own (the last drags, committed after their delay) between the
+  // pull above and this push, as another machine would; the push then rebases and goes again.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      execFileSync('git', ['push', '-q'], { cwd: otherMachine, stdio: 'pipe' })
+      break
+    } catch (error) {
+      if (attempt === 4) throw error
+      execFileSync('git', ['pull', '-q', '--rebase'], { cwd: otherMachine })
+    }
+  }
   await syncNow()
   const pulled = await until(async () => (await page.locator(`.card[data-card="${TO_FIX}"]`, { hasText: 'Renamed on the other machine' }).count()) === 1, 15000)
   check(pulled, "the other machine's rename showed up after a sync")
