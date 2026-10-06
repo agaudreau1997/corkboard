@@ -40,6 +40,7 @@ export class BoardStore {
   private watchers = new Map<string, FSWatcher>()
   private pending = new Set<string>()
   private flushTimer?: NodeJS.Timeout
+  private rewatchTimer?: NodeJS.Timeout
   private events?: StoreEvents
   /** This machine's own code repo paths, by board path (app config, never in the repo). */
   private localRepos: Record<string, string> = {}
@@ -492,17 +493,16 @@ export class BoardStore {
         const watcher = watch(path.join(this.root, rel), (_event, filename) => {
           if (!filename) return
           const name = filename.toString()
+          // Windows names the watched folder itself, by its full path, once that folder is gone,
+          // and names it again as fast as it can until the watch is closed: a stream of events
+          // that put the flush below off for good, so nothing else on disk reached the screen.
+          if (path.isAbsolute(name)) return this.dropWatch(rel, watcher)
           if (name === '.git' || name.endsWith('.tmp')) return
           this.pending.add(rel ? `${rel}/${name}` : name)
           clearTimeout(this.flushTimer)
           this.flushTimer = setTimeout(() => void this.flush(), 80)
         })
-        watcher.on('error', () => {
-          // The folder went away (a board deleted, a branch switched): watch again what is left.
-          watcher.close()
-          this.watchers.delete(rel)
-          setTimeout(() => this.rewatch(), 200)
-        })
+        watcher.on('error', () => this.dropWatch(rel, watcher))
         this.watchers.set(rel, watcher)
       } catch {
         /* not there (yet): a cards folder appears with its first card, and the board's watch sees it */
@@ -510,10 +510,23 @@ export class BoardStore {
     }
   }
 
+  /**
+   * Ends the watch of a folder that went away (a board deleted, a branch switched), once, and
+   * watches again what is left in a moment.
+   */
+  private dropWatch(rel: string, watcher: FSWatcher): void {
+    if (this.watchers.get(rel) !== watcher) return
+    watcher.close()
+    this.watchers.delete(rel)
+    clearTimeout(this.rewatchTimer)
+    this.rewatchTimer = setTimeout(() => this.rewatch(), 200)
+  }
+
   close(): void {
     for (const watcher of this.watchers.values()) watcher.close()
     this.watchers.clear()
     clearTimeout(this.flushTimer)
+    clearTimeout(this.rewatchTimer)
   }
 
   private async flush(): Promise<void> {

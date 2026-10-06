@@ -317,6 +317,25 @@ describe('the watch and git', () => {
     await until(() => store.board(p).cards.find(c => c.id === 'F-2'))
     store.close()
   })
+
+  it('sees a board written on disk after the only board was deleted', async () => {
+    const store = new BoardStore(root)
+    await store.init()
+    const p = await store.createBoard('', 'Spare', 'SP')
+    await store.createCard(p, { title: 'Doomed', list: 'todo' })
+    store.watch({ onDelta: () => {}, onTreeChanged: () => {} })
+    await sleep(100)
+    // On Windows the watches of the deleted folders went on reporting them, so fast that the
+    // flush never ran again.
+    await store.deleteBoard(p, true)
+    await sleep(300)
+    mkdirSync(path.join(root, 'retired', 'cards'), { recursive: true })
+    writeFileSync(path.join(root, 'retired', 'cards', 'RET-1.md'), '---\nid: RET-1\ntitle: Kept\nlist: todo\npos: 1\n---\n')
+    writeFileSync(path.join(root, 'retired', 'board.json'), JSON.stringify({ key: 'RET', title: 'Retired', lists: [] }))
+    await until(() => store.tree().find(n => n.title === 'Retired'))
+    await until(() => store.board('retired').cards.find(c => c.id === 'RET-1'))
+    store.close()
+  })
 })
 
 describe('git', () => {
