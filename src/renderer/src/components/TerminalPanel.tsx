@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react'
 import type { PtyInfo, TerminalStatus } from '@shared/types'
 import { actions, api, attachTerminalSink, useStore } from '../state'
 import { cssToken, onThemeApplied } from '../theme'
+import { openContextMenu, type MenuItem } from './ContextMenu'
 
 export function TerminalPanel() {
   const terminals = useStore(s => s.terminals)
@@ -128,6 +129,51 @@ function terminalTheme() {
   }
 }
 
+// Windows terminals paste on Ctrl+V. Elsewhere it goes to the program, and Claude Code pastes an image
+// on it. On macOS, Cmd+C and Cmd+V already copy and paste: xterm answers the Edit menu's events.
+const WINDOWS = navigator.userAgent.includes('Windows')
+const MAC = navigator.userAgent.includes('Macintosh')
+const PASTE_KEY = WINDOWS ? 'Ctrl+V' : 'Ctrl+Shift+V'
+
+/**
+ * The keys a terminal keeps from the program: Ctrl+Shift+C and Ctrl+Shift+V, Ctrl+V on Windows,
+ * and Ctrl+C while there is a selection (without one it stays the program's interrupt).
+ */
+function clipboardKey(e: KeyboardEvent, terminal: Terminal): 'copy' | 'paste' | null {
+  if (MAC || !e.ctrlKey || e.altKey || e.metaKey) return null
+  // keyCode, as xterm reads it, so the key that would send ^C is the one that copies on any layout.
+  if (e.keyCode === 67) return e.shiftKey || terminal.hasSelection() ? 'copy' : null
+  if (e.keyCode === 86) return e.shiftKey || WINDOWS ? 'paste' : null
+  return null
+}
+
+/** Copies the selection and clears it, so a second Ctrl+C interrupts, as in Windows Terminal. */
+function copySelection(terminal: Terminal) {
+  const text = terminal.getSelection()
+  if (text) api.clipboard.write(text)
+  terminal.clearSelection()
+}
+
+/** The menu's paste. Bracketed when the program asks, so a shell does not run a script line by line. */
+async function pasteInto(terminal: Terminal) {
+  const text = await api.clipboard.read()
+  if (text) terminal.paste(text)
+}
+
+function terminalMenu(terminal: Terminal): MenuItem[] {
+  // The menu's button took the focus: give it back, so typing goes on in the terminal.
+  const then = (act: () => unknown) => () => {
+    void act()
+    terminal.focus()
+  }
+  return [
+    { label: 'Copy', hint: 'Ctrl+C', disabled: !terminal.hasSelection(), onSelect: then(() => copySelection(terminal)) },
+    { label: 'Paste', hint: PASTE_KEY, onSelect: then(() => pasteInto(terminal)) },
+    'separator',
+    { label: 'Select all', onSelect: then(() => terminal.selectAll()) },
+  ]
+}
+
 function XTerm({ info, visible }: { info: PtyInfo; visible: boolean }) {
   const host = useRef<HTMLDivElement>(null)
   const term = useRef<Terminal | null>(null)
@@ -148,6 +194,17 @@ function XTerm({ info, visible }: { info: PtyInfo; visible: boolean }) {
     terminal.open(host.current!)
     term.current = terminal
     fit.current = fitAddon
+    terminal.attachCustomKeyEventHandler(e => {
+      const action = clipboardKey(e, terminal)
+      if (!action) return true
+      // A paste is left to the browser: xterm takes its paste event before the next key, where
+      // reading the clipboard from here would let a quick Enter overtake it.
+      if (action === 'copy' && e.type === 'keydown') {
+        e.preventDefault()
+        copySelection(terminal)
+      }
+      return false
+    })
     const input = terminal.onData(data => api.pty.write(info.id, data))
     const detach = attachTerminalSink(info.id, data => terminal.write(data))
     const observer = new ResizeObserver(() => {
@@ -183,7 +240,15 @@ function XTerm({ info, visible }: { info: PtyInfo; visible: boolean }) {
     })
   }, [visible, info.id])
 
-  return <div className="xterm-host" ref={host} style={{ display: visible ? 'block' : 'none' }} data-pty={info.id} />
+  return (
+    <div
+      className="xterm-host"
+      ref={host}
+      style={{ display: visible ? 'block' : 'none' }}
+      data-pty={info.id}
+      onContextMenu={e => term.current && openContextMenu(e, terminalMenu(term.current))}
+    />
+  )
 }
 
 function ResizeHandle() {

@@ -378,6 +378,7 @@ function registerIpc(): void {
   })
 
   ipcMain.on('clipboard:write', (_e, text: string) => clipboard.writeText(String(text)))
+  ipcMain.handle('clipboard:read', () => clipboard.readText())
 
   ipcMain.handle('claude:info', () => claudeInfo())
   ipcMain.handle('claude:update', (_e, key?: string) => {

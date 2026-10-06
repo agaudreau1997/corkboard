@@ -58,6 +58,7 @@ const api: CorkboardApi = {
   },
   clipboard: {
     write: text => ipcRenderer.send('clipboard:write', text),
+    read: () => invoke('clipboard:read'),
   },
   map: {
     save: (boardPath, map) => invoke('map:save', boardPath, map),

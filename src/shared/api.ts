@@ -90,6 +90,7 @@ export type CorkboardApi = {
   }
   clipboard: {
     write(text: string): void
+    read(): Promise<string>
   }
   map: {
     save(boardPath: string, map: BoardMap): Promise<void>

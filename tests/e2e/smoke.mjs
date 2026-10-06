@@ -786,6 +786,22 @@ try {
   check(echoed, 'an interactive shell runs in the terminal panel')
   await shot('06-shell')
 
+  // Copy and paste: Ctrl+C copies a selection instead of interrupting; the right-click menu pastes.
+  const shellRows = page.locator('.xterm-host:visible .xterm-rows')
+  const shellScreen = page.locator('.xterm-host:visible .xterm-screen') // over the rows: takes the clicks
+  const clipboardText = () => app.evaluate(({ clipboard }) => clipboard.readText())
+  await app.evaluate(({ clipboard }) => clipboard.writeText(''))
+  await shellScreen.click({ button: 'right' })
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Select all' }).click()
+  await page.keyboard.press('Control+C')
+  check(!!(await until(async () => (await clipboardText()).includes('corkboard-42'), 5000)), 'Ctrl+C copies the selection from a terminal')
+  await app.evaluate(({ clipboard }) => clipboard.writeText('echo pasted-$((2*3))'))
+  await shellScreen.click({ button: 'right' })
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Paste' }).click()
+  await page.keyboard.press('Enter')
+  const pasted = await until(async () => ((await shellRows.textContent()) ?? '').includes('pasted-6'), 10000)
+  check(!!pasted, "the terminal menu's Paste types the clipboard into the shell")
+
   // Each tab's icon follows the title Claude Code sets; a turn that ends out of sight stands out.
   const shellTab = page.locator('.terminal-tab').last()
   const shellIcon = () => shellTab.locator('.term-status').getAttribute('class')
