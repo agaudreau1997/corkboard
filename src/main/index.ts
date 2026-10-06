@@ -555,7 +555,7 @@ function prepareQuit(): Promise<void> {
       const pending = [...projects.values()].map(async p => {
         p.store.close()
         p.sync.stop()
-        await p.sync.sync()
+        await p.sync.flush()
       })
       await Promise.race([Promise.all(pending), new Promise(r => setTimeout(r, 10_000))])
     } catch (error) {

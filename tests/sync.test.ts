@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { parseCard, serializeCard } from '@shared/cardfile'
-import type { Card } from '@shared/types'
+import type { Card, SyncStatus } from '@shared/types'
 import { AutoCommitter } from '../src/main/git'
 import { BoardSync, mergeBoards, mergeMaps, newerCard } from '../src/main/sync'
 
@@ -105,6 +105,27 @@ describe('BoardSync', () => {
     expect(parseCard(text)).toMatchObject({ list: 'doing', title: 'Renamed on B' })
     expect(status.state).toBe('synced')
     expect(run(b.root, 'status', '--porcelain')).toBe('')
+  })
+
+  it('flush syncs after the one under way, so a write made meanwhile is pushed', async () => {
+    const a = machine(clone('a'))
+    // A sync is under way, its commit done, when a card is written and the app quits. sync() would
+    // hand back the running one, which committed before the write, and since the quit stopped the
+    // syncer, the round it queues would never come.
+    const commit = a.committer.flush.bind(a.committer)
+    let flushed: Promise<SyncStatus> | undefined
+    a.committer.flush = async () => {
+      const out = await commit()
+      if (!flushed) {
+        writeFileSync(a.file('game/cards/G-1.md'), serializeCard(card('G-1', 'done', '2026-10-02T12:00:00.000Z', 'Written at quit')))
+        a.sync.stop()
+        flushed = a.sync.flush()
+      }
+      return out
+    }
+    expect(await a.sync.sync()).toMatchObject({ state: 'synced', pushed: 0 })
+    expect(await flushed!).toMatchObject({ state: 'synced', pushed: 1 })
+    expect(run(path.join(dir, 'remote.git'), 'show', 'main:game/cards/G-1.md')).toContain('Written at quit')
   })
 
   it('waits rather than rebase over a change it could not commit', async () => {

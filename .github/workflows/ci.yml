@@ -7,6 +7,12 @@ on:
     branches: ['**']
   pull_request:
 
+# A new push to a branch or pull request cancels the run still going for its last one: only the
+# newest commit's result matters, and the e2e jobs are the slow part.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     strategy:
@@ -27,8 +33,6 @@ jobs:
   # Builds the app and drives it on a made-up board repo (tests/e2e/fixture.mjs), with a stand-in
   # for `claude`.
   e2e:
-    # Windows still fails partway (CORK-28): its run shows how far it gets without failing CI.
-    continue-on-error: ${{ matrix.os == 'windows-latest' }}
     strategy:
       fail-fast: false
       matrix:
