@@ -203,10 +203,12 @@ describe('tackle prompts', () => {
     expect(prompt).not.toContain('list:')
   })
 
-  it('in Claude desktop: names the folder, which the session checks first', () => {
+  it('in Claude desktop: names the folder, which the session checks first and moves to', () => {
     const prompt = tacklePrompt([base], { ...ctx, workDir: '/code' })
     expect(prompt).toContain('Work in /code.')
-    expect(prompt).toContain('if your working directory is not /code, stop and tell me')
+    // The app starts a link's session with no folder when its branch is left blank.
+    expect(prompt).toContain("if your working directory is not /code, move the session there first, with the desktop app's change_directory tool")
+    expect(prompt).toContain("If you can't, stop and tell me")
     expect(tacklePrompt([base], ctx)).not.toContain('Work in')
   })
 

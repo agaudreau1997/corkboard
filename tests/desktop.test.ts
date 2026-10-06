@@ -83,19 +83,27 @@ describe('finding the session a tackle opened', () => {
   const since = Date.parse('2026-10-03T21:00:00.000Z')
   const marker = 'Tackle card RS-961 from the task board: fix "stuck" enemies'
 
-  it('picks the session in the right folder, started after the tackle, whose prompt matches', async () => {
+  it('picks the session started after the tackle whose prompt matches', async () => {
     desktopSession({ local: 'local_old', cli: 'cli-old', cwd: '/code', createdAt: since - 60_000, firstPrompt: marker })
-    desktopSession({ local: 'local_other', cli: 'cli-other', cwd: '/elsewhere', createdAt: since + 1000, firstPrompt: marker })
     desktopSession({ local: 'local_wrong', cli: 'cli-wrong', cwd: '/code', createdAt: since + 1000, firstPrompt: 'Something else' })
-    expect(await findDesktopSession({ cwd: '/code', since, marker })).toBeUndefined()
+    expect(await findDesktopSession({ since, marker })).toBeUndefined()
 
     desktopSession({ local: 'local_mine', cli: 'cli-mine', cwd: '/code', createdAt: since + 2000, firstPrompt: `${marker}\n\nrest` })
-    expect(await findDesktopSession({ cwd: '/code', since, marker })).toMatchObject({
+    expect(await findDesktopSession({ since, marker })).toMatchObject({
       desktopId: 'local_mine',
       cliSessionId: 'cli-mine',
+      cwd: '/code',
     })
     // One already put on a card is skipped.
-    expect(await findDesktopSession({ cwd: '/code', since, marker, skip: new Set(['local_mine']) })).toBeUndefined()
+    expect(await findDesktopSession({ since, marker, skip: new Set(['local_mine']) })).toBeUndefined()
+  })
+
+  it('finds it in whatever folder the desktop app started it', async () => {
+    // Sent with its branch left blank, a link's draft starts in a scratch workspace; the index keeps
+    // that folder after the session moves itself to the code repo.
+    const scratch = '/home/someone/.config/Claude/scratch-workspaces/account/org/scratch-2026-10-06-e5cff1'
+    desktopSession({ local: 'local_scratch', cli: 'cli-scratch', cwd: scratch, createdAt: since + 1000, firstPrompt: marker })
+    expect(await findDesktopSession({ since, marker })).toMatchObject({ desktopId: 'local_scratch', cwd: scratch })
   })
 
   it('waits while the desktop app has no transcript yet (the prompt not sent)', async () => {
@@ -105,6 +113,6 @@ describe('finding the session a tackle opened', () => {
       path.join(index, 'local_new.json'),
       JSON.stringify({ sessionId: 'local_new', cliSessionId: 'cli-new', cwd: '/code', createdAt: since + 500 }),
     )
-    expect(await findDesktopSession({ cwd: '/code', since, marker })).toBeUndefined()
+    expect(await findDesktopSession({ since, marker })).toBeUndefined()
   })
 })

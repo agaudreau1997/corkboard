@@ -1,10 +1,12 @@
-// The Claude desktop app, reached through its `claude://` links (read from the app itself; none
-// of this is a documented API):
+// The Claude desktop app, reached through its `claude://` links (read from the app itself; only
+// the first is documented, and the session index below isn't):
 //   claude://code/new?q=<prompt>&folder=<path>   a new Code session, prompt filled in
 //   claude://code/continue?session=local_<id>      opens one of its sessions
 //   claude://resume?session=<cli uuid>             imports a CLI session
 // The link takes one folder: given two, the app ignores both and opens the last folder it used. It
-// asks to trust a folder that comes from a link, every time, trusted or not.
+// asks to trust a folder that comes from a link, every time, trusted or not. It can't pick a branch
+// (its documented parameters are q, folder and file): the draft's branch selector stays blank, and
+// a draft sent that way starts with no folder, in a scratch workspace of the app's.
 // The app keeps an index of its Code sessions, one `local_<id>.json` per session (with the CLI
 // session id, its folder and when it started), which is how a tackle finds the session it opened.
 
@@ -106,12 +108,13 @@ async function indexFiles(dir: string, depth = 0): Promise<string[]> {
 }
 
 /**
- * The desktop session a tackle opened: started after `since`, in `cwd`, and whose transcript's
- * first lines carry the prompt's first line (the marker). Undefined until the person has sent the
- * prompt (the transcript only starts then).
+ * The desktop session a tackle opened: started after `since`, and whose transcript's first lines
+ * carry the prompt's first line (the marker). Undefined until the person has sent the prompt (the
+ * transcript only starts then). Its folder is not checked: a draft sent with its branch blank
+ * starts in a scratch workspace, and the index keeps that folder after the session moves itself to
+ * the code repo.
  */
 export async function findDesktopSession(opts: {
-  cwd: string
   since: number
   marker: string
   skip?: Set<string>
@@ -123,7 +126,7 @@ export async function findDesktopSession(opts: {
     } catch {
       continue
     }
-    if (!meta.sessionId || !meta.cliSessionId || meta.cwd !== opts.cwd) continue
+    if (!meta.sessionId || !meta.cliSessionId || !meta.cwd) continue
     if ((meta.createdAt ?? 0) < opts.since - 5000 || opts.skip?.has(meta.sessionId)) continue
     const transcript = transcriptFile(meta.cwd, meta.cliSessionId)
     if (!existsSync(transcript)) continue

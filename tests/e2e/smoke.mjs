@@ -591,23 +591,25 @@ try {
   const linkParams = new URL(newLink).searchParams
   check(linkParams.get('q')?.startsWith(`Tackle card ${tackleId}`) ?? false, 'the link carries the prompt')
   check(linkParams.getAll('folder').join() === codeRepo, 'in the code repo, its only folder')
-  check(linkParams.get('q')?.includes(`if your working directory is not ${codeRepo}, stop`) ?? false, 'the prompt asks the session to check its folder')
+  check(linkParams.get('q')?.includes(`if your working directory is not ${codeRepo}, move the session there first`) ?? false, 'the prompt asks the session to check its folder and move there')
   check(await until(() => readFileSync(cardFileOf(tackleId), 'utf8').includes('kind: desktop')), 'the desktop session is recorded')
   check(await until(async () => (await page.locator('.drawer .sessions li', { hasText: 'waiting' }).count()) === 1), 'waiting until its prompt is sent')
-  // The desktop app indexes the session and writes its transcript once the prompt is sent.
+  // The desktop app indexes the session and writes its transcript once the prompt is sent. The link
+  // can't pick a branch, and a draft sent with its branch blank starts in a scratch workspace.
   const desktopIndex = path.join(scratch, 'desktop-sessions', 'account', 'org')
+  const desktopScratch = path.join(scratch, 'desktop-scratch', 'scratch-e2e')
   mkdirSync(desktopIndex, { recursive: true })
   writeFileSync(
     path.join(desktopIndex, 'local_e2e-1.json'),
-    JSON.stringify({ sessionId: 'local_e2e-1', cliSessionId: 'cli-e2e-1', cwd: codeRepo, createdAt: Date.now() }),
+    JSON.stringify({ sessionId: 'local_e2e-1', cliSessionId: 'cli-e2e-1', cwd: desktopScratch, createdAt: Date.now() }),
   )
-  const transcriptDir = path.join(scratch, 'claude-projects', codeRepo.replace(/[^A-Za-z0-9]/g, '-'))
+  const transcriptDir = path.join(scratch, 'claude-projects', desktopScratch.replace(/[^A-Za-z0-9]/g, '-'))
   mkdirSync(transcriptDir, { recursive: true })
   writeFileSync(
     path.join(transcriptDir, 'cli-e2e-1.jsonl'),
     JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'text', text: linkParams.get('q') }] } }) + '\n',
   )
-  check(await until(() => readFileSync(cardFileOf(tackleId), 'utf8').includes('desktopId: local_e2e-1')), 'the card links the session the desktop app opened')
+  check(await until(() => readFileSync(cardFileOf(tackleId), 'utf8').includes('desktopId: local_e2e-1')), 'the card links the session the desktop app opened, outside the code repo too')
   await page.locator('.drawer .sessions').getByRole('button', { name: 'Open', exact: true }).click()
   check(!!(await until(() => openedUrls().includes('claude://code/continue?session=local_e2e-1'))), 'Open reopens it in the desktop app')
 

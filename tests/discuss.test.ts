@@ -90,7 +90,7 @@ describe('discuss prompts', () => {
   it('in Claude desktop: names the folder, one card or a list', () => {
     const one = discussPrompt([card('G-1', 'Turrets')], { ...ctx, workDir: '/code' })
     const list = discussPrompt([card('G-1', 'a'), card('G-2', 'b')], { ...ctx, listTitle: 'To do', workDir: '/code' })
-    for (const prompt of [one, list]) expect(prompt).toContain('if your working directory is not /code, stop and tell me')
+    for (const prompt of [one, list]) expect(prompt).toContain('if your working directory is not /code, move the session there first')
     expect(discussPrompt([card('G-1', 'Turrets')], ctx)).not.toContain('Work in')
   })
 

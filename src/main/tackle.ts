@@ -57,11 +57,12 @@ export async function tackle(
     if (req.mode === 'desktop') {
       // A new session in the Claude desktop app, in the code repo. One folder only: given the board
       // repo as a second, the app ignored both and opened the last folder it used. The session
-      // reaches the cards by the paths in the prompt.
+      // reaches the cards by the paths in the prompt. The link can't pick a branch, and a draft
+      // sent without one starts with no folder: the prompt has the session move itself.
       const { url, marker } = newSessionUrl(prompt, cwd)
       await recordSession(store, req.boardPath, group, { kind: 'desktop', started, cwd, cards: ids, name, ...purpose })
       await openUrl(url, open)
-      watchForDesktopSession(store, req.boardPath, ids, started, cwd, marker)
+      watchForDesktopSession(store, req.boardPath, ids, started, marker)
       continue
     }
 
@@ -194,7 +195,6 @@ function watchForDesktopSession(
   boardPath: string,
   ids: string[],
   started: string,
-  cwd: string,
   marker: string,
 ): void {
   const since = Date.parse(started)
@@ -206,7 +206,7 @@ function watchForDesktopSession(
         .flatMap(b => b.cards.flatMap(c => c.sessions.map(s => s.desktopId)))
         .filter((x): x is string => !!x),
     )
-    const found = await findDesktopSession({ cwd, since, marker, skip: known }).catch(() => undefined)
+    const found = await findDesktopSession({ since, marker, skip: known }).catch(() => undefined)
     if (!found) return
     stopWatch(timer)
     const board = store.board(boardPath)

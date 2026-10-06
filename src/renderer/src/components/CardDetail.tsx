@@ -126,7 +126,7 @@ function Drawer({ board, card }: { board: LoadedBoard; card: Card }) {
 
         <div className="tackle-row">
           {desktop && (
-            <button className="accent" title="A new Code session in the Claude desktop app" onClick={() => void tackleCards(board.path, [card.id], 'desktop')}>
+            <button className="accent" title="A new Code session in the Claude desktop app, in the code repo: pick its branch before sending the prompt" onClick={() => void tackleCards(board.path, [card.id], 'desktop')}>
               Claude desktop
             </button>
           )}

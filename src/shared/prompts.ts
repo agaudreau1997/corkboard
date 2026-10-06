@@ -16,8 +16,9 @@ export type PromptContext = {
   /** Title of the board, when the cards are a whole board. */
   boardTitle?: string
   /**
-   * The folder a session the Claude desktop app starts should be in: the app can open it in the
-   * last folder it used instead, so the prompt asks the session to check before anything else.
+   * The folder a session the Claude desktop app starts should be in: the app can start it with no
+   * folder or in the last folder it used instead, so the prompt asks the session to check before
+   * anything else, and to move there.
    */
   workDir?: string
 }
@@ -149,8 +150,10 @@ export function tacklePrompt(cards: Card[], ctx: PromptContext): string {
   return parts.join('\n\n')
 }
 
+// A session the desktop app started anywhere else can move itself (the app gives its sessions a
+// change_directory tool); told only to stop, it waited for a person to say "move".
 function folderCheck(dir: string): string {
-  return `Work in ${dir}. The Claude desktop app can open a session in the last folder it used: if your working directory is not ${dir}, stop and tell me before doing anything else.`
+  return `Work in ${dir}. The Claude desktop app can start this session elsewhere (with no folder when its branch was left blank, or in the last folder it used): if your working directory is not ${dir}, move the session there first, with the desktop app's change_directory tool. If you can't, stop and tell me before doing anything else.`
 }
 
 // A pointer to a file that isn't there sends the session looking for it.
