@@ -23,6 +23,7 @@ const api: CorkboardApi = {
     add: opts => invoke('projects:add', opts),
     update: (id, patch) => invoke('projects:update', id, patch),
     setTheme: (id, theme) => invoke('projects:setTheme', id, theme),
+    setSettings: (id, settings) => invoke('projects:setSettings', id, settings),
     addGuide: id => invoke('projects:addGuide', id),
     remove: id => invoke('projects:remove', id),
     pickFolder: title => invoke('projects:pickFolder', title),

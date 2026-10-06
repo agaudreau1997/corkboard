@@ -4,7 +4,7 @@ import { between, isDivider, LIST_SORTS, listSort, orderList, reorderLists, sort
 import type { BoardNode, Card, ListDef, LoadedBoard, TackleMode } from '@shared/types'
 import type { MenuItem } from './components/ContextMenu'
 import { discussCards, tackleCards } from './tackle'
-import { actions, api, findNode, flatten, projectIdOf, useStore } from './state'
+import { actions, api, findNode, flatten, isWork, projectIdOf, useStore } from './state'
 
 /** Every other board as "Parent / Child" (behind its project's name when there are several). */
 function otherBoards(current: string): { node: BoardNode; label: string; lists: ListDef[] }[] {
@@ -33,6 +33,9 @@ export function cardMenu(board: LoadedBoard, card: Card): MenuItem[] {
   const sorted = card.list !== null && listSort(board.meta, board.meta.lists.find(l => l.id === card.list)) !== 'manual'
   const tackle = (mode: TackleMode) => () => void tackleCards(board.path, [card.id], mode)
   const divider = isDivider(card)
+  // A work project's code repo never sees a card id: what is copied for it names the Jira key.
+  const work = isWork(board.path)
+  const markdown = work ? (card.jira ? `[${card.jira}] ${card.title}` : card.title) : `[${card.id}] ${card.title}`
 
   const items: MenuItem[] = [
     { label: 'Open', onSelect: () => actions.openCard(board.path, card.id) },
@@ -108,8 +111,16 @@ export function cardMenu(board: LoadedBoard, card: Card): MenuItem[] {
       items: [
         { label: 'Identifier', hint: card.id, onSelect: () => actions.copy(card.id) },
         { label: 'Title', onSelect: () => actions.copy(card.title, 'the title') },
-        { label: 'Commit trailer', hint: `Card: ${card.id}`, onSelect: () => actions.copy(`Card: ${card.id}`) },
-        { label: 'Markdown', hint: `[${card.id}] …`, onSelect: () => actions.copy(`[${card.id}] ${card.title}`, 'as Markdown') },
+        ...(work
+          ? card.jira
+            ? [{ label: 'Jira key', hint: card.jira, onSelect: () => actions.copy(card.jira!, 'the Jira key') }]
+            : []
+          : [{ label: 'Commit trailer', hint: `Card: ${card.id}`, onSelect: () => actions.copy(`Card: ${card.id}`) }]),
+        {
+          label: 'Markdown',
+          hint: work ? (card.jira ? `[${card.jira}] …` : 'the title') : `[${card.id}] …`,
+          onSelect: () => actions.copy(markdown, 'as Markdown'),
+        },
         {
           label: 'File path',
           onSelect: async () => actions.copy(await api.cards.filePath(board.path, card.id), 'the file path'),
@@ -233,6 +244,8 @@ export function listMenu(board: LoadedBoard, list: ListDef, hooks: ListMenuHooks
   }
 
   const boards = otherBoards(board.path)
+  // A work project's checklist names Jira keys, never card ids: it may be pasted into a PR.
+  const item = (c: Card) => (isWork(board.path) ? (c.jira ? `${c.jira}: ${c.title}` : c.title) : `${c.id}: ${c.title}`)
   return [
     { heading: `${list.title} · ${work.length} card${work.length === 1 ? '' : 's'}` },
     { label: 'Add a card', onSelect: hooks.addCard },
@@ -288,7 +301,7 @@ export function listMenu(board: LoadedBoard, list: ListDef, hooks: ListMenuHooks
       onSelect: () =>
         actions.copy(
           `## ${list.title}\n\n${cards
-            .map(c => (isDivider(c) ? '---' : `- [${c.complete ? 'x' : ' '}] ${c.id}: ${c.title}`))
+            .map(c => (isDivider(c) ? '---' : `- [${c.complete ? 'x' : ' '}] ${item(c)}`))
             .join('\n')}\n`,
           `${list.title} as Markdown`,
         ),

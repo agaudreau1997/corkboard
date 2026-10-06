@@ -17,6 +17,7 @@ const KNOWN = [
   'archived',
   'labels',
   'links',
+  'jira',
   'trello',
   'sessions',
 ] as const
@@ -44,6 +45,7 @@ export function parseCard(text: string, fallbackId = ''): Card {
     archived: front.archived === true ? true : undefined,
     labels: asStringArray(front.labels),
     links: asStringArray(front.links),
+    jira: asString(front.jira),
     trello: asString(front.trello),
     sessions: Array.isArray(front.sessions) ? (front.sessions as SessionRef[]) : [],
     body: body.replace(/^\r?\n/, '').replace(/\s+$/, ''),
@@ -74,6 +76,7 @@ export function serializeCard(card: Card): string {
   if (card.archived) front.archived = true
   if (card.labels.length) front.labels = card.labels
   if (card.links.length) front.links = card.links
+  if (card.jira) front.jira = card.jira
   if (card.trello) front.trello = card.trello
   if (card.sessions.length) front.sessions = card.sessions
   for (const [key, value] of Object.entries(card.extra)) front[key] = value

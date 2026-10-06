@@ -12,6 +12,7 @@ import type {
   ClaudeInfo,
   NotifyConfig,
   ProjectConfig,
+  ProjectSettings,
   ProjectTheme,
   SessionRef,
   SyncStatus,
@@ -302,6 +303,12 @@ function registerIpc(): void {
     if (!project) throw new Error(`No project ${id}`)
     await project.store.saveTheme(theme)
   })
+  ipcMain.handle('projects:setSettings', async (_e, id: string, settings: ProjectSettings) => {
+    const project = projects.get(id)
+    if (!project) throw new Error(`No project ${id}`)
+    await project.store.saveSettings(settings)
+    commitCache.clear()
+  })
   ipcMain.handle('projects:addGuide', async (_e, id: string) => {
     const project = projects.get(id)
     if (!project) throw new Error(`No project ${id}`)
@@ -409,10 +416,16 @@ function registerIpc(): void {
   ipcMain.handle('git:cardCommits', async (_e, key: string) => {
     const repo = codeRepoOf(key)
     if (!repo || !existsSync(repo)) return []
-    const cached = commitCache.get(repo)
+    // A work project's cards are also found by their Jira keys, so the cache is per set of keys.
+    const { project, rel } = projectOf(key)
+    const keys = project.store.settings.work
+      ? project.store.board(rel).cards.flatMap(c => (c.jira ? [c.jira.toUpperCase()] : [])).sort()
+      : []
+    const cacheKey = `${repo}\0${keys.join(',')}`
+    const cached = commitCache.get(cacheKey)
     if (cached && Date.now() - cached.at < 10_000) return cached.commits
-    const commits = await codeCommits(repo).catch(() => [])
-    commitCache.set(repo, { at: Date.now(), commits })
+    const commits = await codeCommits(repo, keys).catch(() => [])
+    commitCache.set(cacheKey, { at: Date.now(), commits })
     return commits
   })
   ipcMain.handle('git:commitFiles', async (_e, key: string, sha: string) => {

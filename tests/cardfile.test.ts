@@ -33,6 +33,7 @@ describe('card files', () => {
       created: '2026-09-20T12:28:50.000Z',
       complete: true,
       links: ['RS-12', 'IDEA-4'],
+      jira: 'SPDI-42',
       sessions: [{ id: 'abc', kind: 'local', started: '2026-10-03T10:00:00.000Z', cards: ['RS-886'] }],
       body: '# Notes\n\n- one\n- two',
       extra: { estimate: 3 },
@@ -58,6 +59,14 @@ describe('card files', () => {
 
   it('falls back to the file name for the id', () => {
     expect(parseCard('---\ntitle: x\nlist: a\n---\n', 'RS-1').id).toBe('RS-1')
+  })
+
+  it('reads a jira key written by hand and writes it among the known keys', () => {
+    const card = parseCard('---\nid: RS-1\ntitle: x\nlist: todo\npos: 1\njira: spdi-7\n---\n')
+    expect(card.jira).toBe('spdi-7')
+    expect(card.extra).toEqual({})
+    expect(serializeCard({ ...base, jira: 'SPDI-7', trello: 'https://t' })).toContain('\njira: SPDI-7\ntrello: https://t\n')
+    expect(serializeCard(base)).not.toContain('jira')
   })
 
   it('keeps a move a one-line diff', () => {
@@ -215,6 +224,109 @@ describe('tackle prompts', () => {
   it('appends the board prompt notes', () => {
     const prompt = tacklePrompt([base], { ...ctx, meta: { ...meta, promptNotes: 'Use opus-xhigh.' } })
     expect(prompt.endsWith('Use opus-xhigh.')).toBe(true)
+  })
+})
+
+describe('work-mode tackle prompts', () => {
+  const meta: BoardMeta = {
+    key: 'RS',
+    title: 'Client portal',
+    lists: [
+      { id: 'todo', title: 'todo' },
+      { id: 'done', title: 'Done' },
+    ],
+    flow: { done: 'done' },
+  }
+  const ctx = {
+    meta,
+    boardRoot: '/b',
+    cardFile: (id: string) => `/b/portal/cards/${id}.md`,
+    linkTitle: (id: string) => (id === 'RS-12' ? 'Turrets' : id === 'RS-13' ? 'Traps' : undefined),
+    linkKey: (id: string) => (id === 'RS-12' ? 'SPDI-12' : undefined),
+    cloud: false,
+    work: true,
+  }
+  const card: Card = { ...base, jira: 'SPDI-42', links: ['RS-12', 'RS-13', 'RS-99'] }
+  /** Every card id of the board, wherever it is: the thing a work prompt must not spread. */
+  const ids = (text: string) => text.match(/\bRS-\d+\b/g) ?? []
+  const rule = 'Never write a card id of the task board'
+
+  it('locally: the key opens it, the id is only in the file path and the related cards, next to the rule', () => {
+    const prompt = tacklePrompt([card], ctx)
+    expect(prompt.startsWith('Tackle SPDI-42 from the task board: Add occlusion culling')).toBe(true)
+    expect(prompt).toContain('Name the Jira key SPDI-42 in every commit message, in the branch name and in the PR title.')
+    expect(prompt).toContain(rule)
+    expect(prompt).toContain("overrides the board repo's CLAUDE.md")
+    expect(prompt).not.toContain('Card: RS-886')
+    expect(prompt).toContain('/b/portal/cards/RS-886.md')
+    expect(prompt).toContain('- RS-12: Turrets (SPDI-12)\n- RS-13: Traps\n- RS-99')
+    // The only ids: the file path and the related cards.
+    expect(ids(prompt.replace('/b/portal/cards/RS-886.md', '').replace(/^- RS-\d+.*$/gm, ''))).toEqual([])
+    expect(prompt).toContain('`list: done`')
+  })
+
+  it('in the cloud: no card id at all, related cards by title and key', () => {
+    const prompt = tacklePrompt([card], { ...ctx, cloud: true })
+    expect(ids(prompt)).toEqual([])
+    expect(prompt).toContain('Related cards:\n- Turrets (SPDI-12)\n- Traps')
+    expect(prompt).not.toContain('RS-99')
+    expect(prompt).toContain('Name the Jira key SPDI-42')
+    expect(prompt).toContain(rule)
+    expect(prompt).not.toContain('jira: <KEY>')
+  })
+
+  it('without a key: the title opens it, the session asks for the key and writes it into the card', () => {
+    const local = tacklePrompt([{ ...base, links: [] }], ctx)
+    expect(local.startsWith('Tackle this card from the task board: Add occlusion culling')).toBe(true)
+    expect(local).toContain('This card has no Jira key yet: ask me for it before your first commit')
+    expect(local).toContain('`jira: <KEY>`')
+    expect(local).toContain(rule)
+    expect(ids(local.replace('/b/portal/cards/RS-886.md', ''))).toEqual([])
+    const cloud = tacklePrompt([{ ...base, links: [] }], { ...ctx, cloud: true })
+    expect(ids(cloud)).toEqual([])
+    expect(cloud).toContain('ask me for it before your first commit, then name it')
+    expect(cloud).not.toContain('jira: <KEY>')
+  })
+
+  it('several cards: each by its key or title, the rule for all', () => {
+    const cards = [card, { ...base, id: 'RS-12', title: 'Turrets', jira: 'SPDI-12' }, { ...base, id: 'RS-13', title: 'Traps' }]
+    const local = tacklePrompt(cards, { ...ctx, listTitle: 'Sprint 4' })
+    expect(local).toContain('1. SPDI-42: Add occlusion culling')
+    expect(local).toContain('2. SPDI-12: Turrets')
+    expect(local).toContain('3. Traps\n   File: /b/portal/cards/RS-13.md')
+    expect(local).toContain("Name each card's Jira key in every commit message for it")
+    expect(local).toContain('A card with no Jira key yet: ask me for it before its first commit')
+    expect(local).not.toContain('Card: <ID>')
+    const cloud = tacklePrompt(cards.map(c => ({ ...c, links: [] })), { ...ctx, cloud: true })
+    expect(ids(cloud)).toEqual([])
+  })
+
+  it('a personal project is as before', () => {
+    const prompt = tacklePrompt([card], { ...ctx, work: false })
+    expect(prompt.startsWith('Tackle card RS-886 from the task board')).toBe(true)
+    expect(prompt).toContain('`Card: RS-886`')
+    expect(prompt).not.toContain('Jira')
+    expect(prompt).toContain('- RS-12: Turrets\n- RS-13: Traps\n- RS-99')
+  })
+})
+
+describe('worktree names', () => {
+  it('a personal project: the card id, or the list', async () => {
+    const { worktreeName } = await import('../src/main/tackle')
+    expect(worktreeName([base])).toBe('card-rs-886')
+    expect(worktreeName([base, { ...base, id: 'RS-12' }], 'Sprint 4')).toMatch(/^cards-sprint-4-\d{8}$/)
+    expect(worktreeName([base, { ...base, id: 'RS-12' }])).toMatch(/^cards-rs-886-\d{8}$/)
+  })
+
+  it('a work project: the Jira key as written, else the title or the list, never a card id', async () => {
+    const { worktreeName } = await import('../src/main/tackle')
+    expect(worktreeName([{ ...base, jira: 'SPDI-42' }], undefined, true)).toBe('SPDI-42')
+    expect(worktreeName([base], undefined, true)).toBe('add-occlusion-culling-take-it-from-the-gdvmf-2-3')
+    const two = [{ ...base, jira: 'SPDI-42' }, { ...base, id: 'RS-12', jira: 'SPDI-12' }]
+    expect(worktreeName(two, 'Sprint 4', true)).toBe('SPDI-42-SPDI-12')
+    const mixed = [{ ...base, jira: 'SPDI-42' }, { ...base, id: 'RS-12', title: 'Turrets' }]
+    expect(worktreeName(mixed, 'Sprint 4', true)).toMatch(/^cards-sprint-4-\d{8}$/)
+    expect(worktreeName(mixed, undefined, true)).toMatch(/^cards-add-occlusion-culling-ta-\d{8}$/)
   })
 })
 

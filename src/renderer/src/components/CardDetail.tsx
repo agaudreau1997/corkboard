@@ -3,7 +3,8 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Card, CodeCommit, LoadedBoard, SessionRef } from '@shared/types'
 import { discussCards, tackleCards } from '../tackle'
-import { actions, api, commitsFor, listColor, localTime, useStore } from '../state'
+import { normalizeKey } from '@shared/project'
+import { actions, api, commitsFor, listColor, localTime, projectIdOf, useStore } from '../state'
 import { openContextMenu } from './ContextMenu'
 
 type IndexEntry = { id: string; title: string; boardPath: string; boardTitle: string }
@@ -55,9 +56,11 @@ function Drawer({ board, card }: { board: LoadedBoard; card: Card }) {
   const allCommits = useStore(s => s.commits[board.path])
   const desktop = useStore(s => s.desktop)
   const width = useStore(s => s.drawerWidth)
-  const commits = useMemo(() => commitsFor(allCommits, card.id), [allCommits, card.id])
+  const commits = useMemo(() => commitsFor(allCommits, card), [allCommits, card.id, card.jira])
+  const work = useStore(s => !!s.projects.find(p => p.id === projectIdOf(board.path))?.work)
   const [title, setTitle] = useState(card.title)
   const [body, setBody] = useState(card.body)
+  const [jira, setJira] = useState(card.jira ?? '')
   const [editing, setEditing] = useState(!card.body.trim())
   const [index, setIndex] = useState<IndexEntry[]>([])
 
@@ -68,6 +71,9 @@ function Drawer({ board, card }: { board: LoadedBoard; card: Card }) {
   useEffect(() => {
     if (document.activeElement?.getAttribute('data-field') !== 'body') setBody(card.body)
   }, [card.body])
+  useEffect(() => {
+    if (document.activeElement?.getAttribute('data-field') !== 'jira') setJira(card.jira ?? '')
+  }, [card.jira])
   useEffect(() => {
     void api.boards.index().then(setIndex)
   }, [card.links.length])
@@ -123,6 +129,30 @@ function Drawer({ board, card }: { board: LoadedBoard; card: Card }) {
             Complete
           </label>
         </div>
+        {(work || card.jira) && (
+          <div className="field-row">
+            <label htmlFor="card-jira">Jira</label>
+            <input
+              id="card-jira"
+              className="jira-input"
+              data-field="jira"
+              value={jira}
+              placeholder="ABC-123"
+              spellCheck={false}
+              title={
+                work
+                  ? 'The Jira issue this card is tracked as: what sessions name in commits, branches and PRs in place of the card id'
+                  : 'The Jira issue this card is tracked as'
+              }
+              onChange={e => setJira(e.target.value)}
+              onBlur={() => {
+                const key = normalizeKey(jira)
+                if (key !== card.jira) save({ jira: key })
+              }}
+              onKeyDown={e => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+            />
+          </div>
+        )}
 
         <div className="tackle-row">
           {desktop && (
@@ -219,7 +249,15 @@ function Drawer({ board, card }: { board: LoadedBoard; card: Card }) {
             </ul>
           ) : (
             <p className="muted small">
-              None yet. Commits whose message has a <code>Card: {card.id}</code> line show up here.
+              {work ? (
+                card.jira ? (
+                  <>None yet. Commits in the code repo whose message names <code>{card.jira}</code> show up here.</>
+                ) : (
+                  <>None yet. Give the card its Jira key above: commits in the code repo whose message names it show up here.</>
+                )
+              ) : (
+                <>None yet. Commits whose message has a <code>Card: {card.id}</code> line show up here.</>
+              )}
             </p>
           )}
         </section>

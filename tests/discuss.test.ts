@@ -99,6 +99,23 @@ describe('discuss prompts', () => {
     expect(prompt).not.toContain('List:')
   })
 
+  it('in work mode: no card id but in file paths, and the Jira rule for when it is asked to implement', () => {
+    const work = { ...ctx, work: true }
+    const one = discussPrompt([{ ...card('G-1', 'Turrets'), jira: 'SPDI-9' }], work)
+    expect(one.startsWith("Let's discuss SPDI-9 from the task board: Turrets")).toBe(true)
+    expect(one).toContain('/b/game/cards/G-1.md')
+    expect(one).toContain('If I do ask you to implement something: Name the Jira key SPDI-9')
+    expect(one).toContain('Never write a card id of the task board')
+    expect(one.replace('/b/game/cards/G-1.md', '')).not.toMatch(/\bG-\d+\b/)
+    const list = discussPrompt([card('G-1', 'Turrets'), { ...card('G-2', 'Traps'), jira: 'SPDI-2' }], { ...work, listTitle: 'To do' })
+    expect(list).toContain('1. Turrets\n   File: /b/game/cards/G-1.md')
+    expect(list).toContain('2. SPDI-2: Traps')
+    expect(list).toContain("Name each card's Jira key")
+    expect(list.replace(/File: .*$/gm, '')).not.toMatch(/\bG-\d+\b/)
+    // A personal project's discussion says nothing of Jira.
+    expect(discussPrompt([card('G-1', 'Turrets')], ctx)).not.toContain('Jira')
+  })
+
   it('names the session for what it is', () => {
     expect(sessionName([card('G-1', 'a'), card('G-2', 'b')], 'Game', 'discuss')).toBe('Triage Game (2 cards)')
     expect(sessionName([card('G-1', 'Turrets')], undefined, 'discuss')).toBe('Discuss G-1 Turrets')

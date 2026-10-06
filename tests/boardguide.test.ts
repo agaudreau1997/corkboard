@@ -34,6 +34,17 @@ describe('the board guide', () => {
     expect(text).not.toMatch(/\/home\/|~\//)
   })
 
+  it('a work project gets the Jira rule in place of the trailer', () => {
+    const work = boardGuide('my-boards', { work: true })
+    expect(work).toContain('never write a card id of this board')
+    expect(work).toContain('`jira: ABC-123`')
+    expect(work).not.toContain('Card: TASK-12')
+    const personal = boardGuide('my-boards')
+    expect(personal).toContain('Card: TASK-12')
+    expect(personal).not.toContain('Jira key')
+    expect(personal).toContain('`jira`')
+  })
+
   it('a new board repo gets one beside its README', async () => {
     const root = path.join(dir, 'boards')
     await prepareBoardRepo(root)

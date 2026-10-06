@@ -29,7 +29,7 @@ export function TableView({ board, matches }: { board: LoadedBoard; matches: (c:
         case 'updated':
           return c.updated ?? c.created ?? ''
         case 'commits':
-          return commitsFor(commits, c.id).length
+          return commitsFor(commits, c).length
       }
     }
     out.sort((a, b) => {
@@ -89,7 +89,7 @@ export function TableView({ board, matches }: { board: LoadedBoard; matches: (c:
                   </span>
                 </td>
                 <td className="muted nowrap">{localTime(card.updated ?? card.created, false)}</td>
-                <td className="mono">{commitsFor(commits, card.id).length || ''}</td>
+                <td className="mono">{commitsFor(commits, card).length || ''}</td>
               </tr>
             ))}
           </tbody>

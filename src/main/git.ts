@@ -1,10 +1,12 @@
 // Git, both ways: the board repo is committed by the app after every quiet spell, and a board's
-// code repo is read for the commits whose `Card:` trailers name its cards.
+// code repo is read for the commits whose `Card:` trailers name its cards or, for a work project,
+// whose message names a card's Jira key (teammates' commits on the same issue included).
 
 import { execFile } from 'node:child_process'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { tryParseCard } from '@shared/cardfile'
+import { namesKey, parseProjectSettings, PROJECT_FILE } from '@shared/project'
 import { THEME_FILE } from '@shared/theme'
 import type { CodeCommit } from '@shared/types'
 
@@ -38,28 +40,47 @@ export async function isRepo(dir: string): Promise<boolean> {
 }
 
 const CARD_TRAILER = /^Card:\s*(.+)$/gim
+const LOG_FORMAT = '--format=%H%x1f%h%x1f%an%x1f%aI%x1f%s%x1f%B%x1e'
 
-/** Every commit on any branch whose message names a card with a `Card:` line. */
-export async function codeCommits(repo: string): Promise<CodeCommit[]> {
-  const out = await git(repo, [
-    'log',
-    '--all',
-    '-i',
-    '--grep=^Card:',
-    '--format=%H%x1f%h%x1f%an%x1f%aI%x1f%s%x1f%B%x1e',
-  ])
-  const commits: CodeCommit[] = []
+/**
+ * Every commit on any branch whose message names a card with a `Card:` line, or names one of
+ * `keys` (a work project's Jira keys). Git finds the keys as plain substrings (`-F`, several
+ * `--grep` match any of them); the message is then read again here for the key between
+ * non-alphanumerics, so ABC-12 is not found in ABC-123. The message only: a merge commit names
+ * its branch in its subject, and the sessions name the key in every commit anyway.
+ */
+export async function codeCommits(repo: string, keys: string[] = []): Promise<CodeCommit[]> {
+  const commits = new Map<string, CodeCommit>()
+  for (const record of parseLog(await git(repo, ['log', '--all', '-i', '--grep=^Card:', LOG_FORMAT]))) {
+    const cards = new Set<string>()
+    for (const m of record.body.matchAll(CARD_TRAILER)) {
+      for (const id of m[1].split(/[,\s]+/)) if (id) cards.add(id.trim().toUpperCase())
+    }
+    if (cards.size) commits.set(record.sha, { ...record.commit, cards: [...cards], keys: [] })
+  }
+  const wanted = [...new Set(keys.map(k => k.trim().toUpperCase()).filter(Boolean))]
+  if (wanted.length) {
+    const greps = wanted.map(k => `--grep=${k}`)
+    for (const record of parseLog(await git(repo, ['log', '--all', '-i', '-F', ...greps, LOG_FORMAT]))) {
+      const named = wanted.filter(k => namesKey(record.body, k))
+      if (!named.length) continue
+      const known = commits.get(record.sha)
+      if (known) known.keys = named
+      else commits.set(record.sha, { ...record.commit, cards: [], keys: named })
+    }
+  }
+  return [...commits.values()].sort((a, b) => b.date.localeCompare(a.date))
+}
+
+function parseLog(out: string): { sha: string; body: string; commit: Omit<CodeCommit, 'cards' | 'keys'> }[] {
+  const records = []
   for (const record of out.split('\x1e')) {
     const fields = record.replace(/^\n/, '').split('\x1f')
     if (fields.length < 6) continue
     const [sha, short, author, date, subject, body] = fields
-    const cards = new Set<string>()
-    for (const m of body.matchAll(CARD_TRAILER)) {
-      for (const id of m[1].split(/[,\s]+/)) if (id) cards.add(id.trim().toUpperCase())
-    }
-    if (cards.size) commits.push({ sha, short, author, date, subject, cards: [...cards] })
+    records.push({ sha, body, commit: { sha, short, author, date, subject } })
   }
-  return commits
+  return records
 }
 
 export async function commitFiles(repo: string, sha: string): Promise<{ status: string; file: string }[]> {
@@ -186,6 +207,13 @@ export class AutoCommitter {
         lines.push(`Arrange map of ${dir}`)
       } else if (file === THEME_FILE) {
         lines.push(`${status === 'A' ? 'Add' : status === 'D' ? 'Remove' : 'Edit'} the project's theme`)
+      } else if (file === PROJECT_FILE) {
+        // The one setting today is the work flag: say which way it went when it did.
+        const now = status === 'D' ? {} : parseProjectSettings(await fs.readFile(path.join(this.root, file), 'utf8'))
+        const before = status === 'A' || !hasHead ? '{}' : await git(this.root, ['show', `HEAD:${file}`]).catch(() => '')
+        const was = parseProjectSettings(before)
+        if (now && was && !!now.work !== !!was.work) lines.push(`Turn work mode ${now.work ? 'on' : 'off'}`)
+        else lines.push(`${status === 'A' ? 'Add' : status === 'D' ? 'Remove' : 'Edit'} the project's settings`)
       } else {
         lines.push(`${status === 'A' ? 'Add' : status === 'D' ? 'Remove' : 'Edit'} ${file}`)
       }

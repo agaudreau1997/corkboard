@@ -177,6 +177,18 @@ describe('BoardSync', () => {
     expect(JSON.parse(readFileSync(a.file('theme.json'), 'utf8')).name).toBe('Tide')
   })
 
+  it('merges project.json, this machine\'s flag first, when both changed it', async () => {
+    const a = machine(clone('a'))
+    const b = machine(clone('b'))
+    writeFileSync(a.file('project.json'), '{ "work": true, "jira": { "site": "https://a" } }\n')
+    await a.sync.sync()
+    writeFileSync(b.file('project.json'), '{ "work": false }\n')
+    expect((await b.sync.sync()).state).toBe('synced')
+    expect(JSON.parse(readFileSync(b.file('project.json'), 'utf8'))).toEqual({ work: false, jira: { site: 'https://a' } })
+    expect((await a.sync.sync()).state).toBe('synced')
+    expect(JSON.parse(readFileSync(a.file('project.json'), 'utf8')).work).toBe(false)
+  })
+
   it('stops on a conflict it cannot settle and leaves the repo as it was', async () => {
     const a = machine(clone('a'))
     const b = machine(clone('b'))

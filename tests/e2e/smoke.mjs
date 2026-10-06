@@ -17,7 +17,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { _electron as electron } from 'playwright'
-import { CHILDREN, COMMITTED, IDEAS, MAIN, SPARE, TO_FIX, writeFixture } from './fixture.mjs'
+import { CHILDREN, COMMITTED, IDEAS, KEYED, MAIN, SPARE, TO_FIX, UNKEYED, WORK, writeFixture, writeWorkFixture } from './fixture.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const appDir = path.resolve(here, '../..')
@@ -55,10 +55,19 @@ for (const dir of [root, otherMachine]) {
   execFileSync('git', ['config', 'user.email', 'e2e@example.com'], { cwd: dir })
   execFileSync('git', ['config', 'user.name', 'E2E'], { cwd: dir })
 }
-// A code repo with a commit naming a card, so the card shows it.
+// A code repo with a commit naming a card, so the card shows it, and one naming a Jira key, which
+// the work project's card shows (the personal project ignores it: no trailer).
 mkdirSync(codeRepo)
 execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: codeRepo })
 execFileSync('git', ['-c', 'user.email=e@x', '-c', 'user.name=E', 'commit', '-q', '--allow-empty', '-m', `Fix the drill sound\n\nCard: ${COMMITTED}`], { cwd: codeRepo })
+execFileSync('git', ['-c', 'user.email=e@x', '-c', 'user.name=E', 'commit', '-q', '--allow-empty', '-m', `${KEYED.jira} Fix the login form on Safari`], { cwd: codeRepo })
+// The work project's board repo: no remote, added to the app during the test.
+const workRoot = path.join(scratch, 'client-boards')
+mkdirSync(workRoot)
+execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: workRoot })
+writeWorkFixture(workRoot, codeRepo)
+execFileSync('git', ['add', '-A'], { cwd: workRoot })
+execFileSync('git', ['commit', '-q', '-m', 'The client boards'], { cwd: workRoot, env: { ...process.env, ...gitIdentity } })
 const mainMeta = JSON.parse(readFileSync(path.join(root, MAIN.path, 'board.json'), 'utf8'))
 mainMeta.codeRepo = codeRepo
 writeFileSync(path.join(root, MAIN.path, 'board.json'), `${JSON.stringify(mainMeta, null, 2)}\n`)
@@ -1006,6 +1015,87 @@ try {
   await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click()
   check(await until(() => !existsSync(retired)), 'a board with only archived cards deletes on a plain confirm')
   check((await page.locator('.toast.error').count()) === 0, 'without an error')
+
+  // ---- work mode: a project whose code repo never sees a card id ----
+  await page.locator('.sidebar-foot').getByRole('button', { name: '+ Add project' }).click()
+  await page.getByRole('dialog').getByLabel('Board repo folder').fill(workRoot)
+  await page.getByRole('dialog').getByLabel('Name', { exact: true }).fill(WORK.project)
+  await page.getByRole('dialog').getByRole('button', { name: 'Add project' }).click()
+  const workRow = page.locator('.project-row', { hasText: WORK.project })
+  await workRow.waitFor()
+  const openWorkSettings = async () => {
+    await workRow.click({ button: 'right' })
+    await page.locator('.ctx-menu').getByRole('menuitem', { name: /Settings/ }).click()
+  }
+  await openWorkSettings()
+  check(await dialog.getByLabel('Work mode').isChecked(), 'the project settings show work mode on, read from project.json')
+  await shot('20-work-settings')
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  await page.locator('.tree-row', { hasText: WORK.title }).click()
+  const keyedCard = page.locator(`.card[data-card="${KEYED.id}"]`)
+  await keyedCard.click()
+  await page.locator('.drawer').waitFor()
+  check((await page.locator('.drawer .jira-input').inputValue()) === KEYED.jira, 'the drawer shows the card its Jira key')
+  check((await until(async () => (await page.locator('.drawer .commits li').count()) === 1)) === true, `${KEYED.id} lists the code repo's commit that names ${KEYED.jira} (no Card: trailer)`)
+  check((await page.locator('.drawer .commits .subject').textContent()).includes('Fix the login form on Safari'), 'the right commit')
+  await shot('21-work-drawer')
+  // Tackled in a worktree: the branch is the key as written, the prompt names the key, no card id
+  // but in the card's file path.
+  const callsBeforeWork = sessionCalls().length
+  await page.locator('.drawer').getByRole('button', { name: 'Worktree', exact: true }).click()
+  const keyedCall = await until(() => sessionCalls()[callsBeforeWork], 15000)
+  const keyedArgs = keyedCall.split('\0')
+  check(keyedArgs[keyedArgs.indexOf('-w') + 1] === KEYED.jira, `the worktree is named ${KEYED.jira}, the key in its own case (got ${keyedArgs[keyedArgs.indexOf('-w') + 1]})`)
+  const keyedPrompt = keyedArgs.at(-2) ?? ''
+  check(keyedPrompt.startsWith(`Tackle ${KEYED.jira} from the task board: ${KEYED.title}`), 'the prompt opens with the Jira key')
+  check(keyedPrompt.includes(`Name the Jira key ${KEYED.jira} in every commit message`) && keyedPrompt.includes('Never write a card id of the task board'), 'and carries the work-mode rule')
+  const workIds = text => text.replace(path.join(workRoot, WORK.path, 'cards', `${KEYED.id}.md`), '').replace(path.join(workRoot, WORK.path, 'cards', `${UNKEYED.id}.md`), '').match(new RegExp(`\\b${WORK.key}-\\d+\\b`, 'g')) ?? []
+  check(workIds(keyedPrompt).length === 0, `no card id in the prompt but in the file path (${workIds(keyedPrompt).join(' ') || 'none'})`)
+  check(!keyedPrompt.includes('Put a `Card:') && keyedPrompt.includes('asks for `Card:` trailers: put none'), 'and asks for no Card: trailer, overriding the CLAUDE.md that does')
+  // Without a key: the session asks for one; the worktree is named after the title.
+  const unkeyedCard = page.locator(`.card[data-card="${UNKEYED.id}"]`)
+  await unkeyedCard.click()
+  check((await page.locator('.drawer .jira-input').inputValue()) === '', 'a card without a key shows an empty Jira field')
+  await page.locator('.drawer').getByRole('button', { name: 'Worktree', exact: true }).click()
+  const unkeyedCall = await until(() => sessionCalls()[callsBeforeWork + 1], 15000)
+  const unkeyedArgs = unkeyedCall.split('\0')
+  check(unkeyedArgs[unkeyedArgs.indexOf('-w') + 1] === UNKEYED.worktree, `a card with no key gets a worktree named after its title (got ${unkeyedArgs[unkeyedArgs.indexOf('-w') + 1]})`)
+  const unkeyedPrompt = unkeyedArgs.at(-2) ?? ''
+  check(unkeyedPrompt.startsWith(`Tackle this card from the task board: ${UNKEYED.title}`) && unkeyedPrompt.includes('ask me for it before your first commit'), 'its prompt opens with the title and asks for the key')
+  check(workIds(unkeyedPrompt).length === 0, 'with no card id but in the file path')
+  // The copy menu: the Jira key in place of the trailer, Markdown without the id.
+  await keyedCard.click({ button: 'right' })
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Copy' }).hover()
+  await page.getByRole('menuitem', { name: /Jira key/ }).waitFor()
+  check((await page.getByRole('menuitem', { name: /Commit trailer/ }).count()) === 0, 'a work card offers its Jira key to copy, and no Commit trailer')
+  await page.getByRole('menuitem', { name: /Markdown/ }).click()
+  check((await app.evaluate(({ clipboard }) => clipboard.readText())) === `[${KEYED.jira}] ${KEYED.title}`, 'Copy › Markdown names the Jira key, not the card id')
+  await keyedCard.click({ button: 'right' })
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Copy' }).hover()
+  await page.getByRole('menuitem', { name: /Jira key/ }).click()
+  check((await app.evaluate(({ clipboard }) => clipboard.readText())) === KEYED.jira, 'Copy › Jira key puts the key on the clipboard')
+  // Typing a key into the drawer writes it to the card, upper case.
+  await unkeyedCard.click()
+  await page.locator('.drawer .jira-input').fill('spdi-77')
+  await page.locator('.drawer .jira-input').press('Enter')
+  check(await until(() => readFileSync(path.join(workRoot, WORK.path, 'cards', `${UNKEYED.id}.md`), 'utf8').includes('jira: SPDI-77')), 'a key typed in the drawer lands in the card file, upper case')
+  // Work mode off from the settings: project.json goes and the trailer comes back.
+  await openWorkSettings()
+  await dialog.getByLabel('Work mode').uncheck()
+  await dialog.getByRole('button', { name: 'Save' }).click()
+  check(await until(() => !existsSync(path.join(workRoot, 'project.json'))), 'unticking work mode removes project.json')
+  // The line may sit in a commit with the tackles' moves: the body is read too.
+  const workLogHas = text => execFileSync('git', ['log', '--format=%B', '-5'], { cwd: workRoot, stdio: 'pipe' }).toString().includes(text)
+  check(!!(await until(() => workLogHas('Turn work mode off'), 12000)), 'and the board repo commits the change by name')
+  await keyedCard.click({ button: 'right' })
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Copy' }).hover()
+  await page.getByRole('menuitem', { name: /Commit trailer/ }).waitFor()
+  check((await page.getByRole('menuitem', { name: /Jira key/ }).count()) === 0, 'a personal card offers the Commit trailer again')
+  await page.keyboard.press('Escape')
+  await openWorkSettings()
+  await dialog.getByLabel('Work mode').check()
+  await dialog.getByRole('button', { name: 'Save' }).click()
+  check(await until(() => existsSync(path.join(workRoot, 'project.json')) && JSON.parse(readFileSync(path.join(workRoot, 'project.json'), 'utf8')).work === true), 'ticking it writes project.json back')
 
   // Table view.
   await page.locator(`.tab[title$=":${MAIN.path}"]`).click()
