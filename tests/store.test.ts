@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -310,7 +310,7 @@ describe('the watch and git', () => {
     rmSync(path.join(root, p, 'cards'), { recursive: true })
     store.watch({ onDelta: () => {}, onTreeChanged: () => {} })
     await sleep(100)
-    execFileSync('mkdir', [path.join(root, p, 'cards')])
+    mkdirSync(path.join(root, p, 'cards'))
     writeFileSync(path.join(root, p, 'cards', 'F-1.md'), '---\nid: F-1\ntitle: First\nlist: todo\npos: 1\n---\n')
     await until(() => store.board(p).cards.find(c => c.id === 'F-1'))
     writeFileSync(path.join(root, p, 'cards', 'F-2.md'), '---\nid: F-2\ntitle: Second\nlist: todo\npos: 2\n---\n')
