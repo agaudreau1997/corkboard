@@ -10,6 +10,7 @@ import type {
   ClaudeInfo,
   CodeCommit,
   LoadedBoard,
+  NotifyConfig,
   ProjectNode,
   ProjectTheme,
   PtyInfo,
@@ -26,6 +27,11 @@ export type CorkboardApi = {
     /** This machine's code repo for a board (null clears it); answers the board as it now resolves. */
     setCodeRepo(boardPath: string, repo: string | null): Promise<LoadedBoard>
     pickFolder(title: string): Promise<string | null>
+    pickFile(title: string): Promise<string | null>
+    /** The program run when a terminal tab changes state; null turns the notifications off. */
+    setNotify(notify: NotifyConfig | null): Promise<void>
+    /** Runs a program as the notifications would, with a `test` event; answers the error, or null. */
+    tryNotify(command: string): Promise<string | null>
   }
   /** One project per board repo; its boards are named `<project id>:<path>`. */
   projects: {

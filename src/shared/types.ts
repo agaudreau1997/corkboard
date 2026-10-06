@@ -177,6 +177,28 @@ export type AppConfig = {
   codeRepos?: Record<string, string>
   /** Before projects: the one board repo. Read once, as the first project. */
   boardRoot?: string
+  /** A program this machine runs when a terminal tab changes state (none: no notifications). */
+  notify?: NotifyConfig
+}
+
+/**
+ * The program run when a terminal tab changes state: a path to an executable, with no arguments
+ * (a script with a shebang, a `.ps1`, `.cmd` or `.bat`, or any program). It gets the event as
+ * arguments and in `CORKBOARD_*` variables; `src/main/notify.ts` says which.
+ */
+export type NotifyConfig = {
+  command: string
+}
+
+/**
+ * What a terminal tab did, for the notification program: `working`, `waiting` and `shell` as the
+ * tab's status turns to them, `exit` when the shell in it ends, `test` from the settings.
+ */
+export type TerminalEvent = {
+  event: TerminalStatus | 'exit' | 'test'
+  previous: TerminalStatus
+  terminal: PtyInfo
+  exitCode?: number
 }
 
 /** A project in the side panel: its boards' paths are board keys (`<project id>:<path>`). */

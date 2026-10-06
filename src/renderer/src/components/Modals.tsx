@@ -20,6 +20,7 @@ export function Modals() {
         {modal.kind === 'newBoard' && <NewBoard parent={modal.parent} />}
         {modal.kind === 'settings' && <Settings path={modal.path} />}
         {modal.kind === 'addProject' && <AddProject />}
+        {modal.kind === 'appSettings' && <AppSettings />}
         {modal.kind === 'projectSettings' && <ProjectSettings id={modal.id} />}
         {modal.kind === 'deleteBoard' && <DeleteBoard path={modal.path} />}
         {modal.kind === 'confirm' && (
@@ -421,6 +422,89 @@ function AddProject() {
         </button>
         <button type="submit" className="accent" disabled={!root.trim() || busy}>
           Add project
+        </button>
+      </div>
+    </form>
+  )
+}
+
+/**
+ * This machine's settings (app config, never synced): the program run when a terminal tab changes
+ * state. *Try it* runs what is typed, saved or not, so a script can be fixed before it is kept.
+ */
+function AppSettings() {
+  const saved = useStore(s => s.config?.notify?.command ?? '')
+  const [command, setCommand] = useState(saved)
+  const [tried, setTried] = useState<{ command: string; error: string | null } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const tryIt = async () => {
+    setBusy(true)
+    try {
+      setTried({ command, error: await api.config.tryNotify(command) })
+    } finally {
+      setBusy(false)
+    }
+  }
+  const save = async () => {
+    try {
+      await actions.setNotify(command)
+      actions.setModal(null)
+    } catch (error) {
+      actions.toast((error as Error).message, 'error')
+    }
+  }
+  return (
+    <form
+      onSubmit={e => {
+        e.preventDefault()
+        void save()
+      }}
+    >
+      <h2>Settings</h2>
+      <label className="field">
+        <span>Notification program</span>
+        <div className="input-row">
+          <input
+            autoFocus
+            value={command}
+            placeholder="(none)"
+            spellCheck={false}
+            onChange={e => setCommand(e.target.value)}
+          />
+          <button
+            type="button"
+            className="small"
+            onClick={async () => {
+              const file = await api.config.pickFile('The notification program')
+              if (file) setCommand(file)
+            }}
+          >
+            Browse…
+          </button>
+          <button type="button" className="small" disabled={!command.trim() || busy} onClick={() => void tryIt()}>
+            Try it
+          </button>
+        </div>
+        <small className="muted">
+          Run every time a terminal tab changes state: a script or program, with no arguments. It gets the event (
+          <code>working</code>, <code>waiting</code> for your turn, <code>shell</code> once Claude left, <code>exit</code>
+          ), the status before it and the tab's title as arguments, and the lot in <code>CORKBOARD_EVENT</code>,{' '}
+          <code>CORKBOARD_PREVIOUS</code>, <code>CORKBOARD_TITLE</code>, <code>CORKBOARD_CARDS</code>,{' '}
+          <code>CORKBOARD_CWD</code>, <code>CORKBOARD_TERMINAL</code> and <code>CORKBOARD_EXIT_CODE</code>. Leave it
+          empty for no notifications.
+        </small>
+        {tried && tried.command === command && (
+          <small className={tried.error ? 'notify-try danger' : 'notify-try success'}>
+            {tried.error ? `It failed: ${tried.error}` : 'It ran (with the event test).'}
+          </small>
+        )}
+      </label>
+      <div className="modal-actions">
+        <button type="button" className="ghost" onClick={() => actions.setModal(null)}>
+          Cancel
+        </button>
+        <button type="submit" className="accent">
+          Save
         </button>
       </div>
     </form>

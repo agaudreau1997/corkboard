@@ -10,16 +10,19 @@ import type {
   Card,
   CardPatch,
   ClaudeInfo,
+  NotifyConfig,
   ProjectConfig,
   ProjectTheme,
   SessionRef,
   SyncStatus,
   TackleRequest,
+  TerminalEvent,
   UpdateStatus,
 } from '@shared/types'
 import { autoUpdater } from 'electron-updater'
 import { desktopAvailable } from './desktop'
 import { codeCommits, commitFiles } from './git'
+import { notify } from './notify'
 import { boardKey, prepareBoardRepo, Project, projectId, splitKey } from './projects'
 import { PtyManager } from './pty'
 import { shellProbe } from './shell'
@@ -46,9 +49,30 @@ const send = (channel: string, ...args: unknown[]) => {
 const ptys = new PtyManager({
   created: info => send('pty:created', info),
   data: (id, data) => send('pty:data', id, data),
-  exit: (id, code) => send('pty:exit', id, code),
-  status: (id, status) => send('pty:status', id, status),
+  exit: (id, code, info, status) => {
+    send('pty:exit', id, code)
+    void notifyTerminal({ event: 'exit', previous: status, terminal: info, exitCode: code })
+  },
+  status: (id, status, previous, info) => {
+    send('pty:status', id, status)
+    void notifyTerminal({ event: status, previous, terminal: info })
+  },
 })
+
+/**
+ * Runs the notification program (app settings) for a terminal event, when one is set. A failure
+ * goes to the log and not to the window: the event is already shown there, and the settings'
+ * *Try it* is where the person finds out what the program does.
+ */
+async function notifyTerminal(event: TerminalEvent): Promise<void> {
+  const command = (await readSavedConfig()).notify?.command.trim()
+  if (!command) return
+  try {
+    await notify(command, event)
+  } catch (error) {
+    console.error(`Notification program (${event.event}):`, (error as Error).message)
+  }
+}
 
 // ---- config ----------------------------------------------------------------------------------
 
@@ -70,7 +94,7 @@ async function readSavedConfig(): Promise<AppConfig> {
     list = [{ id, name: path.basename(saved.boardRoot), boardRoot: saved.boardRoot }]
     codeRepos = Object.fromEntries(Object.entries(codeRepos).map(([k, v]) => [k.includes(':') ? k : boardKey(id, k), v]))
   }
-  return { projects: list, codeRepos }
+  return { projects: list, codeRepos, ...(saved.notify ? { notify: saved.notify } : {}) }
 }
 
 /**
@@ -157,6 +181,12 @@ function codeRepoOf(key: string): string | undefined {
 async function pickFolder(title: string): Promise<string | null> {
   if (process.env.CORKBOARD_PICK_FOLDER) return process.env.CORKBOARD_PICK_FOLDER
   const result = await dialog.showOpenDialog(win!, { title, properties: ['openDirectory', 'createDirectory'] })
+  return result.canceled ? null : (result.filePaths[0] ?? null)
+}
+
+async function pickFile(title: string): Promise<string | null> {
+  if (process.env.CORKBOARD_PICK_FILE) return process.env.CORKBOARD_PICK_FILE
+  const result = await dialog.showOpenDialog(win!, { title, properties: ['openFile'] })
   return result.canceled ? null : (result.filePaths[0] ?? null)
 }
 
@@ -300,6 +330,24 @@ function registerIpc(): void {
     return projectOf(key).project.board(projectOf(key).rel)
   })
   ipcMain.handle('config:pickFolder', (_e, title: string) => pickFolder(title))
+  ipcMain.handle('config:pickFile', (_e, title: string) => pickFile(title))
+  ipcMain.handle('config:setNotify', async (_e, notify: NotifyConfig | null) => {
+    const command = notify?.command.trim()
+    await writeConfig(c => {
+      const { notify: _, ...rest } = c
+      return command ? { ...rest, notify: { command } } : rest
+    })
+  })
+  // Runs a program as the notifications would, with a `test` event; answers what went wrong.
+  ipcMain.handle('config:tryNotify', async (_e, command: string): Promise<string | null> => {
+    const terminal = { id: 'test', title: 'Test', cwd: os.homedir() }
+    try {
+      await notify(command, { event: 'test', previous: 'shell', terminal })
+      return null
+    } catch (error) {
+      return (error as Error).message
+    }
+  })
 
   ipcMain.handle('boards:load', (_e, key: string) => {
     const { project, rel } = projectOf(key)
