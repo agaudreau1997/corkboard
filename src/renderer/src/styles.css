@@ -1819,6 +1819,11 @@ tr.selected td {
   min-width: 0;
 }
 
+/* What *Try it* in the settings said about the notification program. */
+.notify-try.success {
+  color: var(--green);
+}
+
 .column-head.draggable {
   cursor: grab;
 }

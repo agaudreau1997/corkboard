@@ -66,6 +66,7 @@ type Modal =
   | { kind: 'newBoard'; parent: string }
   | { kind: 'settings'; path: string }
   | { kind: 'addProject' }
+  | { kind: 'appSettings' }
   | { kind: 'projectSettings'; id: string }
   | { kind: 'deleteBoard'; path: string }
   | { kind: 'confirm'; title: string; body: string; confirm: string; onConfirm: () => void }
@@ -245,6 +246,12 @@ export const actions = {
     await actions.refreshTree()
     set(s => ({ foldedProjects: s.foldedProjects.filter(p => p !== id) }))
     return id
+  },
+
+  /** The program run when a terminal tab changes state (app settings); empty turns it off. */
+  async setNotify(command: string) {
+    await api.config.setNotify(command.trim() ? { command: command.trim() } : null)
+    set({ config: await api.config.get() })
   },
 
   async removeProject(id: string) {

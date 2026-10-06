@@ -14,7 +14,7 @@ import path from 'node:path'
 export const WINDOWS = process.platform === 'win32'
 
 /** PowerShell 7 when installed: it passes arguments to a program as they are, with no escaping. */
-function powershell(): string {
+export function powershell(): string {
   const dirs = (process.env.PATH ?? '').split(path.delimiter)
   for (const dir of dirs) if (dir && existsSync(path.join(dir, 'pwsh.exe'))) return path.join(dir, 'pwsh.exe')
   const standard = path.join(process.env.ProgramFiles ?? 'C:\\Program Files', 'PowerShell', '7', 'pwsh.exe')

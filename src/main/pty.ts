@@ -22,8 +22,8 @@ type Entry = {
 export type PtyEvents = {
   created: (info: PtyInfo) => void
   data: (id: string, data: string) => void
-  exit: (id: string, code: number) => void
-  status: (id: string, status: TerminalStatus) => void
+  exit: (id: string, code: number, info: PtyInfo, status: TerminalStatus) => void
+  status: (id: string, status: TerminalStatus, previous: TerminalStatus, info: PtyInfo) => void
 }
 
 export class PtyManager {
@@ -48,7 +48,7 @@ export class PtyManager {
     })
     proc.onExit(({ exitCode }) => {
       this.ptys.delete(info.id)
-      this.events.exit(info.id, exitCode)
+      this.events.exit(info.id, exitCode, info, entry.status)
     })
     this.events.created(info)
     return info
@@ -61,8 +61,9 @@ export class PtyManager {
     if (!titles.length) return
     const status = statusFromTitle(titles[titles.length - 1])
     if (status === entry.status) return
+    const previous = entry.status
     entry.status = status
-    this.events.status(entry.info.id, status)
+    this.events.status(entry.info.id, status, previous, entry.info)
   }
 
   /** Extra reader of a terminal's output (a cloud tackle watching for its session URL). */

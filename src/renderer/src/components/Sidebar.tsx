@@ -31,9 +31,18 @@ export function Sidebar() {
         {!projects.length && <p className="muted pad">No projects yet.</p>}
       </div>
       <footer className="sidebar-foot">
-        <button className="link add-project" onClick={() => actions.setModal({ kind: 'addProject' })}>
-          + Add project
-        </button>
+        <div className="foot-line">
+          <button className="link add-project" onClick={() => actions.setModal({ kind: 'addProject' })}>
+            + Add project
+          </button>
+          <button
+            className="link app-settings"
+            onClick={() => actions.setModal({ kind: 'appSettings' })}
+            title="This machine's settings: the notification program"
+          >
+            Settings…
+          </button>
+        </div>
         <UpdateLine />
         <ClaudeLine />
       </footer>

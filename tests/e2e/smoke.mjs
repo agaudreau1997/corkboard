@@ -137,6 +137,19 @@ writeFileSync(
   ].join('\n'),
 )
 
+// The notification program (set in the app's settings): records each event it gets, one per line,
+// as a .cmd on Windows and a shell script elsewhere, the two kinds a person would write.
+const notifyLog = path.join(scratch, 'notifications.txt')
+const fakeNotify = path.join(scratch, process.platform === 'win32' ? 'fake-notify.cmd' : 'fake-notify')
+writeFileSync(
+  fakeNotify,
+  process.platform === 'win32'
+    ? `@echo off\r\n>>"${notifyLog}" echo %CORKBOARD_EVENT% %CORKBOARD_PREVIOUS% %3\r\n`
+    : `#!/bin/sh\necho "$CORKBOARD_EVENT $CORKBOARD_PREVIOUS $3" >> '${notifyLog}'\n`,
+)
+chmodSync(fakeNotify, 0o755)
+const notifications = () => (existsSync(notifyLog) ? readFileSync(notifyLog, 'utf8').split(/\r?\n/).filter(Boolean) : [])
+
 let failures = 0
 const check = (ok, what) => {
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${what}`)
@@ -178,6 +191,8 @@ const app = await electron.launch({
     CORKBOARD_COMMIT_DELAY_MS: '600',
     CORKBOARD_SYNC_INTERVAL_MS: '0',
     CORKBOARD_CLAUDE_BIN: fakeClaude,
+    // The settings' Browse… for the notification program answers the stand-in.
+    CORKBOARD_PICK_FILE: fakeNotify,
     // claude:// links are written to a file, and the desktop app's session index is a scratch one.
     CORKBOARD_OPEN_URL_LOG: urlLog,
     CORKBOARD_DESKTOP_SESSIONS_DIR: path.join(scratch, 'desktop-sessions'),
@@ -775,6 +790,19 @@ try {
   check(pulled, "the other machine's rename showed up after a sync")
   await shot('11-synced')
 
+  // ---- the notification program: set in the app's settings, tried from there ----
+  await page.locator('.sidebar-foot').getByRole('button', { name: 'Settings…' }).click()
+  const settings = page.getByRole('dialog')
+  await settings.getByRole('button', { name: 'Browse…' }).click()
+  check(!!(await until(async () => (await settings.locator('input').inputValue()) === fakeNotify)), 'Browse… fills in the notification program')
+  await settings.getByRole('button', { name: 'Try it' }).click()
+  check(!!(await until(async () => (await settings.locator('.notify-try.success').count()) === 1, 10000)), 'Try it runs it and says so')
+  check(notifications().some(l => l.startsWith('test shell')), 'and the program got the test event')
+  await shot('11-settings-notify')
+  await settings.getByRole('button', { name: 'Save' }).click()
+  await until(async () => (await page.getByRole('dialog').count()) === 0)
+  check(JSON.parse(readFileSync(path.join(scratch, 'profile', 'config.json'), 'utf8')).notify?.command === fakeNotify, 'Save keeps it in the app config')
+
   // A plain shell in the panel.
   await page.locator('.terminal-tabs').getByTitle('New shell').click()
   await sleep(1500)
@@ -824,6 +852,14 @@ try {
   await sleep(300) // its terminal takes the focus on the next frame
   await page.keyboard.press('Enter')
   check(!!(await until(async () => (await shellIcon()).includes('shell'))), 'Claude gone: a shell again')
+  // The program heard each change, in order (the fake turn starts at Claude's prompt, works, stops,
+  // then leaves), with the status before it and the tab's title.
+  const heard = await until(async () => {
+    const turn = notifications().filter(l => !l.startsWith('test ')).map(l => l.split(' ').slice(0, 2).join(' '))
+    return turn.join(',').includes('waiting shell,working waiting,waiting working,shell waiting') ? turn : null
+  }, 10000)
+  check(!!heard, `the notification program ran on each state change: ${notifications().join(' | ')}`)
+  check(notifications().some(l => l === 'waiting working shell'), "with the tab's title (`shell`) as its third argument")
 
   // Middle-clicking a tab closes it, asking first while something runs in it.
   const tabCount = () => page.locator('.terminal-tab').count()
