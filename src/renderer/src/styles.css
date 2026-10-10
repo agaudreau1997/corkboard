@@ -859,6 +859,39 @@ code,
   box-shadow: 0 10px 24px rgb(0 0 0 / 50%);
 }
 
+/* A dragged selection: the grabbed card on a stack of the others, with how many there are. */
+.drag-stack {
+  position: relative;
+}
+
+.drag-stack::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translate(5px, 5px) rotate(4deg);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+
+.drag-stack > .card {
+  position: relative;
+}
+
+.drag-count {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  min-width: 22px;
+  padding: 2px 6px;
+  border-radius: 11px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
 .card.complete .card-title {
   color: var(--text-2);
 }
