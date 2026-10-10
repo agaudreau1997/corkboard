@@ -474,6 +474,7 @@ code,
   background: var(--bg-2);
   border-bottom: 1px solid var(--line);
   overflow-x: auto;
+  overflow-y: hidden;
   flex: none;
   min-height: 37px;
 }
@@ -1532,6 +1533,7 @@ tr.selected td {
   flex: none;
   background: var(--bg-2);
   overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .terminal-finished {
@@ -1556,6 +1558,7 @@ tr.selected td {
   gap: 2px;
   min-width: 0;
   overflow-x: auto;
+  overflow-y: hidden;
   scrollbar-width: thin;
 }
 
