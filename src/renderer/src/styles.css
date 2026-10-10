@@ -1929,10 +1929,6 @@ tr.selected td {
   font-size: 12px;
 }
 
-.add-project {
-  align-self: flex-start;
-}
-
 code.path {
   display: block;
   padding: 5px 8px;

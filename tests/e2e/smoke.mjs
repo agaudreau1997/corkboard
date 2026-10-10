@@ -389,7 +389,8 @@ try {
   check(!!grown && (await until(() => readFileSync(path.join(root, IDEAS.path, 'cards', `${linkerId}.md`), 'utf8').includes(grown))), `the new card ${grown} is linked from ${linkerId}`)
 
   // ---- a new board, a card, a drag ----
-  await page.locator('.sidebar-head .icon-button').click()
+  await page.locator('.project-row').first().click({ button: 'right' })
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: 'New board…' }).click()
   await page.getByLabel('Title').fill('Scratch board')
   await page.getByRole('button', { name: 'Create board' }).click()
   await page.locator('.column-title', { hasText: 'To do' }).waitFor()
@@ -958,12 +959,13 @@ try {
 
   // ---- projects: add one, move a board into it, delete a board with cards ----
   const second = path.join(scratch, 'second-board')
-  await page.locator('.sidebar-foot').getByRole('button', { name: '+ Add project' }).click()
+  await page.locator('.sidebar-head').getByRole('button', { name: '+' }).click()
   await page.getByRole('dialog').getByLabel('Board repo folder').fill(second)
   await page.getByRole('dialog').getByLabel('Name', { exact: true }).fill('Side project')
   await page.getByRole('dialog').getByRole('button', { name: 'Add project' }).click()
   await page.locator('.project-row', { hasText: 'Side project' }).waitFor()
   check(existsSync(path.join(second, '.git')), 'a new project folder becomes a git repo')
+  check((await page.locator('.sidebar-foot').getByRole('button', { name: /Add project/ }).count()) === 0, 'the + beside the title replaces the footer\'s Add project link')
   check(existsSync(path.join(second, 'CLAUDE.md')) && existsSync(path.join(second, 'README.md')), 'with a README and a CLAUDE.md')
   check((await page.locator('.guide-offer').count()) === 0, 'so neither project offers a CLAUDE.md')
   check((await page.locator('.project-row').count()) === 2, 'the side panel shows both projects')
@@ -1017,7 +1019,7 @@ try {
   check((await page.locator('.toast.error').count()) === 0, 'without an error')
 
   // ---- work mode: a project whose code repo never sees a card id ----
-  await page.locator('.sidebar-foot').getByRole('button', { name: '+ Add project' }).click()
+  await page.locator('.sidebar-head').getByRole('button', { name: '+' }).click()
   await page.getByRole('dialog').getByLabel('Board repo folder').fill(workRoot)
   await page.getByRole('dialog').getByLabel('Name', { exact: true }).fill(WORK.project)
   await page.getByRole('dialog').getByRole('button', { name: 'Add project' }).click()

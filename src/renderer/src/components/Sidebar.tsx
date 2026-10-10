@@ -6,21 +6,12 @@ import { ThemeSwatch } from './ThemeEditor'
 
 export function Sidebar() {
   const projects = useStore(s => s.projects)
-  const activeTab = useStore(s => s.activeTab)
-
-  // "New board" lands in the project of the board in front, else the first one.
-  const currentProject = activeTab ? projectIdOf(activeTab) : projects[0]?.id
 
   return (
     <aside className="sidebar">
       <div className="sidebar-head">
         <span className="brand">Corkboard</span>
-        <button
-          className="icon-button"
-          title="New board"
-          disabled={!currentProject}
-          onClick={() => currentProject && actions.setModal({ kind: 'newBoard', parent: `${currentProject}:` })}
-        >
+        <button className="icon-button" title="Add project" onClick={() => actions.setModal({ kind: 'addProject' })}>
           +
         </button>
       </div>
@@ -32,9 +23,6 @@ export function Sidebar() {
       </div>
       <footer className="sidebar-foot">
         <div className="foot-line">
-          <button className="link add-project" onClick={() => actions.setModal({ kind: 'addProject' })}>
-            + Add project
-          </button>
           <button
             className="link app-settings"
             onClick={() => actions.setModal({ kind: 'appSettings' })}
