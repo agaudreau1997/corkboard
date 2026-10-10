@@ -24,11 +24,13 @@ const CLOUD_URL = /https:\/\/claude\.ai\/code\/[A-Za-z0-9_\-/]+/
 
 export type OpenExternal = (url: string) => Promise<void>
 
+/** Starts sessions for `req`'s cards; `boardKey` is the board's key in the window, for its terminals. */
 export async function tackle(
   req: TackleRequest,
   store: BoardStore,
   ptys: PtyManager,
   open: OpenExternal,
+  boardKey?: string,
 ): Promise<PtyInfo[]> {
   const board = store.board(req.boardPath)
   const cards = req.cardIds
@@ -77,7 +79,7 @@ export async function tackle(
       ref = { id, kind: req.mode, started, cwd: sessionCwd, cards: ids, name, ...purpose }
     }
 
-    const info = ptys.create({ title: cloud ? `☁ ${name}` : name, cwd, command, cardIds: ids })
+    const info = ptys.create({ title: cloud ? `☁ ${name}` : name, cwd, command, cardIds: ids, boardKey })
     opened.push(info)
     await recordSession(store, req.boardPath, group, ref)
 
@@ -161,6 +163,7 @@ export async function resume(
   boardPath: string,
   ref: SessionRef,
   open: OpenExternal,
+  boardKey?: string,
 ): Promise<PtyInfo | null> {
   if (ref.kind === 'desktop') {
     if (ref.desktopId) await openUrl(continueUrl(ref.desktopId), open)
@@ -173,10 +176,10 @@ export async function resume(
   if (ref.kind === 'cloud') {
     const target = ref.id ?? ref.url
     if (!target) throw new Error('This cloud session never printed its id or URL.')
-    return ptys.create({ title: `☁ ${label}`, cwd, command: [CLAUDE, '--cloud', target], cardIds: ref.cards })
+    return ptys.create({ title: `☁ ${label}`, cwd, command: [CLAUDE, '--cloud', target], cardIds: ref.cards, boardKey })
   }
   if (!ref.id) throw new Error('No session id recorded.')
-  return ptys.create({ title: `↻ ${label}`, cwd, command: [CLAUDE, '--resume', ref.id], cardIds: ref.cards })
+  return ptys.create({ title: `↻ ${label}`, cwd, command: [CLAUDE, '--resume', ref.id], cardIds: ref.cards, boardKey })
 }
 
 /** Opens a terminal session in the Claude desktop app (it imports the CLI session by id). */

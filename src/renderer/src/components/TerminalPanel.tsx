@@ -1,10 +1,12 @@
 import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
-import { useEffect, useRef } from 'react'
-import type { PtyInfo, TerminalStatus } from '@shared/types'
-import { actions, api, attachTerminalSink, useStore } from '../state'
-import { cssToken, onThemeApplied } from '../theme'
+import { useEffect, useMemo, useRef } from 'react'
+import { DEFAULT_COLORS, themeTokens } from '@shared/theme'
+import type { ProjectNode, ProjectTheme, PtyInfo, TerminalStatus } from '@shared/types'
+import { actions, api, attachTerminalSink, projectIdOf, useStore } from '../state'
+import { repaint } from '../theme'
 import { openContextMenu, type MenuItem } from './ContextMenu'
+import { ThemeSwatch } from './ThemeEditor'
 
 export function TerminalPanel() {
   const terminals = useStore(s => s.terminals)
@@ -13,6 +15,21 @@ export function TerminalPanel() {
   const height = useStore(s => s.terminalHeight)
   const activeTab = useStore(s => s.activeTab)
   const attention = useStore(s => s.attention)
+  // Around the terminal in view, its own background, so its project's colours reach the edges.
+  const shown = terminals.find(t => t.id === active)
+  const shownColors = terminalColors(useTerminalTheme(shown?.boardKey))
+  const shownBackground = shown ? shownColors.background : ''
+  const shownPreviewing = useTerminalPreviewing(shown?.boardKey)
+  // Painted through `repaint` rather than a style prop, so a theme change fades it with the canvas.
+  // Bringing another terminal in view swaps it at once, as it swaps the canvas.
+  const body = useRef<HTMLDivElement>(null)
+  const bodyTerminal = useRef<string | null | undefined>(null)
+  useEffect(() => {
+    const el = body.current!
+    const sameTerminal = bodyTerminal.current === shown?.id
+    bodyTerminal.current = shown?.id
+    repaint('terminal-body', () => (el.style.background = shownBackground), sameTerminal && !shownPreviewing)
+  }, [shownBackground, shown?.id])
 
   return (
     <div className={`terminal-panel${open ? ' open' : ''}`} style={{ height: open ? height : 34 }}>
@@ -48,7 +65,7 @@ export function TerminalPanel() {
           +
         </button>
       </div>
-      <div className="terminal-body" style={{ display: open ? 'block' : 'none' }}>
+      <div className="terminal-body" ref={body} style={{ display: open ? 'block' : 'none' }}>
         {terminals.map(t => (
           <XTerm key={t.id} info={t} visible={open && t.id === active} />
         ))}
@@ -67,6 +84,7 @@ function TerminalTab({ info, active }: { info: PtyInfo; active: boolean }) {
   const exitCode = useStore(s => s.exited[info.id])
   const attention = useStore(s => s.attention.includes(info.id))
   const state = tabState(status, exitCode, attention)
+  const project = useTerminalProject(info.boardKey)
   const tab = useRef<HTMLDivElement>(null)
   // The strip scrolls sideways: bring a tab into view when it becomes the one shown.
   useEffect(() => {
@@ -86,9 +104,10 @@ function TerminalTab({ info, active }: { info: PtyInfo; active: boolean }) {
         e.preventDefault()
         void actions.requestCloseTerminal(info.id)
       }}
-      title={`${info.title}\n${state.label}\n${info.cwd}`}
+      title={`${info.title}\n${state.label}${project ? `\n${project.name}` : ''}\n${info.cwd}`}
     >
       <i className={`term-status ${state.kind}`} role="img" aria-label={state.label} />
+      {project?.theme && <ThemeSwatch theme={project.theme} />}
       <span>{info.title}</span>
       <button
         className="tab-close"
@@ -119,12 +138,39 @@ function tabState(status: TerminalStatus | undefined, exitCode: number | undefin
   return { kind: 'shell', label: 'Shell' }
 }
 
-/** The terminal's colours: its panel's background and the accent for the cursor, from the theme. */
-function terminalTheme() {
+/** The project a terminal was opened for, while the app still has it. */
+function useTerminalProject(boardKey: string | undefined): ProjectNode | undefined {
+  return useStore(s => (boardKey ? s.projects.find(p => p.id === projectIdOf(boardKey)) : undefined))
+}
+
+/**
+ * The theme a terminal wears: its own project's (the one being edited, while its settings are
+ * open), whichever board is in front. None without a project: the app's colours.
+ */
+function useTerminalTheme(boardKey: string | undefined): ProjectTheme | null | undefined {
+  return useStore(s => {
+    if (!boardKey) return undefined
+    const id = projectIdOf(boardKey)
+    if (s.themePreview?.projectId === id) return s.themePreview.theme
+    return s.projects.find(p => p.id === id)?.theme
+  })
+}
+
+/** Whether the settings of the terminal's project are open, previewing a theme: no fade then. */
+function useTerminalPreviewing(boardKey: string | undefined): boolean {
+  return useStore(s => !!boardKey && s.themePreview?.projectId === projectIdOf(boardKey))
+}
+
+/** The stylesheet's own `--term-bg`, for a terminal whose project has no theme. */
+const APP_TERM_BG = '#101216'
+
+/** A terminal's colours: the theme's terminal background, and its accent for the cursor. */
+function terminalColors(theme: ProjectTheme | null | undefined) {
+  const tokens = themeTokens(theme)
   return {
-    background: cssToken('--term-bg') || '#101216',
+    background: tokens['--term-bg'] ?? APP_TERM_BG,
     foreground: '#d7dae0',
-    cursor: cssToken('--accent') || '#f0c674',
+    cursor: tokens['--accent'] ?? DEFAULT_COLORS.accent,
     selectionBackground: '#3a4252',
   }
 }
@@ -178,6 +224,13 @@ function XTerm({ info, visible }: { info: PtyInfo; visible: boolean }) {
   const host = useRef<HTMLDivElement>(null)
   const term = useRef<Terminal | null>(null)
   const fit = useRef<FitAddon | null>(null)
+  // A canvas the stylesheet never reaches: the colours go in through xterm's options.
+  const theme = useTerminalTheme(info.boardKey)
+  const colors = useMemo(() => terminalColors(theme), [theme])
+  const previewing = useTerminalPreviewing(info.boardKey)
+  const colorsNow = useRef(colors)
+  colorsNow.current = colors
+  const painted = useRef(colors)
 
   useEffect(() => {
     const terminal = new Terminal({
@@ -187,7 +240,7 @@ function XTerm({ info, visible }: { info: PtyInfo; visible: boolean }) {
       cursorBlink: true,
       allowProposedApi: true,
       scrollback: 10000,
-      theme: terminalTheme(),
+      theme: colorsNow.current,
     })
     const fitAddon = new FitAddon()
     terminal.loadAddon(fitAddon)
@@ -217,15 +270,21 @@ function XTerm({ info, visible }: { info: PtyInfo; visible: boolean }) {
       }
     })
     observer.observe(host.current!)
-    const retheme = onThemeApplied(() => (terminal.options.theme = terminalTheme()))
     return () => {
-      retheme()
       observer.disconnect()
       input.dispose()
       detach()
       terminal.dispose()
     }
   }, [info.id])
+
+  useEffect(() => {
+    const terminal = term.current
+    if (!terminal || painted.current === colors) return
+    painted.current = colors
+    // In step with the window's fade: the canvas repaints once the old window is captured.
+    repaint(`terminal:${info.id}`, () => term.current === terminal && (terminal.options.theme = colors), !previewing)
+  }, [colors])
 
   useEffect(() => {
     if (!visible || !term.current || !fit.current) return

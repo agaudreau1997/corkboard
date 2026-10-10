@@ -991,9 +991,21 @@ try {
     }
   }
   check(!!(await until(() => secondLogHas(`Create board ${SPARE.path}`), 12000)), 'the other project commits the board it received')
-  // Each project wears its own colours: the board in front decides.
+  // Each project wears its own colours: the board in front decides, but a terminal keeps its own.
+  const themedTerminal = page.locator('.terminal-tab', { has: page.locator('.theme-swatch') }).first()
+  check((await themedTerminal.count()) === 1, "a terminal of the themed project carries its swatch")
+  await themedTerminal.click()
+  const terminalBg = () =>
+    page.evaluate(() => {
+      const scroller = document.querySelector('.xterm-host[style*="block"] .xterm-scrollable-element')
+      return scroller ? getComputedStyle(scroller).backgroundColor : null
+    })
+  const themedBg = await terminalBg()
+  check(!!themedBg && themedBg !== 'rgb(16, 18, 22)', `the terminal wears its project's background (${themedBg})`)
   await page.locator('.project[data-project] .tree-row', { hasText: SPARE.title }).click()
   check(!!(await until(async () => (await rootToken('--bg')) === '')), 'a board of a project with no theme shows the app colours')
+  await sleep(300)
+  check((await terminalBg()) === themedBg, `and the terminal keeps its project's (${await terminalBg()})`)
   check((await page.locator('.tab .theme-swatch').count()) >= 1, 'tabs of a themed project carry its swatch')
   await shot('14-projects')
   const fadesBefore = await fades()
