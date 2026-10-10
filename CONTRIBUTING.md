@@ -2,7 +2,7 @@
 
 Contributions are welcome. A few things make them easy to take in.
 
-- **Run and test.** `npm install`, then `npm run dev` (see the README's *Running*). Before a pull request: `npm run typecheck`, `npm test`, and `npm run e2e`, which builds the app and drives it on a made-up board repo, with a stand-in for `claude` so nothing real is started or billed (the README's *Tests*).
+- **Run and test.** `npm install`, then `npm run dev` (see [Running from source](docs/development.md#running-from-source)). Before a pull request: `npm run typecheck`, `npm test`, and `npm run e2e`, which builds the app and drives it on a made-up board repo, with a stand-in for `claude` so nothing real is started or billed ([Tests](docs/development.md#tests)). A change someone using the app would notice gets a line in the page of [`docs/`](docs/README.md) it belongs to, and a change to what a screenshot shows gets them taken again with `npm run screenshots`.
 - **Commits** say what changed and why. A change for a card on the project's board ends its message with a `Card: <ID>` trailer (`Card: CORK-11`): Corkboard shows that commit on the card.
 - **Sign off every commit** (`git commit -s`, which adds `Signed-off-by: Your Name <you@example.com>`). It certifies the [Developer Certificate of Origin 1.1](https://developercertificate.org): that you wrote the change, or otherwise have the right to submit it under the project's license. There is no contributor license agreement.
 - **License.** Contributions come in under the project's license, the GNU GPL version 3 or (at your option) any later version ([LICENSE](LICENSE)), and you keep the copyright on your part.

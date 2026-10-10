@@ -1,6 +1,6 @@
 # Corkboard
 
-An Electron app (React renderer, TypeScript throughout): a kanban and mind-map board whose data is a git repo of plain files, built to hand cards to Claude Code. The README describes what it does and how to run, test and package it; this file is what to know before changing it.
+An Electron app (React renderer, TypeScript throughout): a kanban and mind-map board whose data is a git repo of plain files, built to hand cards to Claude Code. The README is its front page (what it is, screenshots, install, a quick start); `docs/` is the reference: what every feature does, the board repo's format, and how to run, test, package and release it. This file is what to know before changing it.
 
 ## Commands
 
@@ -11,6 +11,7 @@ npm run typecheck    # tsc on both projects: tsconfig.node.json (main, preload, 
 npm test             # vitest: tests/*.test.ts
 npx vitest run tests/store.test.ts   # one file
 npm run e2e          # builds, then drives the built app with Playwright (tests/e2e/smoke.mjs)
+npm run screenshots  # builds, then retakes docs/images/*.png on the e2e fixture (tests/e2e/screenshots.mjs)
 ```
 
 Before calling a change done: `npm run typecheck` and `npm test`, and `npm run e2e` for anything a person sees or clicks. The e2e test writes a made-up board repo (`tests/e2e/fixture.mjs`, whose exports name the boards and ids the checks use; a board repo given as its first argument replaces it) into a scratch folder with a scratch bare remote, and replaces `claude` with a stand-in that records its arguments, so it never touches the real board repo, its remote, or a real Claude session. Screenshots and `main-process.log` go to `test-results/`.
@@ -38,11 +39,11 @@ The repo's root may hold a `theme.json`: the project's colours (`ProjectTheme`),
 - **Style**: no semicolons, single quotes, two-space indent, trailing commas, comments wrapped at about 100 columns. There is no formatter or linter configured; match the file you're in.
 - **Comments**: each module opens with a comment saying what it is for and why it works the way it does; exported functions get a one-line `/** */` where the name doesn't say it all. Write them as plain sentences, and say why, not what.
 - **Card ids and the code repo**: a personal project's sessions put `Card:` trailers on commits; a work project's never write a card id into the code repo and name the Jira key instead (`work` on `PromptContext`, `isWork` in the renderer). Anything new that writes text for the code repo or a clipboard (a prompt, a branch name, a copy item) follows that split, with a test for both.
-- **Test seams** are environment variables read in the main process (`CORKBOARD_ROOT`, `CORKBOARD_USER_DATA`, `CORKBOARD_HIDDEN`, `CORKBOARD_CLAUDE_BIN`, the delays, ...; the list is in the README's *Tests*). A new dependency on the outside world (a program, a folder in the home directory, a URL opened) gets one, so the e2e test can stand it in.
+- **Test seams** are environment variables read in the main process (`CORKBOARD_ROOT`, `CORKBOARD_USER_DATA`, `CORKBOARD_HIDDEN`, `CORKBOARD_CLAUDE_BIN`, the delays, ...; the list is in `docs/development.md`, *Tests*). A new dependency on the outside world (a program, a folder in the home directory, a URL opened) gets one, so the e2e test can stand it in.
 - **Platforms**: Linux is where it runs and is tested; Windows is written for but not yet run. A command for a terminal goes through `shellLaunch` in `shell.ts` as argv, never pasted into a shell line (prompts hold quotes, backticks and newlines).
 - **Colours** of the window are custom properties in `:root` of `styles.css`, not literals in a rule or a component (list colours are board data, and the terminals keep xterm's palette): a project's theme replaces them (`themeTokens` in `src/shared/theme.ts`), and a literal would stay the app's colour under every theme. A new token goes in both places; `tests/theme.test.ts` checks that every token a theme sets is in `:root`, near the value the theme would mix.
 - **No personal paths** in the code (a folder in the author's home, a repo of theirs): the app is GPL-licensed and published.
-- **README**: a change someone using the app would notice gets a line there, in the README's own voice.
+- **Docs**: a change someone using the app would notice gets a line in the page of `docs/` it belongs to (`using.md`, `tackling.md`, `work-mode.md`, `board-repo.md`, `development.md`), in that page's own voice. The README stays a front page: it changes for a new headline feature, not for every detail. A change to what a screenshot shows gets the pictures taken again (`npm run screenshots`, from the e2e fixture: see `docs/development.md`, *Screenshots*).
 
 ## Commits
 
