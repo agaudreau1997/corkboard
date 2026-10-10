@@ -5,6 +5,7 @@ import {
   areaAt,
   estimateHeight,
   fitArea,
+  growArea,
   layoutArea,
   NODE_W,
   resolveLayout,
@@ -68,5 +69,48 @@ describe('backdrop layout', () => {
     expect(nodes['G-9']).toEqual({ x: 5000, y: 5000 })
     expect(inside(nodes['G-1'], areas.todo)).toBe(true)
     expect(nodes['I-1'].x).toBeLessThan(0)
+  })
+
+  it('grows a backdrop to hold cards placed outside it, and never shrinks it', () => {
+    const area = { x: 0, y: 0, w: 400, h: 300 }
+    expect(growArea(area, [], [])).toBe(area)
+    expect(growArea(area, [{ x: AREA_PAD, y: AREA_HEAD }], [50])).toBe(area)
+    const grown = growArea(area, [{ x: 600, y: 500 }, { x: -100, y: -80 }], [50, 70])
+    expect(grown.x).toBe(-100 - AREA_PAD)
+    expect(grown.y).toBe(-80 - AREA_HEAD)
+    expect(grown.x + grown.w).toBe(600 + NODE_W + AREA_PAD)
+    expect(grown.y + grown.h).toBe(500 + 50 + AREA_PAD)
+  })
+
+  it('grows a full saved backdrop to take a card that joins its list', () => {
+    const lists = [{ id: 'todo' }]
+    const area = { x: 0, y: 0, w: 262, h: 300 }
+    const { areas, nodes } = resolveLayout({ nodes: {}, areas: { todo: area } }, lists, cards(12))
+    expect(areas.todo.x).toBe(0)
+    expect(areas.todo.y).toBe(0)
+    expect(areas.todo.h).toBeGreaterThan(300)
+    for (const card of cards(12)) expect(inside(nodes[card.id], areas.todo, estimateHeight(card))).toBe(true)
+  })
+
+  it('grows a backdrop to reach its card dragged out of it, over a neighbour', () => {
+    const lists = [{ id: 'todo' }, { id: 'doing' }]
+    const map = {
+      nodes: { 'G-1': { x: 900, y: 1200 } },
+      areas: { todo: { x: 0, y: 0, w: 300, h: 400 }, doing: { x: 400, y: 0, w: 300, h: 400 } },
+    }
+    const { areas, nodes } = resolveLayout(map, lists, cards(2))
+    expect(nodes['G-1']).toEqual({ x: 900, y: 1200 })
+    expect(inside(nodes['G-1'], areas.todo, estimateHeight(cards(1)[0]))).toBe(true)
+    expect(inside(nodes['G-2'], areas.todo)).toBe(true)
+    // The neighbour stays where it was, under the grown backdrop.
+    expect(areas.doing).toEqual(map.areas.doing)
+    expect(areaAt(areas, { x: 500, y: 100 })).toBe('doing')
+  })
+
+  it('places a new backdrop to the right of the grown ones', () => {
+    const lists = [{ id: 'todo' }, { id: 'doing' }]
+    const map = { nodes: { 'G-1': { x: 1000, y: 50 } }, areas: { todo: { x: 0, y: 0, w: 300, h: 400 } } }
+    const { areas } = resolveLayout(map, lists, cards(1))
+    expect(areas.doing.x).toBeGreaterThan(areas.todo.x + areas.todo.w)
   })
 })
