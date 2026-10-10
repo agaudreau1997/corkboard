@@ -85,7 +85,15 @@ function Drawer({ board, card }: { board: LoadedBoard; card: Card }) {
     <aside className="drawer" aria-label={`Card ${card.id}`} style={{ width }}>
       <div className="drawer-top">
         <div className="drawer-head">
-          <span className="card-id big">{card.id}</span>
+          {/* The card's id in Corkboard's own UI, copied in work mode too, like the copy menu's
+              Identifier: it is not text for the code repo. */}
+          <button
+            className="card-id big copy-id"
+            title={`Copy ${card.id}`}
+            onClick={() => actions.copy(card.id)}
+          >
+            {card.id}
+          </button>
           <span className="muted">{board.meta.title}</span>
           <span className="spacer" />
           <button className="icon-button" aria-label="Close" onClick={() => actions.closeCard()}>

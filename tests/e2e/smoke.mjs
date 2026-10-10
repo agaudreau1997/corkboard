@@ -552,6 +552,11 @@ try {
   const openId = (await page.locator('.drawer .card-id').textContent()).trim()
   check(openId.startsWith(`${MAIN.key}-`), `drawer opened for ${openId}`)
   await shot('04-drawer')
+  // Its id copies itself on a click.
+  await app.evaluate(({ clipboard }) => clipboard.writeText(''))
+  await page.locator('.drawer').getByRole('button', { name: openId, exact: true }).click()
+  check((await app.evaluate(({ clipboard }) => clipboard.readText())) === openId, `clicking the drawer's id put ${openId} on the clipboard`)
+  check(!!(await until(async () => (await page.locator('.toast').textContent().catch(() => '')) === `Copied ${openId}`, 5000)), 'and says so')
 
   // Its left edge resizes it; the width is remembered, and a double-click puts it back.
   const drawerWidth = () => page.locator('.drawer').evaluate(el => el.getBoundingClientRect().width)

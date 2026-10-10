@@ -895,6 +895,19 @@ code,
   color: var(--text-2);
 }
 
+/* The drawer's id is a button that reads as the id: no frame until hovered. */
+button.copy-id {
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  padding: 1px 4px;
+  margin-left: -4px;
+}
+
+button.copy-id:hover {
+  background: var(--hover);
+}
+
 .badge.ok {
   color: var(--green);
 }
