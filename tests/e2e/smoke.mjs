@@ -648,6 +648,24 @@ try {
   })
   check(mdTable.inside && mdTable.wrap !== 'nowrap' && mdTable.position === 'static' && mdTable.cursor !== 'pointer', `a description's table wraps and stays in its box (${JSON.stringify(mdTable)})`)
 
+  // A selection started with a card open starts from that card; the bar's actions need two.
+  const other = page.locator(`.kanban .card[data-card]:visible:not([data-card="${openId}"])`).first()
+  const otherId = await other.getAttribute('data-card')
+  await other.click({ modifiers: ['Control'] })
+  const bar = page.locator('.selection-bar')
+  check(
+    (await bar.locator('span').textContent()) === '2 selected' && (await page.locator(`.card.selected[data-card="${openId}"]`).count()) === 1,
+    `Ctrl+click on ${otherId} with ${openId} open selects both`,
+  )
+  check((await bar.getByRole('button', { name: 'Tackle ▾' }).count()) === 1, 'two selected cards offer Tackle')
+  await other.click({ modifiers: ['Control'] })
+  check(
+    (await bar.locator('span').textContent()) === '1 selected' && (await bar.getByRole('button', { name: /Tackle|Discuss/ }).count()) === 0,
+    'one selected card offers no Tackle or Discuss in the bar',
+  )
+  await bar.getByRole('button', { name: 'Clear' }).click()
+  check((await bar.count()) === 0, 'Clear empties the selection')
+
   // Its left edge resizes it; the width is remembered, and a double-click puts it back.
   const drawerWidth = () => page.locator('.drawer').evaluate(el => el.getBoundingClientRect().width)
   const edge = await page.locator('.drawer-resize').boundingBox()
