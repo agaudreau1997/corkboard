@@ -157,6 +157,9 @@ writeFileSync(
     : `#!/bin/sh\necho "$CORKBOARD_EVENT $CORKBOARD_PREVIOUS $3" >> '${notifyLog}'\n`,
 )
 chmodSync(fakeNotify, 0o755)
+// The desktop notifications, written to a file rather than shown (CORKBOARD_NOTIFY_LOG).
+const noticeLog = path.join(scratch, 'desktop-notices.txt')
+const notices = () => (existsSync(noticeLog) ? readFileSync(noticeLog, 'utf8').split(/\r?\n/).filter(Boolean) : [])
 const notifications = () => (existsSync(notifyLog) ? readFileSync(notifyLog, 'utf8').split(/\r?\n/).filter(Boolean) : [])
 
 let failures = 0
@@ -202,6 +205,7 @@ const app = await electron.launch({
     CORKBOARD_CLAUDE_BIN: fakeClaude,
     // The settings' Browse… for the notification program answers the stand-in.
     CORKBOARD_PICK_FILE: fakeNotify,
+    CORKBOARD_NOTIFY_LOG: noticeLog,
     // claude:// links are written to a file, and the desktop app's session index is a scratch one.
     CORKBOARD_OPEN_URL_LOG: urlLog,
     CORKBOARD_DESKTOP_SESSIONS_DIR: path.join(scratch, 'desktop-sessions'),
@@ -962,15 +966,17 @@ try {
   // ---- the notification program: set in the app's settings, tried from there ----
   await page.locator('.sidebar-foot').getByRole('button', { name: 'Settings…' }).click()
   const settings = page.getByRole('dialog')
+  check(await settings.getByRole('checkbox', { name: 'Desktop notifications' }).isChecked(), 'desktop notifications are on to begin with')
   await settings.getByRole('button', { name: 'Browse…' }).click()
-  check(!!(await until(async () => (await settings.locator('input').inputValue()) === fakeNotify)), 'Browse… fills in the notification program')
+  check(!!(await until(async () => (await settings.locator('input:not([type=checkbox])').inputValue()) === fakeNotify)), 'Browse… fills in the notification program')
   await settings.getByRole('button', { name: 'Try it' }).click()
   check(!!(await until(async () => (await settings.locator('.notify-try.success').count()) === 1, 10000)), 'Try it runs it and says so')
   check(notifications().some(l => l.startsWith('test shell')), 'and the program got the test event')
   await shot('11-settings-notify')
   await settings.getByRole('button', { name: 'Save' }).click()
   await until(async () => (await page.getByRole('dialog').count()) === 0)
-  check(JSON.parse(readFileSync(path.join(scratch, 'profile', 'config.json'), 'utf8')).notify?.command === fakeNotify, 'Save keeps it in the app config')
+  const savedNotify = JSON.parse(readFileSync(path.join(scratch, 'profile', 'config.json'), 'utf8')).notify
+  check(savedNotify?.command === fakeNotify && savedNotify.desktop === undefined, 'Save keeps it in the app config, desktop notifications left on')
 
   // A plain shell in the panel.
   await page.locator('.terminal-tabs').getByTitle('New shell').click()
@@ -1051,6 +1057,8 @@ try {
   }, 10000)
   check(!!heard, `the notification program ran on each state change: ${notifications().join(' | ')}`)
   check(notifications().some(l => l === 'waiting working shell'), "with the tab's title (`shell`) as its third argument")
+  // The window of the test is never in front, so the turn's end came as a desktop notification too.
+  check(notices().join('|') === 'Claude is waiting for you\tshell', `the end of the turn showed a desktop notification: ${notices().join(' | ')}`)
 
   // Middle-clicking a tab closes it, asking first while something runs in it.
   const tabCount = () => page.locator('.terminal-tab').count()

@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { TerminalEvent } from '../src/shared/types'
-import { notify, notifyArgs, notifyLaunch } from '../src/main/notify'
+import { desktopNotice, notify, notifyArgs, notifyLaunch } from '../src/main/notify'
 
 const WINDOWS = process.platform === 'win32'
 const terminal = { id: 'tab-1', title: 'CORK-35 Add notifications', cwd: '/work/corkboard', cardIds: ['CORK-35', 'CORK-36'], kind: 'local' as const }
@@ -35,6 +35,23 @@ describe('notifyArgs', () => {
     expect(env.CORKBOARD_CARDS).toBe('')
     expect(env.CORKBOARD_KIND).toBe('shell')
     expect(env.CORKBOARD_RESUMED).toBeUndefined()
+  })
+})
+
+describe('desktopNotice', () => {
+  it('asks for one when a turn ends, naming the tab', () => {
+    expect(desktopNotice({ event: 'waiting', previous: 'working', terminal })).toEqual({
+      title: 'Claude is waiting for you',
+      body: 'CORK-35 Add notifications',
+    })
+  })
+
+  it('stays quiet for every other change', () => {
+    expect(desktopNotice({ event: 'waiting', previous: 'shell', terminal })).toBeNull()
+    expect(desktopNotice({ event: 'working', previous: 'waiting', terminal })).toBeNull()
+    expect(desktopNotice({ event: 'shell', previous: 'waiting', terminal })).toBeNull()
+    expect(desktopNotice({ event: 'exit', previous: 'working', terminal, exitCode: 1 })).toBeNull()
+    expect(desktopNotice({ event: 'test', previous: 'shell', terminal })).toBeNull()
   })
 })
 

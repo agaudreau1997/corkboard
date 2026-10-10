@@ -200,17 +200,21 @@ export type AppConfig = {
   codeRepos?: Record<string, string>
   /** Before projects: the one board repo. Read once, as the first project. */
   boardRoot?: string
-  /** A program this machine runs when a terminal tab changes state (none: no notifications). */
+  /** How this machine says a terminal tab changed state (none: desktop notifications only). */
   notify?: NotifyConfig
 }
 
 /**
- * The program run when a terminal tab changes state: a path to an executable, with no arguments
- * (a script with a shebang, a `.ps1`, `.cmd` or `.bat`, or any program). It gets the event as
- * arguments and in `CORKBOARD_*` variables; `src/main/notify.ts` says which.
+ * How this machine hears from its terminal tabs. `desktop` is the system's own notification when
+ * Claude finishes a turn while the window is in the background; absent means on, so a config
+ * written before it gets them. `command` is a program run on every change: a path to an
+ * executable, with no arguments (a script with a shebang, a `.ps1`, `.cmd` or `.bat`, or any
+ * program). It gets the event as arguments and in `CORKBOARD_*` variables; `src/main/notify.ts`
+ * says which.
  */
 export type NotifyConfig = {
-  command: string
+  desktop?: boolean
+  command?: string
 }
 
 /**

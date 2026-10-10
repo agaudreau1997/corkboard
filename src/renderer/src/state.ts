@@ -204,6 +204,9 @@ export const actions = {
         return { terminalStatus: { ...s.terminalStatus, [id]: status }, attention }
       })
     })
+    api.on.ptyShow(id => {
+      if (get().terminals.some(t => t.id === id)) set({ activeTerminal: id, terminalOpen: true })
+    })
     api.on.ptyExit((id, code) => {
       set(s => ({ exited: { ...s.exited, [id]: code }, attention: s.attention.filter(t => t !== id) }))
       // `claude update` finished: show the version it left.
@@ -248,9 +251,9 @@ export const actions = {
     return id
   },
 
-  /** The program run when a terminal tab changes state (app settings); empty turns it off. */
-  async setNotify(command: string) {
-    await api.config.setNotify(command.trim() ? { command: command.trim() } : null)
+  /** Desktop notifications, and the program run when a terminal tab changes state (app settings). */
+  async setNotify(notify: { desktop: boolean; command: string }) {
+    await api.config.setNotify({ desktop: notify.desktop, command: notify.command.trim() || undefined })
     set({ config: await api.config.get() })
   },
 

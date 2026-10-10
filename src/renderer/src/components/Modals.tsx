@@ -430,12 +430,14 @@ function AddProject() {
 }
 
 /**
- * This machine's settings (app config, never synced): the program run when a terminal tab changes
- * state. *Try it* runs what is typed, saved or not, so a script can be fixed before it is kept.
+ * This machine's settings (app config, never synced): desktop notifications, and the program run
+ * when a terminal tab changes state. *Try it* runs what is typed, saved or not, so a script can be
+ * fixed before it is kept.
  */
 function AppSettings() {
-  const saved = useStore(s => s.config?.notify?.command ?? '')
-  const [command, setCommand] = useState(saved)
+  const saved = useStore(s => s.config?.notify)
+  const [desktop, setDesktop] = useState(saved?.desktop !== false)
+  const [command, setCommand] = useState(saved?.command ?? '')
   const [tried, setTried] = useState<{ command: string; error: string | null } | null>(null)
   const [busy, setBusy] = useState(false)
   const tryIt = async () => {
@@ -448,7 +450,7 @@ function AppSettings() {
   }
   const save = async () => {
     try {
-      await actions.setNotify(command)
+      await actions.setNotify({ desktop, command })
       actions.setModal(null)
     } catch (error) {
       actions.toast((error as Error).message, 'error')
@@ -462,11 +464,20 @@ function AppSettings() {
       }}
     >
       <h2>Settings</h2>
+      <div className="field">
+        <label className="check">
+          <input type="checkbox" checked={desktop} onChange={e => setDesktop(e.target.checked)} />
+          Desktop notifications
+        </label>
+        <small className="muted">
+          The system's own notification when Claude finishes a turn while the window is in the background. Clicking it
+          brings Corkboard up on that tab.
+        </small>
+      </div>
       <label className="field">
         <span>Notification program</span>
         <div className="input-row">
           <input
-            autoFocus
             value={command}
             placeholder="(none)"
             spellCheck={false}
@@ -492,8 +503,8 @@ function AppSettings() {
           ), the status before it and the tab's title as arguments, and the lot in <code>CORKBOARD_EVENT</code>,{' '}
           <code>CORKBOARD_PREVIOUS</code>, <code>CORKBOARD_TITLE</code>, <code>CORKBOARD_CARDS</code>,{' '}
           <code>CORKBOARD_CWD</code>, <code>CORKBOARD_TERMINAL</code>, <code>CORKBOARD_KIND</code>,{' '}
-          <code>CORKBOARD_RESUMED</code> and <code>CORKBOARD_EXIT_CODE</code>. Leave it
-          empty for no notifications.
+          <code>CORKBOARD_RESUMED</code> and <code>CORKBOARD_EXIT_CODE</code>. For a sound, a lamp or a push to
+          your phone; leave it empty for none.
         </small>
         {tried && tried.command === command && (
           <small className={tried.error ? 'notify-try danger' : 'notify-try success'}>

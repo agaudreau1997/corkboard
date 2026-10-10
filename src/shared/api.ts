@@ -29,7 +29,7 @@ export type CorkboardApi = {
     setCodeRepo(boardPath: string, repo: string | null): Promise<LoadedBoard>
     pickFolder(title: string): Promise<string | null>
     pickFile(title: string): Promise<string | null>
-    /** The program run when a terminal tab changes state; null turns the notifications off. */
+    /** Desktop notifications and the program run when a terminal tab changes state; null: the defaults. */
     setNotify(notify: NotifyConfig | null): Promise<void>
     /** Runs a program as the notifications would, with a `test` event; answers the error, or null. */
     tryNotify(command: string): Promise<string | null>
@@ -141,6 +141,8 @@ export type CorkboardApi = {
     ptyExit(cb: (id: string, code: number) => void): () => void
     /** A terminal's status changed (Claude started or stopped working, or left). */
     ptyStatus(cb: (id: string, status: TerminalStatus) => void): () => void
+    /** A desktop notification about a terminal was clicked: show that tab. */
+    ptyShow(cb: (id: string) => void): () => void
     updateStatus(cb: (status: UpdateStatus) => void): () => void
   }
 }
