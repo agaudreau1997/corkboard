@@ -19,9 +19,9 @@ function fakePtys() {
   return {
     runs,
     ptys: {
-      create: (opts: { command?: string[]; title: string; cwd: string }) => {
+      create: (opts: { command?: string[]; title: string; cwd: string; boardKey?: string }) => {
         runs.push(opts.command ?? [])
-        return { id: String(runs.length), title: opts.title, cwd: opts.cwd }
+        return { id: String(runs.length), title: opts.title, cwd: opts.cwd, boardKey: opts.boardKey }
       },
       listen: () => () => {},
     } as never,
@@ -142,8 +142,10 @@ describe('starting a discussion', () => {
     }
 
     // A tackle of the same card does move it to the doing list.
-    await tackle({ boardPath: p, cardIds: ['G-1'], mode: 'local' }, store, ptys, async () => {})
+    const [opened] = await tackle({ boardPath: p, cardIds: ['G-1'], mode: 'local' }, store, ptys, async () => {}, `game:${p}`)
     expect(store.board(p).cards.find(x => x.id === 'G-1')!.list).toBe('doing')
+    // Its terminal knows the board it works for, so it wears that project's colours.
+    expect(opened.boardKey).toBe(`game:${p}`)
   })
 
   it('refuses a discussion in the cloud or a worktree', async () => {

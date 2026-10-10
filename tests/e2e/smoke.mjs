@@ -1040,6 +1040,13 @@ try {
 
   // ---- project colours: a theme picked in the settings, shown at once, saved to theme.json ----
   const rootToken = name => page.evaluate(n => document.documentElement.style.getPropertyValue(n), name)
+  // Count the crossfades: a theme change goes through a view transition, a pick in the editor doesn't.
+  await page.evaluate(() => {
+    const start = document.startViewTransition.bind(document)
+    window.fades = 0
+    document.startViewTransition = update => (window.fades++, start(update))
+  })
+  const fades = () => page.evaluate(() => window.fades)
   const openProjectSettings = async () => {
     await page.locator('.project-row').first().click({ button: 'right' })
     await page.locator('.ctx-menu').getByRole('menuitem', { name: /Settings/ }).click()
@@ -1049,8 +1056,9 @@ try {
   await dialog.getByRole('button', { name: 'Cork' }).click()
   check((await rootToken('--bg')) === '#1f1610', 'picking Cork repaints the window before saving')
   await dialog.getByRole('button', { name: 'Tide' }).click()
+  check((await fades()) === 0, 'picks in the theme editor swap the colours without a fade')
   await dialog.getByRole('button', { name: 'Cancel' }).click()
-  check((await rootToken('--bg')) === '', 'Cancel puts the colours back')
+  check(!!(await until(async () => (await rootToken('--bg')) === '')), 'Cancel puts the colours back')
   await openProjectSettings()
   await dialog.getByRole('button', { name: 'Cork' }).click()
   await dialog.getByLabel('Accent hex').fill('#e0a96d')
@@ -1103,13 +1111,46 @@ try {
     }
   }
   check(!!(await until(() => secondLogHas(`Create board ${SPARE.path}`), 12000)), 'the other project commits the board it received')
-  // Each project wears its own colours: the board in front decides.
+  // Each project wears its own colours: the board in front decides, but a terminal keeps its own.
+  const themedTerminal = page.locator('.terminal-tab', { has: page.locator('.theme-swatch') }).first()
+  check((await themedTerminal.count()) === 1, "a terminal of the themed project carries its swatch")
+  await themedTerminal.click()
+  const terminalBg = () =>
+    page.evaluate(() => {
+      const scroller = document.querySelector('.xterm-host[style*="block"] .xterm-scrollable-element')
+      return scroller ? getComputedStyle(scroller).backgroundColor : null
+    })
+  const themedBg = await terminalBg()
+  check(!!themedBg && themedBg !== 'rgb(16, 18, 22)', `the terminal wears its project's background (${themedBg})`)
   await page.locator('.project[data-project] .tree-row', { hasText: SPARE.title }).click()
   check(!!(await until(async () => (await rootToken('--bg')) === '')), 'a board of a project with no theme shows the app colours')
+  await sleep(300)
+  check((await terminalBg()) === themedBg, `and the terminal keeps its project's (${await terminalBg()})`)
   check((await page.locator('.tab .theme-swatch').count()) >= 1, 'tabs of a themed project carry its swatch')
   await shot('14-projects')
+  const fadesBefore = await fades()
   await page.locator(`.tab[title$=":${MAIN.path}"]`).first().click()
   check(!!(await until(async () => (await rootToken('--bg')) === '#1f1610')), 'back on the themed project, its colours return')
+  check((await fades()) > fadesBefore, 'and fade in')
+  // A click while the window fades reaches the page under the snapshot: slow the fade to be sure
+  // it is still running when the click lands.
+  const slow = await page.addStyleTag({ content: '::view-transition-group(root) { animation-duration: 3s }' })
+  await page.locator('.tab', { hasText: SPARE.title }).click()
+  await until(async () => (await rootToken('--bg')) === '')
+  await shot('19b-theme-fading')
+  const fading = () => page.evaluate(() => document.documentElement.getAnimations({ subtree: true }).some(a => a.effect?.pseudoElement?.startsWith('::view-transition')))
+  check(await fading(), 'switching projects starts a crossfade')
+  await page.locator(`.tab[title$=":${MAIN.path}"]`).first().click()
+  check(!!(await until(async () => ((await page.locator('.tab.active').getAttribute('title')) ?? '').endsWith(`:${MAIN.path}`), 1000)), 'a click during the fade is not lost')
+  await page.evaluate(el => el.remove(), slow)
+  await until(async () => !(await fading()))
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  const fadesReduced = await fades()
+  await page.locator('.tab', { hasText: SPARE.title }).click()
+  await until(async () => (await rootToken('--bg')) === '')
+  await page.locator(`.tab[title$=":${MAIN.path}"]`).first().click()
+  check(!!(await until(async () => (await rootToken('--bg')) === '#1f1610')) && (await fades()) === fadesReduced, 'with reduced motion the colours swap without a fade')
+  await page.emulateMedia({ reducedMotion: null })
   await page.locator('.tab', { hasText: SPARE.title }).locator('.tab-close').click()
   await page.locator('.tree-row', { hasText: SPARE.title }).click({ button: 'right' })
   await page.locator('.ctx-menu').getByRole('menuitem', { name: /Delete board/ }).click()

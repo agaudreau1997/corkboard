@@ -35,10 +35,16 @@ export class PtyManager {
    * Opens a terminal in `cwd`. With `command`, the shell runs it first (argv, never re-parsed
    * by a shell, so a prompt needs no quoting) and then stays open.
    */
-  create(opts: { title: string; cwd: string; command?: string[]; cardIds?: string[] }): PtyInfo {
+  create(opts: { title: string; cwd: string; command?: string[]; cardIds?: string[]; boardKey?: string }): PtyInfo {
     const { file, args, env } = shellLaunch(opts.command)
     const proc = pty.spawn(file, args, { name: 'xterm-256color', cols: 120, rows: 30, cwd: opts.cwd, env })
-    const info: PtyInfo = { id: randomUUID(), title: opts.title, cwd: opts.cwd, cardIds: opts.cardIds }
+    const info: PtyInfo = {
+      id: randomUUID(),
+      title: opts.title,
+      cwd: opts.cwd,
+      cardIds: opts.cardIds,
+      boardKey: opts.boardKey,
+    }
     const entry: Entry = { proc, info, listeners: [], status: 'shell', titleCarry: '' }
     this.ptys.set(info.id, entry)
     proc.onData(data => {

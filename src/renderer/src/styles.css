@@ -51,6 +51,16 @@ body {
   overflow: hidden;
 }
 
+/* A theme change crossfades the window (theme.ts). The snapshots sit over the page while they fade,
+   so a click goes through them to the page beneath rather than being swallowed. */
+::view-transition {
+  pointer-events: none;
+}
+
+::view-transition-group(root) {
+  animation-duration: 200ms;
+}
+
 button,
 input,
 select,

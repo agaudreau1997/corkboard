@@ -459,7 +459,7 @@ function registerIpc(): void {
       const repo = codeRepoOf(opts.boardPath)
       cwd = repo && existsSync(repo) ? repo : project.root
     }
-    return ptys.create({ title: opts.title, cwd: cwd ?? os.homedir() })
+    return ptys.create({ title: opts.title, cwd: cwd ?? os.homedir(), boardKey: opts.boardPath })
   })
   ipcMain.on('pty:write', (_e, id: string, data: string) => ptys.write(id, data))
   ipcMain.on('pty:resize', (_e, id: string, cols: number, rows: number) => ptys.resize(id, cols, rows))
@@ -470,7 +470,7 @@ function registerIpc(): void {
   const open = (url: string) => shell.openExternal(url)
   ipcMain.handle('tackle:start', (_e, req: TackleRequest) => {
     const { project, rel } = projectOf(req.boardPath)
-    return tackle({ ...req, boardPath: rel }, project.store, ptys, open)
+    return tackle({ ...req, boardPath: rel }, project.store, ptys, open, req.boardPath)
   })
   ipcMain.handle('tackle:prompt', (_e, req: TackleRequest) => {
     const { project, rel } = projectOf(req.boardPath)
@@ -478,7 +478,7 @@ function registerIpc(): void {
   })
   ipcMain.handle('tackle:resume', (_e, key: string, ref: SessionRef) => {
     const { project, rel } = projectOf(key)
-    return resume(project.store, ptys, rel, ref, open)
+    return resume(project.store, ptys, rel, ref, open, key)
   })
   ipcMain.handle('tackle:openInDesktop', (_e, ref: SessionRef) => openInDesktop(ref, open))
 

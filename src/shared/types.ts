@@ -156,7 +156,14 @@ export type TackleRequest = {
   purpose?: 'tackle' | 'discuss'
 }
 
-export type PtyInfo = { id: string; title: string; cwd: string; cardIds?: string[] }
+export type PtyInfo = {
+  id: string
+  title: string
+  cwd: string
+  cardIds?: string[]
+  /** The board (`<project id>:<path>`) it was opened for: its project's colours paint it. */
+  boardKey?: string
+}
 
 /**
  * What runs in a terminal tab, from the title Claude Code sets: `working` while it works,
