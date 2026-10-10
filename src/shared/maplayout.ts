@@ -63,6 +63,20 @@ export function fitArea(area: MapArea, positions: MapNodePos[], heights: number[
   return { x: left, y: top, w: Math.max(AREA_MIN_W, right - left), h: Math.max(AREA_MIN_H, bottom - top) }
 }
 
+/**
+ * A backdrop grown (never shrunk) to hold every card at its position, with the padding around
+ * them and the header above, so a card placed by hand or by another machine never sticks out.
+ */
+export function growArea(area: MapArea, positions: MapNodePos[], heights: number[]): MapArea {
+  if (!positions.length) return area
+  const left = Math.min(area.x, ...positions.map(p => p.x - AREA_PAD))
+  const top = Math.min(area.y, ...positions.map(p => p.y - AREA_HEAD))
+  const right = Math.max(area.x + area.w, ...positions.map(p => p.x + NODE_W + AREA_PAD))
+  const bottom = Math.max(area.y + area.h, ...positions.map((p, i) => p.y + heights[i] + AREA_PAD))
+  if (left === area.x && top === area.y && right === area.x + area.w && bottom === area.y + area.h) return area
+  return { ...area, x: left, y: top, w: right - left, h: bottom - top }
+}
+
 /** The backdrop under a point, the smallest when several overlap. */
 export function areaAt(areas: Record<string, MapArea>, point: MapNodePos, among?: Set<string>): string | undefined {
   let best: string | undefined
@@ -82,7 +96,9 @@ export function areaAt(areas: Record<string, MapArea>, point: MapNodePos, among?
 /**
  * The map as the view draws it: every shown list gets a backdrop (a saved one, or a new one laid
  * out to the right of the rest), and every card a position (its saved one, or its place in its
- * backdrop's layout). Ideas (no list) get no backdrop: they stack to the left.
+ * backdrop's layout). Each backdrop then grows to hold its list's cards wherever they are; the
+ * grown size is only drawn, and saved with the next change to the map. Ideas (no list) get no
+ * backdrop: they stack to the left.
  */
 export function resolveLayout(
   map: BoardMap,
@@ -92,22 +108,29 @@ export function resolveLayout(
   const areas: Record<string, MapArea> = {}
   const nodes: Record<string, MapNodePos> = {}
   const saved = map.areas ?? {}
-  const savedAreas = Object.entries(saved).filter(([id]) => lists.some(l => l.id === id))
-  let x = savedAreas.length ? Math.max(...savedAreas.map(([, a]) => a.x + a.w)) + AREA_GAP : 0
-  const top = savedAreas.length ? Math.min(...savedAreas.map(([, a]) => a.y)) : 0
 
-  for (const list of lists) {
-    const inList = cards.filter(c => c.list === list.id)
-    let area = saved[list.id]
-    if (!area) {
-      // A backdrop of its own size for a list that has none yet, after the others.
-      const sized = layoutArea({ x, y: top, w: AREA_MIN_W, h: AREA_DEFAULT_H }, inList)
-      area = { ...sized.area, h: inList.length ? sized.area.h : AREA_MIN_H }
-      x = area.x + area.w + AREA_GAP
-    }
-    areas[list.id] = area
+  /** Places a list's cards in its backdrop and grows the backdrop around them. */
+  const place = (listId: string, area: MapArea, inList: Pick<Card, 'id' | 'title'>[]) => {
     const laid = layoutArea(area, inList).nodes
     for (const card of inList) nodes[card.id] = map.nodes[card.id] ?? laid[card.id]
+    areas[listId] = growArea(area, inList.map(c => nodes[c.id]), inList.map(estimateHeight))
+  }
+
+  // Saved backdrops first, so the new ones go to the right of them as they are drawn.
+  for (const list of lists) {
+    if (saved[list.id]) place(list.id, saved[list.id], cards.filter(c => c.list === list.id))
+  }
+  const placed = Object.values(areas)
+  let x = placed.length ? Math.max(...placed.map(a => a.x + a.w)) + AREA_GAP : 0
+  const top = placed.length ? Math.min(...placed.map(a => a.y)) : 0
+
+  for (const list of lists) {
+    if (saved[list.id]) continue
+    // A backdrop of its own size for a list that has none yet, after the others.
+    const inList = cards.filter(c => c.list === list.id)
+    const sized = layoutArea({ x, y: top, w: AREA_MIN_W, h: AREA_DEFAULT_H }, inList)
+    place(list.id, { ...sized.area, h: inList.length ? sized.area.h : AREA_MIN_H }, inList)
+    x = areas[list.id].x + areas[list.id].w + AREA_GAP
   }
 
   const ideas = cards.filter(c => c.list === null)
