@@ -24,7 +24,9 @@ export function notifyArgs(e: TerminalEvent): { args: string[]; env: Record<stri
     CORKBOARD_TITLE: e.terminal.title,
     CORKBOARD_CWD: e.terminal.cwd,
     CORKBOARD_CARDS: (e.terminal.cardIds ?? []).join(' '),
+    CORKBOARD_KIND: e.terminal.kind,
   }
+  if (e.terminal.resumed) env.CORKBOARD_RESUMED = '1'
   if (e.exitCode !== undefined) env.CORKBOARD_EXIT_CODE = String(e.exitCode)
   return { args: [e.event, e.previous, e.terminal.title], env }
 }

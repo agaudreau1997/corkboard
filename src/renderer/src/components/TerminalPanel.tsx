@@ -67,6 +67,7 @@ function TerminalTab({ info, active }: { info: PtyInfo; active: boolean }) {
   const exitCode = useStore(s => s.exited[info.id])
   const attention = useStore(s => s.attention.includes(info.id))
   const state = tabState(status, exitCode, attention)
+  const kind = tabKind(info)
   const tab = useRef<HTMLDivElement>(null)
   // The strip scrolls sideways: bring a tab into view when it becomes the one shown.
   useEffect(() => {
@@ -86,10 +87,15 @@ function TerminalTab({ info, active }: { info: PtyInfo; active: boolean }) {
         e.preventDefault()
         void actions.requestCloseTerminal(info.id)
       }}
-      title={`${info.title}\n${state.label}\n${info.cwd}`}
+      title={[info.title, kind?.label, state.label, info.worktree ?? info.cwd].filter(Boolean).join('\n')}
     >
       <i className={`term-status ${state.kind}`} role="img" aria-label={state.label} />
-      <span>{info.title}</span>
+      {kind && (
+        <i className={`term-kind ${info.kind}`} role="img" aria-label={kind.label}>
+          {kind.glyph}
+        </i>
+      )}
+      <span className="term-title">{info.title}</span>
       <button
         className="tab-close"
         aria-label="Close terminal"
@@ -103,6 +109,24 @@ function TerminalTab({ info, active }: { info: PtyInfo; active: boolean }) {
       </button>
     </div>
   )
+}
+
+/**
+ * The kind of session a tab holds, shown before its title and apart from its status: none for a
+ * plain shell (its status already says so). `⎇` is the commits badge and `❯` a shell's status, so
+ * a worktree gets `⌥`, a fork in the path.
+ */
+function tabKind(info: PtyInfo): { glyph: string; label: string } | null {
+  const kind =
+    info.kind === 'local'
+      ? { glyph: '▣', label: 'Terminal session, in the code repo' }
+      : info.kind === 'local-worktree'
+        ? { glyph: '⌥', label: 'Worktree session' }
+        : info.kind === 'cloud'
+          ? { glyph: '☁', label: 'Cloud session' }
+          : null
+  if (!kind || !info.resumed) return kind
+  return { glyph: `${kind.glyph}↻`, label: `${kind.label}, resumed` }
 }
 
 type TabState = { kind: TerminalStatus | 'finished' | 'exited' | 'failed'; label: string }

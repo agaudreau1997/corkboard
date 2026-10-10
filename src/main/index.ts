@@ -347,7 +347,7 @@ function registerIpc(): void {
   })
   // Runs a program as the notifications would, with a `test` event; answers what went wrong.
   ipcMain.handle('config:tryNotify', async (_e, command: string): Promise<string | null> => {
-    const terminal = { id: 'test', title: 'Test', cwd: os.homedir() }
+    const terminal = { id: 'test', title: 'Test', cwd: os.homedir(), kind: 'shell' as const }
     try {
       await notify(command, { event: 'test', previous: 'shell', terminal })
       return null
@@ -444,7 +444,12 @@ function registerIpc(): void {
   ipcMain.handle('claude:info', () => claudeInfo())
   ipcMain.handle('claude:update', (_e, key?: string) => {
     const repo = key ? codeRepoOf(key) : undefined
-    return ptys.create({ title: 'claude update', cwd: repo && existsSync(repo) ? repo : os.homedir(), command: [CLAUDE, 'update'] })
+    return ptys.create({
+      title: 'claude update',
+      cwd: repo && existsSync(repo) ? repo : os.homedir(),
+      command: [CLAUDE, 'update'],
+      kind: 'shell',
+    })
   })
   ipcMain.handle('claude:desktopAvailable', () => desktopAvailable())
 
@@ -459,7 +464,7 @@ function registerIpc(): void {
       const repo = codeRepoOf(opts.boardPath)
       cwd = repo && existsSync(repo) ? repo : project.root
     }
-    return ptys.create({ title: opts.title, cwd: cwd ?? os.homedir() })
+    return ptys.create({ title: opts.title, cwd: cwd ?? os.homedir(), kind: 'shell' })
   })
   ipcMain.on('pty:write', (_e, id: string, data: string) => ptys.write(id, data))
   ipcMain.on('pty:resize', (_e, id: string, cols: number, rows: number) => ptys.resize(id, cols, rows))

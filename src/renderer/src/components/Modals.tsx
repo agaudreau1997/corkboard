@@ -491,7 +491,8 @@ function AppSettings() {
           <code>working</code>, <code>waiting</code> for your turn, <code>shell</code> once Claude left, <code>exit</code>
           ), the status before it and the tab's title as arguments, and the lot in <code>CORKBOARD_EVENT</code>,{' '}
           <code>CORKBOARD_PREVIOUS</code>, <code>CORKBOARD_TITLE</code>, <code>CORKBOARD_CARDS</code>,{' '}
-          <code>CORKBOARD_CWD</code>, <code>CORKBOARD_TERMINAL</code> and <code>CORKBOARD_EXIT_CODE</code>. Leave it
+          <code>CORKBOARD_CWD</code>, <code>CORKBOARD_TERMINAL</code>, <code>CORKBOARD_KIND</code>,{' '}
+          <code>CORKBOARD_RESUMED</code> and <code>CORKBOARD_EXIT_CODE</code>. Leave it
           empty for no notifications.
         </small>
         {tried && tried.command === command && (

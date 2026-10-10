@@ -53,6 +53,7 @@ export async function tackle(
     const started = new Date().toISOString()
     let ref: SessionRef
     let command: string[]
+    let worktreeDir: string | undefined
 
     if (req.mode === 'desktop') {
       // A new session in the Claude desktop app, in the code repo. One folder only: given the board
@@ -73,11 +74,11 @@ export async function tackle(
       const id = randomUUID()
       const worktree = req.mode === 'local-worktree' ? worktreeName(group, req.listTitle, !!store.settings.work) : undefined
       command = localCommand({ claude: CLAUDE, boardRoot: store.root, name, sessionId: id, worktree, prompt })
-      const sessionCwd = worktree ? path.join(cwd, '.claude', 'worktrees', worktree) : cwd
-      ref = { id, kind: req.mode, started, cwd: sessionCwd, cards: ids, name, ...purpose }
+      worktreeDir = worktree ? path.join(cwd, '.claude', 'worktrees', worktree) : undefined
+      ref = { id, kind: req.mode, started, cwd: worktreeDir ?? cwd, cards: ids, name, ...purpose }
     }
 
-    const info = ptys.create({ title: cloud ? `☁ ${name}` : name, cwd, command, cardIds: ids })
+    const info = ptys.create({ title: name, cwd, command, cardIds: ids, kind: req.mode, worktree: worktreeDir })
     opened.push(info)
     await recordSession(store, req.boardPath, group, ref)
 
@@ -169,14 +170,15 @@ export async function resume(
     return null
   }
   const cwd = ref.cwd && existsSync(ref.cwd) ? ref.cwd : sessionDir(store, boardPath)
-  const label = ref.cards?.join(' ') ?? 'session'
+  const tab = { title: ref.cards?.join(' ') ?? 'session', cwd, cardIds: ref.cards, kind: ref.kind, resumed: true }
   if (ref.kind === 'cloud') {
     const target = ref.id ?? ref.url
     if (!target) throw new Error('This cloud session never printed its id or URL.')
-    return ptys.create({ title: `☁ ${label}`, cwd, command: [CLAUDE, '--cloud', target], cardIds: ref.cards })
+    return ptys.create({ ...tab, command: [CLAUDE, '--cloud', target] })
   }
   if (!ref.id) throw new Error('No session id recorded.')
-  return ptys.create({ title: `↻ ${label}`, cwd, command: [CLAUDE, '--resume', ref.id], cardIds: ref.cards })
+  const worktree = ref.kind === 'local-worktree' ? ref.cwd : undefined
+  return ptys.create({ ...tab, worktree, command: [CLAUDE, '--resume', ref.id] })
 }
 
 /** Opens a terminal session in the Claude desktop app (it imports the CLI session by id). */

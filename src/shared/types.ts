@@ -156,7 +156,24 @@ export type TackleRequest = {
   purpose?: 'tackle' | 'discuss'
 }
 
-export type PtyInfo = { id: string; title: string; cwd: string; cardIds?: string[] }
+/**
+ * What runs in a terminal tab: a plain shell (or a command, like `claude update`), or a Claude
+ * session started from cards, in the code repo (`local`), in a worktree of it, or in the cloud.
+ */
+export type PtyKind = 'shell' | 'local' | 'local-worktree' | 'cloud'
+
+export type PtyInfo = {
+  id: string
+  /** The session's name, or the shell's: the kind is shown apart from it, not in it. */
+  title: string
+  cwd: string
+  cardIds?: string[]
+  kind: PtyKind
+  /** It resumes a session recorded on its cards rather than starting one. */
+  resumed?: boolean
+  /** A worktree session's folder. */
+  worktree?: string
+}
 
 /**
  * What runs in a terminal tab, from the title Claude Code sets: `working` while it works,
