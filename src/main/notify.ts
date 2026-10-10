@@ -1,6 +1,8 @@
-// The notification program: one the person configured (app settings), run every time a terminal
-// tab changes state, so a sound, a desktop notification, a lamp or a push can say that Claude
-// finished a turn in a tab they are not looking at. Corkboard runs it with the event as arguments
+// How a terminal tab's change reaches the person. The app shows the system's own notification
+// when Claude finishes a turn (`desktopNotice` says what it reads; `src/main/index.ts` shows it,
+// only while the window is in the background, where the tab's own mark goes unseen). Beyond that
+// there is the notification program: one the person configured (app settings), run every time a
+// terminal tab changes state, so a sound, a lamp or a push to a phone can say it too. Corkboard runs it with the event as arguments
 // and as CORKBOARD_* variables rather than through a shell line, so a tab title with quotes reaches
 // it intact; the variables carry every value, the arguments the ones a one-line script wants.
 //
@@ -14,6 +16,15 @@ import { powershell, WINDOWS } from './shell'
 
 /** A program that runs longer than this is cut off: it should notify and leave. */
 const TIMEOUT_MS = 30_000
+
+/**
+ * The desktop notification for an event, or null for none: only a turn that ended (working, then
+ * waiting) asks for one, since that is when the session needs the person back.
+ */
+export function desktopNotice(e: TerminalEvent): { title: string; body: string } | null {
+  if (e.event !== 'waiting' || e.previous !== 'working') return null
+  return { title: 'Claude is waiting for you', body: e.terminal.title }
+}
 
 /** The arguments (`<event> <previous status> <tab title>`) and variables the program gets. */
 export function notifyArgs(e: TerminalEvent): { args: string[]; env: Record<string, string> } {

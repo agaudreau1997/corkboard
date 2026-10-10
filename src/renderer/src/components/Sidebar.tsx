@@ -26,7 +26,7 @@ export function Sidebar() {
           <button
             className="link app-settings"
             onClick={() => actions.setModal({ kind: 'appSettings' })}
-            title="This machine's settings: the notification program"
+            title="This machine's settings: desktop notifications and the notification program"
           >
             Settings…
           </button>

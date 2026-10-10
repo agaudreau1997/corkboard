@@ -1,6 +1,6 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Notification, shell } from 'electron'
 import { execFile, execFileSync } from 'node:child_process'
-import { existsSync, readdirSync, readFileSync, promises as fs } from 'node:fs'
+import { appendFileSync, existsSync, readdirSync, readFileSync, promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import type {
@@ -23,7 +23,7 @@ import type {
 import { autoUpdater } from 'electron-updater'
 import { desktopAvailable, openUrl } from './desktop'
 import { codeCommits, commitFiles } from './git'
-import { notify } from './notify'
+import { desktopNotice, notify } from './notify'
 import { boardKey, prepareBoardRepo, Project, projectId, splitKey } from './projects'
 import { PtyManager } from './pty'
 import { shellProbe } from './shell'
@@ -52,27 +52,68 @@ const ptys = new PtyManager({
   data: (id, data) => send('pty:data', id, data),
   exit: (id, code, info, status) => {
     send('pty:exit', id, code)
+    notices.get(id)?.close()
     void notifyTerminal({ event: 'exit', previous: status, terminal: info, exitCode: code })
   },
   status: (id, status, previous, info) => {
     send('pty:status', id, status)
+    // A tab that moved on (the person answered, or Claude left) no longer waits for them.
+    notices.get(id)?.close()
     void notifyTerminal({ event: status, previous, terminal: info })
   },
 })
 
 /**
- * Runs the notification program (app settings) for a terminal event, when one is set. A failure
- * goes to the log and not to the window: the event is already shown there, and the settings'
- * *Try it* is where the person finds out what the program does.
+ * Says a terminal tab changed state: the desktop notification, unless the settings turned it off,
+ * and the notification program, when one is set. A program's failure goes to the log and not to
+ * the window: the event is already shown there, and the settings' *Try it* is where the person
+ * finds out what the program does.
  */
 async function notifyTerminal(event: TerminalEvent): Promise<void> {
-  const command = (await readSavedConfig()).notify?.command.trim()
+  const config = (await readSavedConfig()).notify
+  if (config?.desktop !== false) showDesktopNotice(event)
+  const command = config?.command?.trim()
   if (!command) return
   try {
     await notify(command, event)
   } catch (error) {
     console.error(`Notification program (${event.event}):`, (error as Error).message)
   }
+}
+
+// One per tab, held so it is not collected (its click would be lost), closed once the tab moves on.
+const notices = new Map<string, Notification>()
+
+/**
+ * Shows the system's notification for an event that asks for one, while the window is not the one
+ * in front (there, the tab's mark says it). Clicking it brings the window up on that tab.
+ * CORKBOARD_NOTIFY_LOG writes it to that file instead, for the tests.
+ */
+function showDesktopNotice(event: TerminalEvent): void {
+  const notice = desktopNotice(event)
+  if (!notice || (win && !win.isDestroyed() && win.isFocused())) return
+  const id = event.terminal.id
+  const log = process.env.CORKBOARD_NOTIFY_LOG
+  if (log) {
+    appendFileSync(log, `${notice.title}\t${notice.body}\n`)
+    return
+  }
+  if (!Notification.isSupported()) return
+  const shown = new Notification({ ...notice, icon: path.join(__dirname, '../../build/icon.png') })
+  const forget = () => {
+    if (notices.get(id) === shown) notices.delete(id)
+  }
+  shown.on('click', () => {
+    forget()
+    if (!win || win.isDestroyed()) return
+    if (win.isMinimized()) win.restore()
+    win.show()
+    win.focus()
+    send('pty:show', id)
+  })
+  shown.on('close', forget)
+  notices.set(id, shown)
+  shown.show()
 }
 
 // ---- config ----------------------------------------------------------------------------------
@@ -339,10 +380,14 @@ function registerIpc(): void {
   ipcMain.handle('config:pickFolder', (_e, title: string) => pickFolder(title))
   ipcMain.handle('config:pickFile', (_e, title: string) => pickFile(title))
   ipcMain.handle('config:setNotify', async (_e, notify: NotifyConfig | null) => {
-    const command = notify?.command.trim()
+    const command = notify?.command?.trim()
+    const next: NotifyConfig = {
+      ...(notify?.desktop === false ? { desktop: false } : {}),
+      ...(command ? { command } : {}),
+    }
     await writeConfig(c => {
       const { notify: _, ...rest } = c
-      return command ? { ...rest, notify: { command } } : rest
+      return Object.keys(next).length ? { ...rest, notify: next } : rest
     })
   })
   // Runs a program as the notifications would, with a `test` event; answers what went wrong.
@@ -599,6 +644,8 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  // Windows shows a notification under the app's id, the one the installer registers.
+  if (process.platform === 'win32') app.setAppUserModelId('com.corkboard.app')
   registerIpc()
   createWindow()
   startUpdates()
