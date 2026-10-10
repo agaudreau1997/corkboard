@@ -65,6 +65,11 @@ export function KanbanView({ board, matches }: { board: LoadedBoard; matches: (c
   const [draft, setDraft] = useState<Columns | null>(null)
   /** The card being dragged. */
   const [activeId, setActiveId] = useState<string | null>(null)
+  /**
+   * Every card the drag moves, in board order: the dragged one alone, or the whole selection when
+   * the card grabbed is part of it.
+   */
+  const [moving, setMoving] = useState<string[]>([])
   /** The list being dragged by its header. */
   const [activeColumn, setActiveColumn] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -100,8 +105,14 @@ export function KanbanView({ board, matches }: { board: LoadedBoard; matches: (c
       setActiveColumn(id.slice(COL.length))
       return
     }
+    const group = selected.includes(id) ? Object.values(columns).flat().filter(c => selected.includes(c)) : [id]
     setActiveId(id)
-    setDraft(structuredClone(columns))
+    setMoving(group)
+    // The rest of the selection folds into the dragged card until the drop lays them out after it.
+    const others = new Set(group.filter(c => c !== id))
+    const cols: Columns = {}
+    for (const [key, ids] of Object.entries(columns)) cols[key] = ids.filter(c => !others.has(c))
+    setDraft(cols)
   }
 
   const onDragOver = ({ active, over }: DragOverEvent) => {
@@ -125,19 +136,22 @@ export function KanbanView({ board, matches }: { board: LoadedBoard; matches: (c
       return
     }
     const cols = draft
+    const group = moving
     setActiveId(null)
+    setMoving([])
     setDraft(null)
     if (!cols || !over) return
     const id = String(active.id)
     const card = byId.get(id)
     if (!card) return
+    const cards = group.map(c => byId.get(c)).filter((c): c is Card => !!c)
     if (over.id === ZONE_UNLIST) {
-      if (card.list !== null) void actions.updateCard(board.path, id, { list: null })
+      for (const c of cards) if (c.list !== null) void actions.updateCard(board.path, c.id, { list: null })
       return
     }
     if (over.id === ZONE_ARCHIVE) {
-      void actions.updateCard(board.path, id, { archived: true })
-      actions.toast(`Archived ${id}`)
+      for (const c of cards) void actions.updateCard(board.path, c.id, { archived: true })
+      actions.toast(cards.length > 1 ? `Archived ${cards.length} cards` : `Archived ${id}`)
       return
     }
     const to = containerOf(cols, id)
@@ -149,8 +163,12 @@ export function KanbanView({ board, matches }: { board: LoadedBoard; matches: (c
     }
     const index = list.indexOf(id)
     const targetList = to === UNLISTED ? null : to
-    if (card.list === targetList && columns[to]?.indexOf(id) === index) return
     const sorted = targetList !== null && listSort(board.meta, board.meta.lists.find(l => l.id === targetList)) !== 'manual'
+    if (cards.length > 1) {
+      dropGroup(cards, targetList, sorted, list, index)
+      return
+    }
+    if (card.list === targetList && columns[to]?.indexOf(id) === index) return
     if (sorted && card.list === targetList) {
       // Renumbering the list to keep the drop would rewrite (and restamp) every card in it.
       actions.toast('This list sorts itself; choose Sort cards by › Manual in its menu to order it by hand')
@@ -160,6 +178,34 @@ export function KanbanView({ board, matches }: { board: LoadedBoard; matches: (c
     const prev = sorted ? sortedEnd(targetList) : index > 0 ? byId.get(list[index - 1])?.pos : undefined
     const next = sorted ? undefined : index < list.length - 1 ? byId.get(list[index + 1])?.pos : undefined
     void actions.updateCard(board.path, id, { list: targetList, pos: between(prev, next) })
+  }
+
+  /**
+   * Lays a dragged selection out where its card was dropped, in the order the cards stood on the
+   * board. `list` is the drop column without the rest of the selection and `index` the drop's place
+   * in it. A sorted list takes the cards new to it at the end of its manual order and leaves the
+   * ones already in it alone, as it does a single card.
+   */
+  const dropGroup = (cards: Card[], targetList: string | null, sorted: boolean, list: string[], index: number) => {
+    if (sorted && targetList !== null) {
+      const arriving = cards.filter(c => c.list !== targetList)
+      if (!arriving.length) {
+        actions.toast('This list sorts itself; choose Sort cards by › Manual in its menu to order it by hand')
+        return
+      }
+      let pos = sortedEnd(targetList)
+      for (const c of arriving) {
+        pos = between(pos, undefined)
+        void actions.updateCard(board.path, c.id, { list: targetList, pos })
+      }
+      return
+    }
+    let prev = index > 0 ? byId.get(list[index - 1])?.pos : undefined
+    const next = index < list.length - 1 ? byId.get(list[index + 1])?.pos : undefined
+    for (const c of cards) {
+      prev = between(prev, next)
+      void actions.updateCard(board.path, c.id, { list: targetList, pos: prev })
+    }
   }
 
   /** The highest pos in a list, so a card landing in a sorted one goes last in its manual order. */
@@ -192,7 +238,7 @@ export function KanbanView({ board, matches }: { board: LoadedBoard; matches: (c
       onDragStart={onDragStart}
       onDragOver={onDragOver}
       onDragEnd={onDragEnd}
-      onDragCancel={() => (setActiveId(null), setActiveColumn(null), setDraft(null))}
+      onDragCancel={() => (setActiveId(null), setMoving([]), setActiveColumn(null), setDraft(null))}
     >
       <div className="kanban-wrap">
         <div className={`kanban${grab.grabbing ? ' grabbing' : ''}`} ref={scroller} {...grab.handlers}>
@@ -248,7 +294,10 @@ export function KanbanView({ board, matches }: { board: LoadedBoard; matches: (c
       </div>
       <DragOverlay dropAnimation={null}>
         {activeId && byId.get(activeId) ? (
-          <CardFace board={board} card={byId.get(activeId)!} commits={commits} selected={false} dragging />
+          <div className={moving.length > 1 ? 'drag-stack' : undefined}>
+            <CardFace board={board} card={byId.get(activeId)!} commits={commits} selected={false} dragging />
+            {moving.length > 1 && <span className="drag-count">{moving.length}</span>}
+          </div>
         ) : draggedList ? (
           <ColumnPreview
             title={draggedList.title}

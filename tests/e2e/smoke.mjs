@@ -451,6 +451,45 @@ try {
   check(!!archivedId, `dropping on the tray's Archive zone archived the card (${archivedId})`)
   check((await page.locator('.card', { hasText: 'Archive me by dragging' }).count()) === 0, 'the archived card left the board')
 
+  // ---- a selection moves together: grab one of the selected cards, drop them all in Done ----
+  for (const title of ['Group one', 'Group two']) {
+    await todo.getByText('+ Add a card').click()
+    await todo.locator('textarea').waitFor()
+    await page.keyboard.type(title)
+    await page.keyboard.press('Enter')
+    await page.keyboard.press('Escape')
+    await todo.locator('.card', { hasText: title }).waitFor()
+  }
+  const groupOne = todo.locator('.card', { hasText: 'Group one' })
+  const groupTwo = todo.locator('.card', { hasText: 'Group two' })
+  await groupOne.click({ modifiers: ['Control'] })
+  await groupTwo.click({ modifiers: ['Control'] })
+  check((await todo.locator('.card.selected').count()) === 2, 'Ctrl-click selects two cards')
+  const gb = await groupTwo.boundingBox()
+  const doneBody = await page.locator('.column[data-list="done"] .column-body').boundingBox()
+  await page.mouse.move(gb.x + 40, gb.y + 12)
+  await page.mouse.down()
+  await page.mouse.move(gb.x + 60, gb.y + 20, { steps: 4 })
+  await page.locator('.drag-count', { hasText: '2' }).waitFor()
+  check((await todo.locator('.card', { hasText: 'Group one' }).count()) === 0, 'the rest of the selection folds into the dragged card')
+  await page.mouse.move(doneBody.x + 60, doneBody.y + doneBody.height - 10, { steps: 20 })
+  await sleep(150)
+  await shot('08b-drag-selection')
+  await page.mouse.up()
+  const groupFiles = () => cardTexts(path.join(root, 'scratch-board/cards')).filter(t => /title: Group (one|two)/.test(t))
+  check(
+    await until(() => groupFiles().length === 2 && groupFiles().every(t => t.includes('list: done'))),
+    'dragging one selected card moved the whole selection to Done',
+  )
+  const doneTitles = await page.locator('.column[data-list="done"] .card-title').allTextContents()
+  // Done sorts itself by last update, so the pair lands together but in either order.
+  const one = doneTitles.indexOf('Group one')
+  const two = doneTitles.indexOf('Group two')
+  check(one >= 0 && two >= 0 && Math.abs(one - two) === 1, `the selection lands together (${doneTitles.join(', ')})`)
+  await sleep(120)
+  await page.locator('.column[data-list="done"] .card', { hasText: 'Group one' }).click({ modifiers: ['Control'] })
+  await page.locator('.column[data-list="done"] .card', { hasText: 'Group two' }).click({ modifiers: ['Control'] })
+
   // ---- lists from the board: add one, rename it, collapse it ----
   await page.getByRole('button', { name: '+ Add a list' }).click()
   await page.keyboard.type('Bugs')
