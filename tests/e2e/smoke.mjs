@@ -553,6 +553,15 @@ try {
   check(openId.startsWith(`${MAIN.key}-`), `drawer opened for ${openId}`)
   await shot('04-drawer')
 
+  // A table in the description wraps its headers and stays inside the box: the Table view's rules
+  // (nowrap, sticky, a pointer on every row) are scoped to that view.
+  const mdTable = await page.locator('.drawer .markdown table').evaluate(table => {
+    const box = table.closest('.markdown').getBoundingClientRect()
+    const th = getComputedStyle(table.querySelector('th'))
+    return { inside: table.getBoundingClientRect().right <= box.right + 0.5, wrap: th.whiteSpace, position: th.position, cursor: getComputedStyle(table.querySelector('tbody tr')).cursor }
+  })
+  check(mdTable.inside && mdTable.wrap !== 'nowrap' && mdTable.position === 'static' && mdTable.cursor !== 'pointer', `a description's table wraps and stays in its box (${JSON.stringify(mdTable)})`)
+
   // Its left edge resizes it; the width is remembered, and a double-click puts it back.
   const drawerWidth = () => page.locator('.drawer').evaluate(el => el.getBoundingClientRect().width)
   const edge = await page.locator('.drawer-resize').boundingBox()
@@ -1100,7 +1109,9 @@ try {
   // Table view.
   await page.locator(`.tab[title$=":${MAIN.path}"]`).click()
   await page.getByRole('tab', { name: 'Table', exact: true }).click()
-  check((await page.locator('tbody tr').count()) > 100, 'table lists the cards')
+  check((await page.locator('.table-view tbody tr').count()) > 100, 'table lists the cards')
+  const viewTh = await page.locator('.table-view th').first().evaluate(th => ({ wrap: getComputedStyle(th).whiteSpace, position: getComputedStyle(th).position }))
+  check(viewTh.wrap === 'nowrap' && viewTh.position === 'sticky', `the Table view's headers keep their own rules (${JSON.stringify(viewTh)})`)
   await shot('07-table')
 
   // A change made just before quitting: the quit commits and pushes it (the same work an update's
