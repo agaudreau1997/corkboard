@@ -21,7 +21,7 @@ import type {
   UpdateStatus,
 } from '@shared/types'
 import { autoUpdater } from 'electron-updater'
-import { desktopAvailable } from './desktop'
+import { desktopAvailable, openUrl } from './desktop'
 import { codeCommits, commitFiles } from './git'
 import { notify } from './notify'
 import { boardKey, prepareBoardRepo, Project, projectId, splitKey } from './projects'
@@ -483,7 +483,7 @@ function registerIpc(): void {
   ipcMain.handle('tackle:openInDesktop', (_e, ref: SessionRef) => openInDesktop(ref, open))
 
   ipcMain.on('shell:openExternal', (_e, url: string) => {
-    if (/^https?:\/\//.test(url)) void shell.openExternal(url)
+    if (/^https?:\/\//.test(url)) void openUrl(url, open)
   })
   ipcMain.on('shell:openPath', (_e, target: string) => {
     const resolved = path.resolve(target)
@@ -586,7 +586,7 @@ function createWindow(): void {
     for (const project of projects.values()) project.sync.syncIfStale()
   })
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:\/\//.test(url)) void shell.openExternal(url)
+    if (/^https?:\/\//.test(url)) void openUrl(url, u => shell.openExternal(u))
     return { action: 'deny' }
   })
   if (process.env.ELECTRON_RENDERER_URL) void win.loadURL(process.env.ELECTRON_RENDERER_URL)
