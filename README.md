@@ -1,117 +1,90 @@
-# Corkboard
+<p align="center">
+  <img src="build/icon.svg" width="96" height="96" alt="">
+</p>
 
-A desktop kanban and mind-map board whose data is a git repo of plain files, built to hand cards to Claude Code.
+<h1 align="center">Corkboard</h1>
 
-- **Projects.** The side panel's top level is projects: each is one board repo, with its own sync and a code folder on this machine (*Settings…* in its menu) that its boards' sessions start in unless a board names its own. The `+` beside the *Corkboard* title adds a project: it takes an existing board repo (a clone of it) or an empty or new folder, which becomes a git repo with a README and a `CLAUDE.md` describing the card format (for Claude sessions and anyone editing cards by hand). A board repo without a `CLAUDE.md` gets an offer of one under its boards, never the file unasked; after *No thanks* the project's menu still has *Add a CLAUDE.md*. Removing a project only takes it off the list. A board moves to another project with its child boards and card ids (*Move to project* in its menu, refused when a key is taken there).
-- **Project colours.** A project can wear colours of its own, so a glance at the window says which one is in front. *Settings…* in its menu (or *Project colours…* in a board's settings) offers themes to start from (*Cork*, the icon's; *Moss*, *Tide*, *Plum*, *Ember*; *Paper*, a light one) and a picker per colour (background, cards, text, borders, accent, links, success, danger); the window shows them as you pick, and the side panel and the tabs carry each themed project's swatch. A terminal keeps the colours of the project it was opened for, whichever board is in front, and its tab carries that project's swatch; *claude update* and a shell opened with no board keep the app's. They live in `theme.json` at the root of the board repo, so every machine shows them, and an edit there, by hand or by a Claude session, shows at once. A change of colours (another project's tab, an edit on disk) crossfades the whole window, terminals included, in a fifth of a second; picks in the settings, and a system set to reduce motion, swap at once. A colour left unset is mixed from the others; `"tokens": { "--panel": "#16161d" }` pins any of the stylesheet's shades exactly, to match a design system.
-- **Boards are folders.** Each board is a folder with a `board.json`; a board folder can hold child boards, so boards nest like folders. Every board you open is a tab; `+` (or right-click → *New board inside…*) creates one. *Delete board…* removes an empty board (archived cards don't count) at once and one with cards (and child boards) once its name is typed; all of it stays in the repo's git history.
-- **Cards are Markdown files** (`cards/<ID>.md`: YAML front matter, then the description), so a move is a one-line diff and a Claude session can move a card by editing `list:`. The app watches the folder, so that move shows up on screen at once.
-- **Versioned.** The app commits the board repo itself a few seconds after the last change, with a message that says what moved (`Move RS-886: todo → done`).
-- **Synced between machines.** With a remote, the app pulls (fetch + rebase) at start, every minute, when its window gets focus and on *Sync* in the sidebar, and pushes a moment after every commit. A conflict is settled without asking where the answer is clear: a card keeps the side edited last (its `updated` stamp), a map keeps every position from both sides, a `board.json` keeps every list, a `theme.json` keeps this machine's. Anything else (a README both machines edited) stops the sync with the rebase aborted, the repo as it was, and a red line in the sidebar.
-- **Per-machine code repo.** `codeRepo` in `board.json` is shared and may be relative to the board repo; board settings also take a *Code repo on this machine*, kept in the app's own config and never synced, for a repo that lives at another path on the other computer.
-- **Cards ↔ code.** A board names its code repo (`codeRepo`, inherited by child boards). Commits there that carry a `Card: RS-886` trailer show on the card, on any branch. Click one in the drawer for the files it touched; *Copy* (on hover) or its right-click menu copies its SHA.
-- **Work mode**, for a project whose code repos are shared with teammates or clients and whose work Jira tracks: a card id of your board means nothing to them, so no card id goes into the code repo. *Work mode* in the project's *Settings…* writes `project.json` (`{ "work": true }`) at the board repo's root, so every machine follows it, and every board of the project counts, new ones included. A card gets a *Jira* field in its drawer (`jira: SPDI-42` in the file). The prompts then open with the Jira key (or the title), ask the session to name it in every commit message, in the branch name and in the PR title, and forbid writing any card id of the board anywhere in the code repo or its remote (commits, branches, PRs, code, comments), saying outright that this overrides the board repo's `CLAUDE.md`; a card without a key has the session ask for it before its first commit and write it into the card. A cloud prompt carries no card id at all; a local one carries them only in the card file paths and in related cards' ids, which the session needs for the board. A worktree is named after the key as written (`-w SPDI-42`, branch `worktree-SPDI-42`), or after the title. *Copy* offers the *Jira key* in place of the *Commit trailer*, and its *Markdown* names the key or the title alone. The card shows the code repo's commits whose message names its key, whole (`SPDI-12` is not found in `SPDI-123`), teammates' included. A board repo's `CLAUDE.md` added while work mode is on carries the same rule in place of the trailer one; an existing one is never rewritten. Every machine that tackles the project needs a build that knows the flag: an older one ignores it and asks sessions for `Card:` trailers.
-- **Three views of the same cards.** *Board* (lists as columns, drag and drop; dragging one card of a selection (Ctrl/Shift-click) moves the whole selection, dropped together in board order; dragging a card raises a tray at the bottom with *Map only (idea)* and *Archive* drop zones; drag the empty background to pan, with momentum; a list taller than the board runs on under the terminal panel and scrolls inside the board; *+ Add a list* at the end, drag a list by its header to reorder the lists (each keeps its colour), double-click a list title to rename it, double-click a card to edit its title in place on the card (Enter saves, Shift+Enter starts a line, Escape cancels), a list over 60 cards shows the first 60 until you ask), *Map* (a free canvas: cards are nodes, `links` are the lines between them. Every list has a backdrop its cards sit on, dragged by its header (its cards come along) and resized from its corners; a backdrop grows to hold every card of its list, even one dropped outside it or added from elsewhere (only *Fit to its cards* shrinks it); dropping a card on another list's backdrop moves it to that list; right-click a backdrop for *Automatically lay out* (its cards in columns inside it), *Fit to its cards*, *Add a card here*. Double-click opens a title input for a new card (in the backdrop under it, else an idea with no list); dragging a card's dot onto another card links them, onto empty space opens the input for a new card linked from it; Escape or an empty title adds nothing. Positions and backdrops are kept in `map.json`) and *Table* (sortable, archived cards on request). A click on a card in any of them opens its drawer; click the id at the drawer's top left to copy it.
-- **Tackle with Claude.** From a card: *Tackle locally*, *In a worktree* or *Claude Cloud*. From a list header (*Tackle all*) or a selection of two or more (Ctrl/Shift-click cards; with a card open in the drawer, the selection starts from it): one local session for all of them in order, one session per card in parallel (each in its own worktree), or one cloud session. Every session runs in the embedded terminal panel (Ctrl+`), is recorded on its cards (`sessions:`), and can be resumed from the card; the card face shows a ▶ badge for them until the card is done (in the board's done list, or marked complete), the drawer keeps them after.
+<p align="center">
+  A kanban board and mind map kept as plain files in git, that hands its cards to Claude Code and follows them to their commits.
+</p>
 
-- **Terminal tabs show what Claude is doing.** Each tab's icon: a spinner while Claude works, a green dot when it's your turn (Claude at its prompt or asking something), `❯` for a plain shell, a square once the shell ended (red for a failure). Beside it, what the tab holds: `▣` a Claude session started in the code repo, `⌥` one in a worktree, `☁` a cloud one, with `↻` after it when it resumes a session from a card; a plain shell has none. Its tooltip names the kind and a worktree's folder. A turn that ends in a tab you aren't looking at pulses and bolds the tab, and a count by *Terminals* jumps to it. The app reads this from the terminal title Claude Code sets (`◐`/`◑` while it works, `✳` when it stops, cleared on exit; read from 2.1.289), so a `claude` typed in a shell tab shows too; with `CLAUDE_CODE_DISABLE_TERMINAL_TITLE` set the tab stays a shell. A middle click on a tab closes it, like `×`; either asks first while Claude is working in it or a command runs in its foreground (a dev server, an editor: on Linux and macOS), not when it sits at a prompt.
-- **A program of yours runs when a tab changes state.** *Settings…* at the bottom of the side panel takes a notification program (a script or an executable, no arguments; on Windows a `.ps1`, `.cmd` or `.bat` works too), kept on this machine, and *Try it* runs it with a `test` event. The app runs it on every change: `working` when Claude starts a turn, `waiting` when it stops (your turn), `shell` once it left, `exit` when the tab's shell ends. The event, the status before it and the tab's title come as arguments, and everything in variables: `CORKBOARD_EVENT`, `CORKBOARD_PREVIOUS`, `CORKBOARD_TITLE`, `CORKBOARD_CARDS` (the tab's card ids, space-separated), `CORKBOARD_CWD`, `CORKBOARD_TERMINAL`, `CORKBOARD_KIND` (`shell`, `local`, `local-worktree` or `cloud`), `CORKBOARD_RESUMED` (`1`, for a resumed session) and, on `exit`, `CORKBOARD_EXIT_CODE`. The title is the session's name alone: a cloud or resumed tab's no longer starts with `☁ ` or `↻ `, the two variables say it instead. A sound, a desktop notification or a push is a two-line script: `[ "$CORKBOARD_EVENT" = waiting ] && notify-send "Your turn" "$CORKBOARD_TITLE"`. A program that fails is logged, not shown; one that runs for more than 30 seconds is stopped.
+<p align="center">
+  <a href="https://github.com/agaudreau1997/corkboard/releases/latest">Download</a> ·
+  <a href="docs/README.md">Documentation</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a>
+</p>
 
-- **Discuss before tackling.** *Discuss* on a card (its drawer, or its menu) and *Discuss / triage* on a list or a selection open one conversation, in Claude desktop or a terminal, that may not implement anything: no code changes, no new files, no commits in the code repo unless you ask in it. Claude reads the cards and the code and talks them through (what's unclear, risks, scope, splitting; for a list: still relevant, ready, to split, merge, move or archive), and once you agree it writes the outcome into the card files themselves, which is how a card gets its details before it's tackled. A discussion leaves the cards in their lists and shows as ✎ on the card.
+![Corkboard: a board, a card's drawer with its commits and sessions, and Claude Code sessions in the terminal panel](docs/images/hero.png)
 
-## Right-click menus
+## What it's for
 
-- **Card**: open; tackle (in Claude desktop, a terminal, a worktree, Claude Cloud; or the selection); discuss; move to another list or to a list of another board (the card keeps its id, so its commits and links still find it); move to top / bottom; link to a card on any board; copy the id, title, `Card:` trailer (the Jira key, in a work project), Markdown, file path, or the tackle or discuss prompt (to paste into a Claude session of your own); select; mark complete; duplicate; open the file; archive.
-- **List** (or its `⋯`): add a card; rename; tackle all (Claude desktop together or one per card, a terminal session, terminals in parallel with a worktree each, one cloud session, or one per card); discuss / triage; select all cards; *Sort cards by* last update (a card that changes or lands in the list goes to the top; the default for the board's done list), age, number or title, kept in `board.json` and applied as cards change, or *Manual* for drag-and-drop order (the default for every other list); move left / right; move the list and its cards to another board; collapse; copy as a Markdown checklist; archive its cards; archive the list (restore it in the board settings).
-- **Board** (side panel): open in a view, new board inside, settings, a terminal in its code repo, copy its key, delete (empty boards only).
-- **Terminal**: copy the selection, paste, select all. The keys: Ctrl+C copies while text is selected (without a selection it interrupts, as ever, and a copy clears the selection, so a second press interrupts), Ctrl+Shift+C copies, Ctrl+Shift+V pastes, and on Windows Ctrl+V pastes too (elsewhere it goes to the program: Claude Code pastes an image on it). Ctrl+click (Cmd+click on macOS) opens a link in the browser: a URL printed as text, or a link Claude Code writes; a plain click still selects.
+**Notes and task lists you own.** Corkboard is a desktop board for whatever you keep lists of: lists as columns and cards you drag between them, a mind map of the same cards to think in, a table to sort them. Boards nest like folders, and every project can wear its own colours. Each card is a Markdown file in a git repo that the app commits and syncs between your machines by itself, so your notes stay plain text: readable in any editor, versioned, never locked in an app. None of this needs Claude.
 
-## The tackle buttons
+**A pipeline from card to commit.** When a card is work for code, one click hands it to a Claude Code session, with the card's title, description and linked cards as its prompt: in a terminal inside the app, in its own git worktree, in the Claude desktop app, or in the cloud. A whole list or a selection goes as one session, or as one per card in parallel. The session moves the card along by editing its file, the card keeps the session so you can resume it, and the commits that name the card show on it. Before anything is built, *Discuss* talks a card or a whole list through with Claude and writes the outcome back into the cards.
 
-| Button | Runs |
-| --- | --- |
-| Claude desktop | opens `claude://code/new?q=<prompt>&folder=<code repo>`: a new Code session in the Claude desktop app, in the code repo once you trust it (the app asks each time), the prompt filled in (a prompt over 14,000 characters goes in a temporary file the link points to). The link can't pick a branch, and a draft sent with its branch blank starts with no folder: pick the branch before sending. The prompt names the code repo, and a session that started anywhere else moves itself there with the desktop app's `change_directory` tool (you approve the folder), or stops and says so |
-| Terminal | `claude --add-dir <board repo> -n "<ID> <title>" --session-id <uuid> "<prompt>"` in the board's code repo (`--add-dir` first: it takes every folder up to the next option, and placed last it swallowed the prompt) |
-| In a worktree | the same plus `-w card-<id>` (Claude Code makes `.claude/worktrees/card-<id>` on branch `worktree-card-<id>`); in a work project `-w <Jira key>`, or a slug of the title without one |
-| Claude Cloud | `claude --cloud "<prompt>"`: a claude.ai/code session on GitHub's copy of the current branch (push first); the URL it prints is saved on the card |
+## Highlights
 
-**The desktop app's links** were read from the app (2.19675): `claude://code/new?q=&folder=` (one folder: given two, the app ignores both and opens the last folder it used; no branch, which Anthropic's page on the link confirms: it takes `q`, `folder` and `file`), `claude://code/continue?session=local_<id>` (one of its sessions) and `claude://resume?session=<uuid>` (imports a CLI session); only the first is documented. After a desktop tackle the app watches the desktop app's own session index (`~/.config/Claude/claude-code-sessions/**/local_*.json`: its id, the CLI session id, the folder, the start time) for a session whose transcript starts with the prompt, in whatever folder it started (the index keeps a scratch workspace's after the session moves), for up to 30 minutes, and puts both ids on the card: its *Open* button reopens it in the desktop app. A terminal session's *Desktop* button imports it into the desktop app. If an app update moves these, a desktop tackle still opens the session; only the link back to the card is lost.
+### Board, map and table: three views of the same cards
 
-The prompt carries the card's title, description and linked cards, the path of its file (with a pointer to the board repo's `CLAUDE.md`, when it has one), and the rules: put a `Card: <ID>` trailer on every commit (in a work project: name the Jira key and write no card id into the code repo), move the card to the board's done list when it is verified (`flow.done` in the board settings; nothing is said when it is unset), and never commit in the board repo. Board settings also hold *Prompt notes*, appended to every prompt, and the list a tackled card moves to (`flow.doing`).
+![The board view](docs/images/board.png)
 
-## Claude Code
+Drag cards and lists, select several and move them together, double-click to rename in place. The map lays each list out on a backdrop, draws the links between cards, and turns a double-click into a new idea.
 
-The app runs whatever `claude` your login shell finds, the same one your own terminal uses; the sidebar shows its version, and *Update* runs `claude update` in a terminal tab. It does not pin its own copy: a second Claude Code inside the app would update separately from the one you use in a terminal, and Claude Code already keeps itself current.
+![The map view](docs/images/map.png)
 
-## Running
+### A card knows its sessions and its commits
 
-```bash
-npm install
-npm run dev        # development, with hot reload
-npm run build && npm start
-```
+![A card's drawer: description, linked cards, commits and Claude sessions](docs/images/drawer.png)
 
-The first launch asks for a project: *Add project…* takes a board repo (a clone of one) or an empty or new folder, which becomes one. The `+` beside the side panel's title adds more.
+The drawer shows a card's description in Markdown, its links to cards on any board, the commits in the code repo whose `Card:` trailer names it (click one for the files it touched), and every Claude session started for it, ready to resume in a terminal or open in the desktop app.
 
-To start it from the desktop menu (and get its icon on the taskbar, which a Wayland session takes from the menu entry): `npm run install-launcher` (`bash scripts/install-launcher.sh --remove` takes it out). The icon is `build/icon.svg`, drawn by `scripts/make-icon.py` (`npm run icon` re-renders the PNGs with Inkscape).
+### Terminals that show whose turn it is
 
-**Windows.** The terminals run PowerShell there (`pwsh` when installed, else Windows PowerShell 5.1), with the command handed over as JSON in an environment variable rather than pasted into a command line. PowerShell before 7.3 drops the double quotes inside an argument it passes to a program, and prompts have quotes, so it gets the arguments escaped for that. Tackling a card in a terminal works on Windows 11 under 5.1; the rest of the Windows path is less tried.
+![Terminal tabs: two sessions waiting for you, a cloud session, one still working](docs/images/terminals.png)
 
-`npm run dist` packages it for Windows into `dist/`: `Corkboard Setup <version>.exe` (an installer with a Start menu entry and an uninstaller), `Corkboard <version>.exe` (a single portable exe that unpacks itself on each start), and `win-unpacked/Corkboard.exe` (the app as a plain folder). The settings are in `electron-builder.yml`. The exes are unsigned, so SmartScreen warns on first run (*More info → Run anyway*).
+Each session runs in a tab of the terminal panel. A spinner means Claude is working, a green dot means it's your turn, and a turn that ends in a tab you aren't looking at says so. A program of yours can run on every change, for a sound or a desktop notification.
 
-`npm run dist:linux` packages it for Linux into `dist/`: `Corkboard-<version>.AppImage` (one file that runs on any distribution; it needs FUSE 2, `fuse-libs` on Fedora) and `linux-unpacked/corkboard` (the app as a plain folder). An AppImage doesn't add itself to the desktop menu: `npm run install-launcher:appimage` copies the newest one to `~/.local/lib/corkboard/Corkboard.AppImage` and points the menu entry (and the taskbar icon) at it; run it again after a rebuild. `npm run dist:linux:rpm` builds `corkboard-<version>.x86_64.rpm` instead (installs under `/opt/Corkboard` with its own menu entry: `sudo dnf install ./dist/corkboard-*.rpm`); electron-builder's bundled `fpm` needs `libcrypt.so.1` for it, which Fedora ships in `libxcrypt-compat`. On Linux node-pty runs the `pty.node` that `npm install` compiled (it is an N-API addon, so no rebuild against Electron), so build where `npm install` ran; the package leaves out node-pty's Windows and macOS prebuilds. `CORKBOARD_E2E_EXECUTABLE=dist/linux-unpacked/corkboard node tests/e2e/smoke.mjs` runs the end-to-end test against the packaged app.
+### Colours per project
 
-## Releases
+![The same board in the Cork colours](docs/images/colours.png)
 
-Releases are built in CI and published on GitHub, never from someone's machine. To cut one:
+Six themes to start from and a picker per colour, kept in the board repo so every machine shows the project the same way.
 
-```bash
-npm version patch -m "Release %s"
-git push --follow-tags
-```
+## Install
 
-`npm version` (`patch` or `minor`) sets the version in `package.json`, commits it and tags that commit `v<version>`; `package.json` is the source of truth, and the release workflow refuses a tag that doesn't match it. The tag starts `.github/workflows/release.yml`, which makes a **draft** release and fills it: the unit tests, then the AppImage and the rpm built on Ubuntu 22.04 (in one run, so `latest-linux.yml` lists both; on an older Ubuntu, so node-pty's compiled `pty.node` and the AppImage also run where glibc is older), and the Setup exe and the portable exe built on Windows, with `latest.yml`. `scripts/check-packages.mjs` then checks that every package carries `resources/app-update.yml` (where the in-app updater looks for releases) and that only the rpm says it is one. Read the draft on GitHub, edit its notes, and *Publish release*: until then neither people nor installed copies see it. The exes are unsigned.
+Download the newest release from the [releases page](https://github.com/agaudreau1997/corkboard/releases/latest):
 
-The local `npm run dist*` scripts build the same packages into `dist/` and never publish.
+| Platform | Download | |
+| --- | --- | --- |
+| Windows | `Corkboard-Setup-<version>.exe` | An installer; updates itself. |
+| | `Corkboard-<version>.exe` | Portable, no install; tells you when a new one is out. |
+| Linux | `Corkboard-<version>.AppImage` | Any distribution (needs FUSE 2); updates itself. |
+| | `corkboard-<version>.x86_64.rpm` | Fedora and friends: `sudo dnf install ./corkboard-*.rpm`; updates through dnf. |
+| macOS | | No package yet: [run it from source](docs/development.md#running-from-source). |
 
-## Updates
+The Windows exes are unsigned, so SmartScreen warns on first run (*More info → Run anyway*). To tackle cards, install [Claude Code](https://docs.anthropic.com/en/docs/claude-code) too: Corkboard runs the same `claude` your terminal does.
 
-The side panel's foot shows the Corkboard version running; click it for its release notes. An installed Corkboard looks for a newer published release when it starts and every four hours, and what it does with one depends on how it was installed:
+## Quick start
 
-- **Windows installer** (the Setup exe): downloads it in the background and installs it silently at the next quit, or at once with *Restart to update*.
-- **AppImage**: downloads the new one and replaces the file where it lies (`~/.local/lib/corkboard/Corkboard.AppImage` after `npm run install-launcher:appimage`), at the next quit or on *Restart to update*.
-- **rpm**: downloads the new rpm and installs it with dnf behind a password prompt, at the next quit or on *Restart to update*, so dnf still tracks the package.
-- **Portable exe**: can't update itself. The side panel says *Corkboard <version> is out*, and *Download* opens the release page.
+1. **Add a project.** The first launch asks for one. Pick an empty folder: it becomes a board repo, with a README and a `CLAUDE.md` that tells Claude sessions the card format. (Or pick a clone of a board repo you already have.) Give the repo a remote and the app syncs it.
+2. **Make a board.** *+ New board* under the project, then add lists and cards. Double-click a card to rename it, click it to open its drawer.
+3. **Point it at your code.** The board's *Settings* takes the code repo its cards are about.
+4. **Tackle a card.** Open it and press *Terminal* (or *Worktree*, *Claude desktop*, *Cloud*). The card moves to *Doing* and a session starts in the terminal panel with the card as its prompt; its commits show on the card, and the session moves the card to *Done* once the work is verified.
 
-*Restart to update* asks first when terminals are running (restarting stops them, and the Claude sessions in them, which resume from their cards), then commits and pushes the board repos as a quit does, and only then installs. A development build, a copy run from `dist/linux-unpacked` or `dist/win-unpacked`, and the end-to-end test never look. The first copy with the updater (0.1.3; the 0.1.2 rpm clashes with other Electron apps) is installed by hand: `sudo dnf install ./corkboard-<version>.x86_64.rpm`, the Setup exe, or the AppImage. The exes are unsigned, so SmartScreen warns about the first download, not about the updates the app installs.
+## Documentation
 
-## Tests
+- [Using Corkboard](docs/using.md): projects, boards, the three views, the menus, updates.
+- [Tackling with Claude](docs/tackling.md): the tackle buttons, the prompts, commits on cards, discussions, the terminal tabs.
+- [Work mode](docs/work-mode.md): for code repos shared with teammates or clients, where Jira keys stand in for card ids.
+- [The board repo](docs/board-repo.md): the files, the auto-commit and the sync.
+- [Building, releases and tests](docs/development.md): running from source, packaging, releasing, testing.
 
-```bash
-npm test           # unit tests: card files, the store and its watch, git, sync between two clones, prompts, terminal titles, themes, work mode
-npm run e2e        # builds, then drives the real app on a made-up board repo
-```
+## Contributing
 
-CI (`.github/workflows/ci.yml`) runs the typecheck, the unit tests and the end-to-end test on Ubuntu (in a virtual display, `xvfb-run`) and Windows for every push and pull request, and a pull request shows their result on GitHub before it is merged.
-
-The end-to-end test (`tests/e2e/smoke.mjs`) writes a made-up board repo in a temporary folder (`tests/e2e/fixture.mjs`: a game's boards, with child boards, a map, long lists, archived cards and a second board, plus a second repo for a work project, nothing from anyone's real boards), points the app at it with a hidden window, and replaces `claude` with a stand-in that records its arguments (`CORKBOARD_CLAUDE_BIN`), so nothing real is started or billed. Screenshots go to `test-results/` (`SHOT_DIR` to change). `node tests/e2e/smoke.mjs <board repo>` starts from another board repo's first commit instead, which must have the fixture's shape: the checks name its boards, lists and ids.
-
-The test clones the board repo into a scratch bare remote and works on a clone of that, so the app's sync pushes there, never to a real remote; a second clone plays the other machine. `CORKBOARD_ROOT` is its only project, and the app commits under git's `GIT_AUTHOR_*` and `GIT_COMMITTER_*` variables, so it runs on a machine with no git identity. The app's own output is saved as `main-process.log` beside the screenshots.
-
-Environment seams: `CORKBOARD_ROOT` (a test's only project), `CORKBOARD_USER_DATA` (profile folder), `CORKBOARD_PICK_FOLDER` (what the folder picker answers), `CORKBOARD_PICK_FILE` (the file picker's), `CORKBOARD_HIDDEN=1` (an offscreen window: a hidden one stops animating after its first screenshot), `CORKBOARD_COMMIT_DELAY_MS`, `CORKBOARD_SYNC_INTERVAL_MS` (0 = no periodic sync), `CORKBOARD_CLAUDE_BIN`, `CORKBOARD_OPEN_URL_LOG` (writes the links the app would open, `claude://` and web pages, to this file instead), `CORKBOARD_UPDATES=0` (never look for Corkboard updates).
-
-## Importing from Trello
-
-`scripts/import-trello.mts` turns the raw JSON the Trello connector returns (one folder per board) into board folders; its `PLAN` maps Trello boards to folders and keys.
-
-```bash
-node scripts/import-trello.mts <export dir> <board repo>
-```
+Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
 Corkboard is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License in [LICENSE](LICENSE) for more details.
 
 Copyright (C) 2026 agaudreau1997 and contributors.
-
-Every package carries the same `LICENSE` beside the executable (`extraFiles` in `electron-builder.yml`), and the rpm names `GPL-3.0-or-later` in its metadata. Contributing: [CONTRIBUTING.md](CONTRIBUTING.md).

@@ -16,6 +16,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
     "e2e": "electron-vite build && node tests/e2e/smoke.mjs",
+    "screenshots": "electron-vite build && node tests/e2e/screenshots.mjs",
     "import-trello": "node scripts/import-trello.mts",
     "install-launcher": "npm run build && bash scripts/install-launcher.sh",
     "install-launcher:appimage": "bash scripts/install-launcher.sh --appimage",
