@@ -251,6 +251,26 @@ try {
   check((await firstCard('done')) === COMMITTED, `the done list shows its last updated card first (${await firstCard('done')})`)
   check((await firstCard('todo')) === `${MAIN.key}-1`, `the other lists keep their cards in their positions (${await firstCard('todo')})`)
   check((await page.locator('.divider-card').count()) > 0, 'dashes cards draw as dividers')
+  // A list as tall as the board runs into the terminal panel; a short one keeps its rounded bottom.
+  const meetsPanel = async () => {
+    const list = await done.boundingBox()
+    const panel = await page.locator('.terminal-panel').boundingBox()
+    return Math.abs(list.y + list.height - panel.y) <= 1
+  }
+  check((await until(async () => (await done.getAttribute('class')).includes('full'))) && (await meetsPanel()), 'a long list meets the terminal panel')
+  const shortList = page.locator('.column[data-list]:not(.full)').first()
+  check(
+    (await shortList.count()) === 1 && (await shortList.evaluate(el => getComputedStyle(el).borderBottomLeftRadius)) !== '0px',
+    'a short list keeps its rounded bottom',
+  )
+  // The board's sideways scrollbar, laid over its bottom edge, still scrolls it.
+  await page.setViewportSize({ width: 900, height: 940 }).catch(() => {})
+  const boardBar = page.locator('.kanban-scrollbar')
+  check(await until(() => boardBar.isVisible()), 'a board wider than the window shows its sideways scrollbar')
+  await boardBar.evaluate(el => (el.scrollLeft = 200))
+  check(await until(async () => (await page.locator('.kanban').evaluate(el => el.scrollLeft)) === 200), 'the sideways scrollbar scrolls the board')
+  await page.locator('.kanban').evaluate(el => (el.scrollLeft = 0))
+  await page.setViewportSize({ width: 1500, height: 940 }).catch(() => {})
   await shot('01-kanban')
 
   // Second tab, map view.
@@ -753,6 +773,12 @@ try {
   check(boardPrompt.startsWith(`Let's triage the whole "${boardTitle}" board`), `Discuss / triage on a board opens one session for all of ${boardTitle}`)
   check(boardPrompt.includes(`${talkId}: `) && boardPrompt.includes('   List: '), 'its prompt lists every card with its list')
   await shot('05-terminal')
+  const openPanel = await page.locator('.terminal-panel').boundingBox()
+  const fullList = await page.locator('.column.full').first().boundingBox().catch(() => null)
+  check(
+    openPanel.height > 100 && !!fullList && Math.abs(fullList.y + fullList.height - openPanel.y) <= 1,
+    'with the terminal panel open, a long list still meets its top edge',
+  )
 
   // Tackle a whole list in parallel: one terminal per card.
   const before = await page.locator('.terminal-tab').count()

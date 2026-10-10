@@ -618,9 +618,34 @@ code,
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 12px 14px 18px;
+  /* No bottom padding: a list as tall as the board meets the terminal panel's top edge. */
+  padding: 12px 14px 0;
   overflow: auto;
   cursor: grab;
+}
+
+/* Its sideways scrollbar would take a strip of the board's height; .kanban-scrollbar stands in. */
+.kanban::-webkit-scrollbar:horizontal {
+  height: 0;
+}
+
+.kanban-scrollbar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+  height: 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.kanban-scrollbar[hidden] {
+  display: none;
+}
+
+.kanban-scrollbar > div {
+  height: 1px;
 }
 
 .kanban.grabbing {
@@ -795,6 +820,18 @@ code,
 
 .column.over {
   border-color: var(--blue);
+}
+
+/* As tall as the board: it runs on under the terminal panel. */
+.column.full {
+  border-bottom: none;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+/* Clears the board's scrollbar, laid over the bottom edge, at the end of the list. */
+.column.full .column-body {
+  padding-bottom: 16px;
 }
 
 .column-head {
@@ -1608,11 +1645,14 @@ button.copy-id:hover {
 
 .terminal-panel {
   position: relative;
+  z-index: 2;
   flex: none;
   display: flex;
   flex-direction: column;
   border-top: 1px solid var(--line);
   background: var(--term-bg);
+  /* Cast up over the board, so a list that reaches the panel seems to go on under it. */
+  box-shadow: 0 -2px 10px rgb(0 0 0 / 40%);
 }
 
 .terminal-tabs {

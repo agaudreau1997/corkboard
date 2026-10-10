@@ -21,7 +21,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { between, freezeListColors, isDivider, listSort, orderList, reorderLists, slugify } from '@shared/cardfile'
 import type { Card, CodeCommit, ListDef, LoadedBoard } from '@shared/types'
 import { useGrabScroll } from '../grabScroll'
@@ -290,6 +290,7 @@ export function KanbanView({ board, matches }: { board: LoadedBoard; matches: (c
           </SortableContext>
           <AddListColumn board={board} />
         </div>
+        <BoardScrollbar scroller={scroller} />
         <DragTray active={!!activeId} />
       </div>
       <DragOverlay dropAnimation={null}>
@@ -307,6 +308,65 @@ export function KanbanView({ board, matches }: { board: LoadedBoard; matches: (c
         ) : null}
       </DragOverlay>
     </DndContext>
+  )
+}
+
+/**
+ * Whether a list is as tall as the board, so it runs into the terminal panel as if it went on
+ * under it. A list grows or shrinks with its cards and with the board, so watch both.
+ */
+function useReachesBottom(column: HTMLElement | null) {
+  const [full, setFull] = useState(false)
+  useEffect(() => {
+    const board = column?.parentElement
+    if (!column || !board) return
+    const check = () => setFull(column.getBoundingClientRect().bottom >= board.getBoundingClientRect().bottom - 1)
+    const observer = new ResizeObserver(check)
+    observer.observe(column)
+    observer.observe(board)
+    return () => observer.disconnect()
+  }, [column])
+  return full
+}
+
+/**
+ * The board's sideways scrollbar, laid over its bottom edge. The board's own one would take a
+ * strip of its height and leave tall lists stopping short of the terminal panel, so it is hidden
+ * and this one mirrors it.
+ */
+function BoardScrollbar({ scroller }: { scroller: RefObject<HTMLDivElement | null> }) {
+  const bar = useRef<HTMLDivElement>(null)
+  const span = useRef<HTMLDivElement>(null)
+  const measure = () => {
+    const board = scroller.current
+    if (!board || !bar.current || !span.current) return
+    span.current.style.width = `${board.scrollWidth}px`
+    bar.current.hidden = board.scrollWidth <= board.clientWidth
+    bar.current.scrollLeft = board.scrollLeft
+  }
+  // Lists are added, collapsed and moved in a render of the board, so measure after each one.
+  useLayoutEffect(measure)
+  useEffect(() => {
+    const board = scroller.current
+    if (!board) return
+    const observer = new ResizeObserver(measure)
+    observer.observe(board)
+    const follow = () => bar.current && (bar.current.scrollLeft = board.scrollLeft)
+    board.addEventListener('scroll', follow)
+    return () => {
+      observer.disconnect()
+      board.removeEventListener('scroll', follow)
+    }
+  }, [scroller])
+  return (
+    <div
+      className="kanban-scrollbar"
+      ref={bar}
+      hidden
+      onScroll={e => scroller.current && (scroller.current.scrollLeft = e.currentTarget.scrollLeft)}
+    >
+      <div ref={span} />
+    </div>
   )
 }
 
@@ -384,6 +444,16 @@ function Column({
   drag,
 }: ColumnProps & { drag?: DragHandle }) {
   const { setNodeRef, isOver } = useDroppable({ id: `list:${list.id}` })
+  const [node, setNode] = useState<HTMLElement | null>(null)
+  const full = useReachesBottom(node)
+  const setDragNode = drag?.setNodeRef
+  const ref = useCallback(
+    (el: HTMLElement | null) => {
+      setDragNode?.(el)
+      setNode(el)
+    },
+    [setDragNode],
+  )
   const work = ids.filter(id => {
     const card = board.cards.find(c => c.id === id)
     return card && !isDivider(card)
@@ -395,9 +465,9 @@ function Column({
 
   return (
     <div
-      ref={drag?.setNodeRef}
+      ref={ref}
       style={drag?.style}
-      className={`column${isOver ? ' over' : ''}${drag?.isDragging ? ' lifted' : ''}`}
+      className={`column${full ? ' full' : ''}${isOver ? ' over' : ''}${drag?.isDragging ? ' lifted' : ''}`}
       data-list={list.id}
     >
       <div
