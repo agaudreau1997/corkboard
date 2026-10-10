@@ -74,29 +74,34 @@ export function BoardPane({ path }: { path: string }) {
         {selected.length > 0 && (
           <div className="selection-bar">
             <span>{selected.length} selected</span>
-            <button
-              className="accent"
-              onClick={e => {
-                const r = e.currentTarget.getBoundingClientRect()
-                openContextMenu(
-                  { clientX: r.left, clientY: r.bottom + 4, preventDefault() {}, stopPropagation() {} },
-                  tackleAllItems(board, selected),
-                )
-              }}
-            >
-              Tackle ▾
-            </button>
-            <button
-              onClick={e => {
-                const r = e.currentTarget.getBoundingClientRect()
-                openContextMenu(
-                  { clientX: r.left, clientY: r.bottom + 4, preventDefault() {}, stopPropagation() {} },
-                  discussItems(board, selected),
-                )
-              }}
-            >
-              Discuss ▾
-            </button>
+            {/* One card is tackled or discussed from its own menu; these are for several. */}
+            {selected.length > 1 && (
+              <>
+                <button
+                  className="accent"
+                  onClick={e => {
+                    const r = e.currentTarget.getBoundingClientRect()
+                    openContextMenu(
+                      { clientX: r.left, clientY: r.bottom + 4, preventDefault() {}, stopPropagation() {} },
+                      tackleAllItems(board, selected),
+                    )
+                  }}
+                >
+                  Tackle ▾
+                </button>
+                <button
+                  onClick={e => {
+                    const r = e.currentTarget.getBoundingClientRect()
+                    openContextMenu(
+                      { clientX: r.left, clientY: r.bottom + 4, preventDefault() {}, stopPropagation() {} },
+                      discussItems(board, selected),
+                    )
+                  }}
+                >
+                  Discuss ▾
+                </button>
+              </>
+            )}
             <button className="ghost" onClick={() => actions.clearSelection(path)}>
               Clear
             </button>

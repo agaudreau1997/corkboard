@@ -323,9 +323,17 @@ export const actions = {
     }))
   },
 
+  /**
+   * Adds a card to the board's selection or takes it out. A selection started while one of the
+   * board's cards is open in the drawer starts from that card, so Ctrl+click on a second picks both.
+   */
   toggleSelected(boardPath: string, id: string) {
     set(s => {
-      const current = s.selected[boardPath] ?? []
+      let current = s.selected[boardPath] ?? []
+      const open = s.openCard?.boardPath === boardPath ? s.openCard.id : null
+      if (!current.length && open && open !== id && s.boards[boardPath]?.cards.some(c => c.id === open)) {
+        current = [open]
+      }
       const next = current.includes(id) ? current.filter(x => x !== id) : [...current, id]
       return { selected: { ...s.selected, [boardPath]: next } }
     })
