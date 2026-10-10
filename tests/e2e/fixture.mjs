@@ -29,6 +29,16 @@ export const KEYED = { id: 'CP-1', jira: 'SPDI-42', title: 'Fix the login form' 
 /** Its card with no key yet: the prompt asks for one, the worktree is named after the title. */
 export const UNKEYED = { id: 'CP-2', title: 'Rename the dashboard tabs', worktree: 'rename-the-dashboard-tabs' }
 
+/** To fix's card's description: a table whose headers are too long for one line of the drawer. */
+const STUCK_BODY = [
+  'Seen twice after a dust storm.',
+  '',
+  '| Where the rover was parked when the storm started | How long the storm lasted, in in-game minutes | What the player tried before reloading the save |',
+  '| --- | --- | --- |',
+  '| Under the hangar ramp, nose first | 12 | Reversing, then the boost |',
+  '| Beside the cargo lift | 30 | Nothing, it reloaded |',
+].join('\n')
+
 const VERBS = ['Fix', 'Polish', 'Add', 'Tune', 'Test', 'Rework']
 const THINGS = ['the airlock', 'the rover', 'the oxygen meter', 'the drill', 'the hangar lights', 'the radio', 'the map screen', 'the save menu', 'the dust storm', 'the solar panels', 'the cargo lift', 'the greenhouse']
 const IDEA_THINGS = ['a jetpack', 'a moon cat', 'a crater lake', 'a repair drone', 'a night cycle', 'a trading post', 'a meteor shower', 'a mining laser', 'a cave level', 'a spare suit']
@@ -115,7 +125,7 @@ export function writeFixture(root) {
       ...many('todo', 3),
       ...many('todo', 4, { archived: true, from: 3 }),
       ...many('doing', 3, { archived: true, from: 7 }),
-      { id: TO_FIX, list: 'tofix', title: 'The rover gets stuck under the hangar ramp', body: 'Seen twice after a dust storm.' },
+      { id: TO_FIX, list: 'tofix', title: 'The rover gets stuck under the hangar ramp', body: STUCK_BODY },
       ...many('tofix', 3, { archived: true, from: 10 }),
       // Past the 60 cards a list shows before *Show all*.
       ...many('done', 74, { from: 13 }),

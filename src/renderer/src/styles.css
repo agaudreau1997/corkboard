@@ -1153,20 +1153,22 @@ code,
   overflow: auto;
 }
 
-table {
+/* Scoped to the view: a table in a card's description is Markdown, not a list of cards, and
+   gets its own rules under .markdown. */
+.table-view table {
   width: 100%;
   border-collapse: collapse;
 }
 
-th,
-td {
+.table-view th,
+.table-view td {
   text-align: left;
   padding: 6px 14px;
   border-bottom: 1px solid var(--line);
   vertical-align: top;
 }
 
-th {
+.table-view th {
   position: sticky;
   top: 0;
   background: var(--bg-2);
@@ -1177,24 +1179,24 @@ th {
   white-space: nowrap;
 }
 
-th.sorted {
+.table-view th.sorted {
   color: var(--text);
 }
 
-tbody tr {
+.table-view tbody tr {
   cursor: pointer;
 }
 
-tbody tr:hover {
+.table-view tbody tr:hover {
   background: var(--bg-2);
 }
 
-tr.archived td {
+.table-view tr.archived td {
   color: var(--muted);
   text-decoration: line-through;
 }
 
-tr.selected td {
+.table-view tr.selected td {
   background: var(--select-bg);
 }
 
@@ -1346,6 +1348,31 @@ tr.selected td {
 
 .markdown pre {
   overflow-x: auto;
+}
+
+/* A table wider than the description scrolls sideways inside it rather than widening the
+   drawer; display: block is what lets the table itself be the scroll box. */
+.markdown table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 8px 0;
+}
+
+.markdown th,
+.markdown td {
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+  min-width: 4em;
+  overflow-wrap: break-word;
+}
+
+.markdown th {
+  background: var(--bg-2);
+  font-weight: 600;
 }
 
 .links {
