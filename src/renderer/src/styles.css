@@ -1729,9 +1729,21 @@ button.copy-id:hover {
   flex: none;
 }
 
-.terminal-tab span {
+.terminal-tab .term-title {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* The kind of session a tab holds (terminal, worktree, cloud, resumed), before its title. */
+.term-kind {
+  flex: none;
+  font-style: normal;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.terminal-tab.active .term-kind {
+  color: var(--text-2);
 }
 
 .terminal-tab.active {
@@ -1739,7 +1751,7 @@ button.copy-id:hover {
   color: var(--text);
 }
 
-.terminal-tab.exited span {
+.terminal-tab.exited .term-title {
   text-decoration: line-through;
   color: var(--muted);
 }

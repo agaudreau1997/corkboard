@@ -705,6 +705,9 @@ try {
     return t?.includes('FAKE CLAUDE') ? t : ''
   }, 15000)
   check(!!termText, 'tackle opened a terminal running claude')
+  const firstKind = page.locator('.terminal-tab').first().locator('.term-kind')
+  check((await firstKind.getAttribute('class'))?.includes('local') && (await firstKind.textContent()) === '▣', 'a terminal tackle\'s tab shows the terminal glyph')
+  check(!(await page.locator('.terminal-tab').first().locator('.term-title').textContent())?.startsWith('☁'), 'its title is the session name alone')
   check(termText.includes('prompt=given'), 'claude received the prompt (no option swallowed it)')
   const calls = sessionCalls()
   const args = calls[0].split('\0')
@@ -812,6 +815,10 @@ try {
   await sleep(1500)
   const worktreeCalls = sessionCalls().slice(callsBeforeParallel)
   check(worktreeCalls.every(c => c.split('\0').includes('-w')), 'each parallel session runs in a worktree')
+  const worktreeGlyphs = await page.locator('.terminal-tab').evaluateAll((tabs, from) => tabs.slice(from).map(t => t.querySelector('.term-kind.local-worktree')?.textContent), before)
+  check(worktreeGlyphs.length === primeCount && worktreeGlyphs.every(g => g === '⌥'), `a worktree tackle's tab shows the worktree glyph: ${worktreeGlyphs.join(' ')}`)
+  const worktreeTip = await page.locator('.terminal-tab').nth(before).getAttribute('title')
+  check(!!worktreeTip?.includes('Worktree session') && worktreeTip.includes(`${path.sep}.claude${path.sep}worktrees${path.sep}`), 'its tooltip names the kind and the worktree\'s folder')
 
   // Cloud: asks first, then records the printed URL.
   await page.locator('.column[data-list="tofix"] .card').first().click()

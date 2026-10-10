@@ -6,7 +6,7 @@ import type { TerminalEvent } from '../src/shared/types'
 import { notify, notifyArgs, notifyLaunch } from '../src/main/notify'
 
 const WINDOWS = process.platform === 'win32'
-const terminal = { id: 'tab-1', title: 'CORK-35 Add notifications', cwd: '/work/corkboard', cardIds: ['CORK-35', 'CORK-36'] }
+const terminal = { id: 'tab-1', title: 'CORK-35 Add notifications', cwd: '/work/corkboard', cardIds: ['CORK-35', 'CORK-36'], kind: 'local' as const }
 
 describe('notifyArgs', () => {
   it('hands the event, the status before it and the title as arguments, and everything as variables', () => {
@@ -19,13 +19,22 @@ describe('notifyArgs', () => {
       CORKBOARD_TITLE: 'CORK-35 Add notifications',
       CORKBOARD_CWD: '/work/corkboard',
       CORKBOARD_CARDS: 'CORK-35 CORK-36',
+      CORKBOARD_KIND: 'local',
     })
   })
 
+  it('says a resumed session is one, apart from its kind', () => {
+    const { env } = notifyArgs({ event: 'waiting', previous: 'working', terminal: { ...terminal, kind: 'local-worktree', resumed: true } })
+    expect(env.CORKBOARD_KIND).toBe('local-worktree')
+    expect(env.CORKBOARD_RESUMED).toBe('1')
+  })
+
   it('adds the exit code on exit, and an empty card list for a plain shell', () => {
-    const { env } = notifyArgs({ event: 'exit', previous: 'shell', terminal: { id: 't', title: 'Shell', cwd: '/' }, exitCode: 3 })
+    const { env } = notifyArgs({ event: 'exit', previous: 'shell', terminal: { id: 't', title: 'Shell', cwd: '/', kind: 'shell' }, exitCode: 3 })
     expect(env.CORKBOARD_EXIT_CODE).toBe('3')
     expect(env.CORKBOARD_CARDS).toBe('')
+    expect(env.CORKBOARD_KIND).toBe('shell')
+    expect(env.CORKBOARD_RESUMED).toBeUndefined()
   })
 })
 
