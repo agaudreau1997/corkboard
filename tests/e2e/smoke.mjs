@@ -849,6 +849,28 @@ try {
   const pasted = await until(async () => ((await shellRows.textContent()) ?? '').includes('pasted-6'), 10000)
   check(!!pasted, "the terminal menu's Paste types the clipboard into the shell")
 
+  // Links: a URL printed as text, and an OSC 8 one (as Claude Code writes), each on its own row at
+  // the top. A plain click leaves them be; Ctrl+click opens them in the browser.
+  await page.keyboard.type("clear; printf 'https://example.com/plain\\n\\e]8;;https://example.com/osc8\\e\\\\docs\\e]8;;\\e\\\\\\n'\n")
+  const linkRow = text => shellRows.locator('> div').filter({ hasText: new RegExp(`^${text}`) }).first()
+  check(!!(await until(async () => (await linkRow('docs').count()) > 0, 5000)), 'the shell printed the links')
+  const clickRow = async (text, ctrl) => {
+    const box = await linkRow(text).boundingBox()
+    await page.mouse.move(box.x + 12, box.y + box.height / 2)
+    await sleep(200) // xterm finds the link on hover
+    if (ctrl) await page.keyboard.down('Control')
+    await page.mouse.down()
+    await page.mouse.up()
+    if (ctrl) await page.keyboard.up('Control')
+  }
+  await clickRow('https://example.com/plain', false)
+  await sleep(500)
+  check(!openedUrls().includes('https://example.com/plain'), 'a plain click on a URL in a terminal opens nothing')
+  await clickRow('https://example.com/plain', true)
+  check(!!(await until(() => openedUrls().includes('https://example.com/plain'))), 'Ctrl+click opens a URL from a terminal')
+  await clickRow('docs', true)
+  check(!!(await until(() => openedUrls().includes('https://example.com/osc8'))), 'Ctrl+click opens an OSC 8 link from a terminal')
+
   // Each tab's icon follows the title Claude Code sets; a turn that ends out of sight stands out.
   const shellTab = page.locator('.terminal-tab').last()
   const shellIcon = () => shellTab.locator('.term-status').getAttribute('class')

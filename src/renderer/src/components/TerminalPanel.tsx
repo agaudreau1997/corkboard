@@ -1,4 +1,5 @@
 import { FitAddon } from '@xterm/addon-fit'
+import { WebLinksAddon } from '@xterm/addon-web-links'
 import { Terminal } from '@xterm/xterm'
 import { useEffect, useRef } from 'react'
 import type { PtyInfo, TerminalStatus } from '@shared/types'
@@ -160,6 +161,16 @@ async function pasteInto(terminal: Terminal) {
   if (text) terminal.paste(text)
 }
 
+/**
+ * Opens a link from the terminal in the browser on Ctrl+click (Cmd+click on macOS), as VS Code's
+ * terminal does: a plain click stays a click, so selecting text across a URL still works.
+ */
+function openLink(event: MouseEvent, uri: string) {
+  if (!(MAC ? event.metaKey : event.ctrlKey)) return
+  event.preventDefault()
+  api.shell.openExternal(uri)
+}
+
 function terminalMenu(terminal: Terminal): MenuItem[] {
   // The menu's button took the focus: give it back, so typing goes on in the terminal.
   const then = (act: () => unknown) => () => {
@@ -188,9 +199,14 @@ function XTerm({ info, visible }: { info: PtyInfo; visible: boolean }) {
       allowProposedApi: true,
       scrollback: 10000,
       theme: terminalTheme(),
+      // OSC 8 links, which Claude Code writes. xterm's own handler opens about:blank and then
+      // navigates it, and the window's open handler denies the blank window, so nothing opened.
+      linkHandler: { activate: openLink, allowNonHttpProtocols: false },
     })
     const fitAddon = new FitAddon()
     terminal.loadAddon(fitAddon)
+    // URLs printed as plain text.
+    terminal.loadAddon(new WebLinksAddon(openLink))
     terminal.open(host.current!)
     term.current = terminal
     fit.current = fitAddon

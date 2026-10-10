@@ -59,7 +59,7 @@ export function importUrl(cliSessionId: string): string {
   return `claude://resume?session=${encodeURIComponent(cliSessionId)}`
 }
 
-/** Opens a claude:// link (the test seam writes it to a file instead). */
+/** Opens a claude:// link or a web page outside the app (the test seam writes it to a file instead). */
 export async function openUrl(url: string, open: (url: string) => Promise<void>): Promise<void> {
   const log = process.env.CORKBOARD_OPEN_URL_LOG
   if (log) {
