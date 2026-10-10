@@ -397,6 +397,8 @@ try {
   check((await page.locator('.tab').count()) === 3, 'new board opened in its own tab')
   const todo = page.locator('.column[data-list="todo"]')
   await todo.getByText('+ Add a card').click()
+  const adder = await todo.locator('.add-card-form textarea').evaluate(el => getComputedStyle(el).resize)
+  check(adder === 'none', `the add-a-card field has no resize grip (${adder})`)
   await page.keyboard.type('Drag me to done')
   await page.keyboard.press('Enter')
   await page.keyboard.press('Escape')
@@ -460,7 +462,26 @@ try {
   await page.keyboard.type('Known bugs\n')
   check(await until(() => readFileSync(path.join(root, 'scratch-board/board.json'), 'utf8').includes('"Known bugs"')), 'double-clicking a list title renames it')
   const renamed = page.locator('.card[data-card="SB-1"]')
+  const faceBefore = await renamed.evaluate(el => {
+    const r = el.querySelector('.card-title').getBoundingClientRect()
+    return { title: [r.x, r.y], meta: el.querySelector('.card-meta').getBoundingClientRect().y }
+  })
   await renamed.locator('.card-title').dblclick()
+  const faceEditing = await renamed.evaluate(el => {
+    const r = el.querySelector('.rename-card').getBoundingClientRect()
+    return { title: [r.x, r.y], meta: el.querySelector('.card-meta').getBoundingClientRect().y }
+  })
+  check(
+    faceEditing.title[0] === faceBefore.title[0] && faceEditing.title[1] === faceBefore.title[1] && faceEditing.meta === faceBefore.meta,
+    `opening a card's title for editing moves nothing (${JSON.stringify(faceBefore)} → ${JSON.stringify(faceEditing)})`,
+  )
+  await page.keyboard.type(' and a title long enough to wrap over several lines of the card, to be edited whole')
+  const field = await renamed.locator('.rename-card').evaluate(el => {
+    const s = getComputedStyle(el)
+    return { lines: el.clientHeight / parseFloat(s.lineHeight), scrolls: el.scrollHeight > el.clientHeight, resize: s.resize }
+  })
+  check(field.lines > 2.5 && !field.scrolls && field.resize === 'none', `a long title grows the field whole, with no scrollbar or grip (${JSON.stringify(field)})`)
+  await page.keyboard.press('Control+a')
   await page.keyboard.type('Thrown away')
   await page.keyboard.press('Escape')
   check((await renamed.locator('.rename-card').count()) === 0 && (await renamed.locator('.card-title').textContent()) === 'Drag me to done', 'Escape leaves a card title as it was')

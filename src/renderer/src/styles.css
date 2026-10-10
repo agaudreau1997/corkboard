@@ -868,11 +868,24 @@ code,
   white-space: pre-wrap;
 }
 
+/* The title being renamed is the card's title made editable: it drops the input's own box and
+   grows with the text, so the face doesn't move when it opens and a long title shows whole. The
+   card's border shows the focus instead. */
 .rename-card {
   display: block;
   width: 100%;
-  resize: vertical;
-  font: inherit;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  resize: none;
+  overflow: hidden;
+  field-sizing: content;
+}
+
+.card:focus-within {
+  border-color: var(--blue);
 }
 
 .card-meta {
@@ -930,8 +943,13 @@ code,
   background: var(--bg-3);
 }
 
+/* Grows with the title rather than scrolling, from two lines up. */
 .add-card-form textarea {
+  display: block;
   width: 100%;
+  resize: none;
+  field-sizing: content;
+  min-height: calc(2lh + 12px);
 }
 
 .show-more {

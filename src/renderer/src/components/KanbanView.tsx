@@ -574,7 +574,10 @@ const SortableCard = memo(function SortableCard(props: {
   )
 })
 
-/** The title of a card being edited on the board. Enter or leaving it saves; Escape keeps the old one. */
+/**
+ * The title of a card being edited on the board, in the title's own place and look, so opening it
+ * moves nothing. Enter or leaving it saves; Escape keeps the old one.
+ */
 function RenameCard({ board, card, onDone }: { board: LoadedBoard; card: Card; onDone: () => void }) {
   const [title, setTitle] = useState(card.title)
   const save = () => {
@@ -584,9 +587,9 @@ function RenameCard({ board, card, onDone }: { board: LoadedBoard; card: Card; o
   }
   return (
     <textarea
-      className="rename-card"
+      className="card-title rename-card"
       autoFocus
-      rows={2}
+      rows={1}
       value={title}
       onFocus={e => e.target.select()}
       onChange={e => setTitle(e.target.value)}
