@@ -35,7 +35,9 @@ import {
   resolveLayout,
 } from '@shared/maplayout'
 import type { BoardMap, Card, LoadedBoard, MapArea, MapNodePos } from '@shared/types'
+import type { CardChange } from '@shared/mapundo'
 import { cardMenu } from '../menus'
+import { recordStep, redoMap, undoMap } from '../mapUndo'
 import { actions, api, listColor, NONE, useStore } from '../state'
 import { openContextMenu, type MenuItem } from './ContextMenu'
 
@@ -101,6 +103,41 @@ function MapCanvas({ board, matches }: { board: LoadedBoard; matches: (c: Card) 
     [board.path],
   )
 
+  /**
+   * A change made on the map, kept as one undo step: the map written (if any) and card patches,
+   * with the values they replace.
+   */
+  const change = (label: string, map: BoardMap | null, patches: { id: string; patch: Partial<Card> }[] = []) => {
+    const cards: CardChange[] = []
+    for (const { id, patch } of patches) {
+      const card = board.cards.find(c => c.id === id)
+      if (!card) continue
+      const before = Object.fromEntries(Object.keys(patch).map(k => [k, card[k as keyof Card]])) as Partial<Card>
+      cards.push({ id, before, after: patch })
+    }
+    recordStep(board.path, { label, map: map ? { before: board.map, after: map } : undefined, cards })
+    if (map) saveMap(map)
+    for (const c of cards) void actions.updateCard(board.path, c.id, c.after)
+  }
+
+  // Ctrl+Z undoes, Ctrl+Shift+Z and Ctrl+Y redo; in a text field (the terminal's too) they stay its own.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return
+      const key = e.key.toLowerCase()
+      const redo = (key === 'z' && e.shiftKey) || (key === 'y' && !e.shiftKey)
+      if (!redo && !(key === 'z' && !e.shiftKey)) return
+      const target = e.target as HTMLElement | null
+      if (target?.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"]), .terminal-panel')) return
+      if (useStore.getState().modal) return
+      e.preventDefault()
+      if (redo) redoMap(board.path)
+      else undoMap(board.path)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [board.path])
+
   /** What is on screen now: the areas and card positions as the nodes hold them. */
   const current = (ns: MapNode[]) => {
     const areas: Record<string, MapArea> = {}
@@ -113,19 +150,23 @@ function MapCanvas({ board, matches }: { board: LoadedBoard; matches: (c: Card) 
     return { areas, nodes }
   }
 
-  /** Writes every backdrop and card where it stands (so nothing re-lays out around a change). */
-  const pinAll = (ns: MapNode[], patch: { areas?: Record<string, MapArea>; nodes?: Record<string, MapNodePos> } = {}) => {
+  /** The map with every backdrop and card where it stands (so nothing re-lays out around a change). */
+  const pinned = (ns: MapNode[], patch: { areas?: Record<string, MapArea>; nodes?: Record<string, MapNodePos> } = {}): BoardMap => {
     const now = current(ns)
-    saveMap({
+    return {
       ...board.map,
       areas: { ...board.map.areas, ...now.areas, ...patch.areas },
       nodes: { ...board.map.nodes, ...now.nodes, ...patch.nodes },
-    })
+    }
   }
 
   const relayoutAll = () => {
     const fresh = resolveLayout({ nodes: {} }, shownLists, visible)
-    saveMap({ ...board.map, areas: { ...board.map.areas, ...fresh.areas }, nodes: { ...board.map.nodes, ...fresh.nodes } })
+    change('lay out every list again', {
+      ...board.map,
+      areas: { ...board.map.areas, ...fresh.areas },
+      nodes: { ...board.map.nodes, ...fresh.nodes },
+    })
   }
 
   const startDraft = (at: MapNodePos, list: string | null, linkFrom?: string, screen?: { x: number; y: number }) => {
@@ -146,7 +187,7 @@ function MapCanvas({ board, matches }: { board: LoadedBoard; matches: (c: Card) 
           const area = current(ns).areas[listId]
           if (!area) return
           const laid = layoutArea(area, inList)
-          pinAll(ns, { areas: { [listId]: laid.area }, nodes: laid.nodes })
+          change(`lay out ${list?.title ?? listId}`, pinned(ns, { areas: { [listId]: laid.area }, nodes: laid.nodes }))
         },
       },
       {
@@ -156,7 +197,8 @@ function MapCanvas({ board, matches }: { board: LoadedBoard; matches: (c: Card) 
           const now = current(ns)
           const area = now.areas[listId]
           if (!area) return
-          pinAll(ns, { areas: { [listId]: fitArea(area, inList.map(c => now.nodes[c.id]), inList.map(estimateHeight)) } })
+          const fit = fitArea(area, inList.map(c => now.nodes[c.id]), inList.map(estimateHeight))
+          change(`fit ${list?.title ?? listId} to its cards`, pinned(ns, { areas: { [listId]: fit } }))
         },
       },
       {
@@ -167,7 +209,10 @@ function MapCanvas({ board, matches }: { board: LoadedBoard; matches: (c: Card) 
         },
       },
       'separator',
-      { label: 'Hide from the map', onSelect: () => saveMap({ ...board.map, hiddenLists: [...hidden, listId] }) },
+      {
+        label: 'Hide from the map',
+        onSelect: () => change(`hide ${list?.title ?? listId}`, { ...board.map, hiddenLists: [...hidden, listId] }),
+      },
       { label: 'Lay out every list again', onSelect: relayoutAll },
     ]
   }
@@ -245,7 +290,8 @@ function MapCanvas({ board, matches }: { board: LoadedBoard; matches: (c: Card) 
                 ...n.data,
                 over: overArea === n.data.listId,
                 onMenu: (e: React.MouseEvent) => openContextMenu(e, areaMenu(n.data.listId, liveNodes.current)),
-                onResizeEnd: (area: MapArea) => pinAll(liveNodes.current, { areas: { [n.data.listId]: area } }),
+                onResizeEnd: (area: MapArea) =>
+                  change(`resize ${n.data.title}`, pinned(liveNodes.current, { areas: { [n.data.listId]: area } })),
               },
             } as AreaNode)
           : n,
@@ -308,15 +354,17 @@ function MapCanvas({ board, matches }: { board: LoadedBoard; matches: (c: Card) 
     setOverArea(null)
     dragStart.current = null
     const latest = nodes.map(n => dragged.find(d => d.id === n.id) ?? n)
-    pinAll(latest)
-    if (node.type === 'area') return
+    if (node.type === 'area') return change(`move ${node.data.title}`, pinned(latest))
     // A card dropped on another list's backdrop joins that list.
     const areas = current(latest).areas
+    const moves: { id: string; patch: Partial<Card> }[] = []
     for (const d of dragged) {
       if (d.type !== 'card') continue
       const target = areaAt(areas, centerOf(d))
-      if (target && target !== d.data.card.list) void actions.updateCard(board.path, d.id, { list: target })
+      if (target && target !== d.data.card.list) moves.push({ id: d.id, patch: { list: target } })
     }
+    const cards = dragged.filter(d => d.type === 'card').length
+    change(cards === 1 ? `move ${node.id}` : `move ${cards} cards`, pinned(latest), moves)
   }
 
   const link = (from: string, to: string) => {
@@ -324,7 +372,7 @@ function MapCanvas({ board, matches }: { board: LoadedBoard; matches: (c: Card) 
     const source = board.cards.find(x => x.id === from)
     const target = board.cards.find(x => x.id === to)
     if (!source || !target || source.links.includes(to) || target.links.includes(from)) return
-    void actions.updateCard(board.path, from, { links: [...source.links, to] })
+    change(`link ${from} to ${to}`, null, [{ id: from, patch: { links: [...source.links, to] } }])
   }
 
   /** A link dropped on a card's body links them; dropped on empty space, it writes a new card. */
@@ -354,10 +402,11 @@ function MapCanvas({ board, matches }: { board: LoadedBoard; matches: (c: Card) 
     if (!d || !title.trim()) return
     try {
       const card = await api.cards.create(board.path, { title: title.trim(), list: d.list })
-      pinAll(liveNodes.current, { nodes: { [card.id]: { x: d.at.x - NODE_W / 2, y: d.at.y - 18 } } })
+      // A new card is not undone (archive it), but the link to it is.
+      saveMap(pinned(liveNodes.current, { nodes: { [card.id]: { x: d.at.x - NODE_W / 2, y: d.at.y - 18 } } }))
       if (d.linkFrom) {
         const source = board.cards.find(c => c.id === d.linkFrom)
-        if (source) void actions.updateCard(board.path, source.id, { links: [...source.links, card.id] })
+        if (source) change(`link ${source.id} to ${card.id}`, null, [{ id: source.id, patch: { links: [...source.links, card.id] } }])
       }
     } catch (error) {
       actions.toast((error as Error).message, 'error')
@@ -374,7 +423,8 @@ function MapCanvas({ board, matches }: { board: LoadedBoard; matches: (c: Card) 
     const next = new Set(hidden)
     if (next.has(id)) next.delete(id)
     else next.add(id)
-    saveMap({ ...board.map, hiddenLists: [...next] })
+    const title = board.meta.lists.find(l => l.id === id)?.title ?? id
+    change(`${next.has(id) ? 'hide' : 'show'} ${title}`, { ...board.map, hiddenLists: [...next] })
   }
 
   return (
@@ -382,7 +432,7 @@ function MapCanvas({ board, matches }: { board: LoadedBoard; matches: (c: Card) 
       <div className="map-toolbar">
         <button
           className={`chip${showUnlisted ? ' on' : ''}`}
-          onClick={() => saveMap({ ...board.map, showUnlisted: !showUnlisted })}
+          onClick={() => change(`${showUnlisted ? 'hide' : 'show'} the ideas`, { ...board.map, showUnlisted: !showUnlisted })}
           title="Cards with no list: ideas that only live on the map"
         >
           <i style={{ background: listColor(board, null) }} /> Ideas
@@ -413,15 +463,19 @@ function MapCanvas({ board, matches }: { board: LoadedBoard; matches: (c: Card) 
           onConnect={(c: Connection) => c.source && c.target && link(c.source, c.target)}
           onConnectEnd={onConnectEnd}
           onEdgesDelete={gone => {
+            // Every link deleted at once is one step, each card patched once.
+            const links = new Map<string, string[]>()
             for (const edge of gone) {
               for (const [a, b] of [
                 [edge.source, edge.target],
                 [edge.target, edge.source],
               ]) {
-                const card = board.cards.find(x => x.id === a)
-                if (card?.links.includes(b)) void actions.updateCard(board.path, a, { links: card.links.filter(l => l !== b) })
+                const was = links.get(a) ?? board.cards.find(x => x.id === a)?.links
+                if (was?.includes(b)) links.set(a, was.filter(l => l !== b))
               }
             }
+            const label = gone.length === 1 ? `unlink ${gone[0].source} and ${gone[0].target}` : `unlink ${gone.length} pairs`
+            change(label, null, [...links].map(([id, next]) => ({ id, patch: { links: next } })))
           }}
           onNodeDoubleClick={(_, node) => node.type === 'card' && actions.openCard(board.path, node.id)}
           onNodeClick={(e, node) => {

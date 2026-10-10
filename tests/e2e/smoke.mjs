@@ -321,6 +321,21 @@ try {
   check(pinned === (await page.locator('.map-node').count()), `the drag pinned every card on the map (${pinned})`)
   await shot('03-map-linked')
 
+  // Ctrl+Z takes back the map's last changes, the move then the link; Ctrl+Shift+Z puts them back.
+  const aFile = path.join(root, IDEAS.path, 'cards', `${aId}.md`)
+  const near = (p, q) => Math.abs(p.x - q.x) < 2 && Math.abs(p.y - q.y) < 2
+  await page.locator('.map-toolbar .hint').click()
+  await page.keyboard.press('Control+z')
+  check(await until(async () => near(await b.boundingBox(), nb)), `Ctrl+Z puts ${bId} back where it was`)
+  await page.keyboard.press('Control+z')
+  check(await until(() => !readFileSync(aFile, 'utf8').includes(bId)), `a second Ctrl+Z unlinks ${aId} and ${bId}`)
+  check(await until(async () => (await page.locator('.react-flow__edge').count()) === 0), 'the edge goes with the link')
+  await page.keyboard.press('Control+Shift+z')
+  check(await until(() => readFileSync(aFile, 'utf8').includes(bId)), 'Ctrl+Shift+Z links them again')
+  await page.keyboard.press('Control+y')
+  check(await until(async () => !near(await b.boundingBox(), nb)), `Ctrl+Y moves ${bId} again`)
+  check(await until(() => readFileSync(path.join(root, IDEAS.path, 'map.json'), 'utf8').includes(`"${bId}"`)), 'the redone move is in map.json')
+
   // ---- backdrops: one per list; dropping a card on another moves it there ----
   const ideasMeta = JSON.parse(readFileSync(path.join(root, IDEAS.path, 'board.json'), 'utf8'))
   check((await page.locator('.map-area').count()) === ideasMeta.lists.length, `every list has a backdrop (${await page.locator('.map-area').count()})`)
@@ -342,6 +357,15 @@ try {
   check(await until(() => readFileSync(moverFile, 'utf8').includes(`list: ${toList}`)), `dropping ${mapMoverId} on the ${toList} backdrop moved it there`)
   const savedMap = JSON.parse(readFileSync(path.join(root, IDEAS.path, 'map.json'), 'utf8'))
   check(!!savedMap.areas?.[fromList] && !!savedMap.areas?.[toList], 'backdrops are saved in map.json')
+  // The drop is one step: Ctrl+Z takes the card back to its list and its place, Ctrl+Y redoes both.
+  await page.keyboard.press('Control+z')
+  check(await until(() => readFileSync(moverFile, 'utf8').includes(`list: ${fromList}`)), `Ctrl+Z takes ${mapMoverId} back to ${fromList}`)
+  check(await until(async () => {
+    const box = await mapMover.boundingBox()
+    return Math.abs(box.x - mb.x) < 2 && Math.abs(box.y - mb.y) < 2
+  }), `and back where it was on the map`)
+  await page.keyboard.press('Control+y')
+  check(await until(() => readFileSync(moverFile, 'utf8').includes(`list: ${toList}`)), `Ctrl+Y drops ${mapMoverId} on ${toList} again`)
 
   // Right-click a backdrop: Automatically lay out puts its cards back in columns inside it.
   await secondArea.locator('.area-head').click({ button: 'right' })
