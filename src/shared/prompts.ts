@@ -8,6 +8,11 @@
 // and the prompt itself names an id only where the session needs one: the card's file path, to
 // move it when done, and its related cards' ids, which are ids of the same board. A cloud prompt
 // has neither, and so carries no card id at all.
+//
+// A session the app started in a terminal or a worktree has the app's MCP server (`mcp` in the
+// context): it is told to change cards with the server's tools, which check the change and stamp
+// `updated` from the app's clock, and never to edit a card file. Every other session (Claude
+// desktop, the cloud, a prompt copied into a session of one's own) gets the file rules.
 
 import type { BoardMeta, Card } from './types'
 
@@ -34,6 +39,8 @@ export type PromptContext = {
    * anything else, and to move there.
    */
   workDir?: string
+  /** The session has the app's MCP server, whose tools change the cards instead of the files. */
+  mcp?: boolean
 }
 
 export type Purpose = 'tackle' | 'discuss'
@@ -95,7 +102,9 @@ export function discussPrompt(cards: Card[], ctx: PromptContext): string {
     one
       ? 'Help me think it through: what is unclear or missing, the risks, the options and how you would scope or split it.'
       : 'Go through them with me: for each, whether it is still relevant, whether it is clear enough to tackle, what is missing, and whether it should be split, merged, moved to another list or archived. Propose; I decide.',
-    'When we agree on something, write it into the card file (description, title, links, list, or `archived: true`) and set `updated:` (now, ISO UTC): those card files are the only files you may edit without asking. Do not commit in the board repo; the board app commits it.',
+    ctx.mcp
+      ? `When we agree on something, change the card with the corkboard tools (update_card for its description, title and links, move_card for its list, archive_card, create_card for a new card), never by editing its file: those cards are the only things you may change without asking. ${MCP_NOTE} Do not commit in the board repo; the board app commits it.`
+      : 'When we agree on something, write it into the card file (description, title, links, list, or `archived: true`) and set `updated:` (now, ISO UTC): those card files are the only files you may edit without asking. Do not commit in the board repo; the board app commits it.',
   ]
   if (ctx.work) rules.push(`If I do ask you to implement something: ${workRule(cards, ctx)}`)
   parts.push(rules.map(r => `- ${r}`).join('\n'))
@@ -153,7 +162,16 @@ export function tacklePrompt(cards: Card[], ctx: PromptContext): string {
         : 'Put a `Card: <ID>` trailer on every commit, naming the card the commit is for.',
     )
   }
-  if (!ctx.cloud && doneList) {
+  if (ctx.mcp) {
+    rules.push(`Change the cards with the corkboard tools (get_card, move_card, update_card, link_cards), never by editing their files. ${MCP_NOTE}`)
+  }
+  if (!ctx.cloud && doneList && ctx.mcp) {
+    rules.push(
+      one
+        ? `When the work is done and verified, move the card to "${doneList.title}" with move_card (\`flow: done\`).`
+        : `As each card is done and verified, move it to "${doneList.title}" with move_card (\`flow: done\`) before starting the next, so the board shows progress.`,
+    )
+  } else if (!ctx.cloud && doneList) {
     rules.push(
       one
         ? `When the work is done and verified, move the card to "${doneList.title}": set \`list: ${doneList.id}\` and \`updated:\` (now, ISO UTC) in its front matter.`
@@ -180,9 +198,13 @@ function workRule(cards: Card[], ctx: PromptContext): string {
   const key = one ? cards[0].jira : undefined
   const keep = ctx.cloud
     ? ''
-    : one
-      ? ' and write it into the card\'s front matter as `jira: <KEY>` (with `updated:`)'
-      : " and write it into that card's front matter as `jira: <KEY>` (with `updated:`)"
+    : ctx.mcp
+      ? one
+        ? ' and set it on the card with update_card (`jira`)'
+        : ' and set it on that card with update_card (`jira`)'
+      : one
+        ? ' and write it into the card\'s front matter as `jira: <KEY>` (with `updated:`)'
+        : " and write it into that card's front matter as `jira: <KEY>` (with `updated:`)"
   const name = one
     ? key
       ? `Name the Jira key ${key} in every commit message, in the branch name and in the PR title.`
@@ -190,6 +212,11 @@ function workRule(cards: Card[], ctx: PromptContext): string {
     : `Name each card's Jira key in every commit message for it, in the branch name and in the PR title. A card with no Jira key yet: ask me for it before its first commit${keep}.`
   return `${name} Never write a card id of the task board (this card's or any other's) in anything that goes into the code repo or its remote: not in a commit message, a branch name, a PR title or description, code, a comment or a file. The code repo is shared with people who never see the board, and Jira tracks this work. This overrides the board repo's CLAUDE.md, which asks for \`Card:\` trailers: put none.`
 }
+
+// Why the tools and not the files, and what to do when the app that serves them has been closed
+// since the session started.
+const MCP_NOTE =
+  "The tools keep the card format and stamp `updated:` themselves. Only if they stop answering (Corkboard was closed), edit the card file instead, as the board repo's CLAUDE.md describes."
 
 /** How a prompt calls a card in its opening line: its id, or in work mode its Jira key or nothing. */
 function cardName(card: Card, ctx: PromptContext): string {

@@ -13,6 +13,7 @@
 
 import { execFileSync } from 'node:child_process'
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -86,8 +87,8 @@ const openedUrls = () => (existsSync(urlLog) ? readFileSync(urlLog, 'utf8').spli
 /** The stand-in's calls that started sessions (the app also asks it for --version). */
 const sessionCalls = () =>
   existsSync(fakeLog) ? readFileSync(fakeLog, 'utf8').split('\n--\n').filter(c => c && !c.startsWith('--version')) : []
-// Records its argv, then parses it the way Claude Code does (--add-dir takes every argument up to
-// the next option), so a prompt an option swallowed shows up on screen as "prompt=none". It is a
+// Records its argv, then parses it the way Claude Code does (--add-dir and --mcp-config take every
+// argument up to the next option), so a prompt an option swallowed shows up on screen as "prompt=none". It is a
 // Node script so it runs on Windows too, behind a launcher the terminal's shell runs: a bash script
 // on Unix, a .ps1 on Windows (PowerShell runs that itself, so a prompt's quotes and newlines reach
 // Node intact; a .cmd would go through cmd.exe, which mangles them).
@@ -102,7 +103,7 @@ writeFileSync(
     "let prompt = 'none'",
     'for (let i = 0; i < argv.length; ) {',
     '  const a = argv[i]',
-    "  if (a === '--add-dir') for (i++; i < argv.length && !argv[i].startsWith('-'); i++);",
+    "  if (a === '--add-dir' || a === '--mcp-config') for (i++; i < argv.length && !argv[i].startsWith('-'); i++);",
     "  else if (['-n', '--session-id', '-w', '--resume'].includes(a)) i += 2",
     "  else if (a === '--cloud') {",
     "    if (i + 1 < argv.length) prompt = 'given'",
@@ -194,6 +195,40 @@ async function until(fn, ms = 6000) {
   }
 }
 
+// The app's MCP server listens on a port free right now (CORKBOARD_MCP_PORT), never on the
+// installed app's or a dev build's own.
+const mcpPort = await new Promise((resolve, reject) => {
+  const probe = net.createServer().once('error', reject)
+  probe.listen(0, '127.0.0.1', () => {
+    const { port } = probe.address()
+    probe.close(() => resolve(port))
+  })
+})
+/** One JSON-RPC call to the MCP server, as a session's Claude Code makes it. */
+let rpcId = 0
+async function mcpCall(url, token, method, params = {}) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ jsonrpc: '2.0', id: ++rpcId, method, params }),
+  })
+  const text = await res.text()
+  let json
+  try {
+    json = JSON.parse(text)
+  } catch {
+    json = undefined
+  }
+  return { status: res.status, json }
+}
+/** A tool's answer: its JSON, or its error text. */
+async function mcpTool(url, token, name, args) {
+  const { json } = await mcpCall(url, token, 'tools/call', { name, arguments: args })
+  const text = json?.result?.content?.[0]?.text ?? ''
+  if (json?.result?.isError) return { error: text }
+  return JSON.parse(text)
+}
+
 const packaged = process.env.CORKBOARD_E2E_EXECUTABLE
 const app = await electron.launch({
   // The app folder, as `npm start` and the launcher run it: Electron then reads package.json (its
@@ -208,6 +243,7 @@ const app = await electron.launch({
     CORKBOARD_COMMIT_DELAY_MS: '600',
     CORKBOARD_SYNC_INTERVAL_MS: '0',
     CORKBOARD_CLAUDE_BIN: fakeClaude,
+    CORKBOARD_MCP_PORT: String(mcpPort),
     // The settings' Browse… for the notification program answers the stand-in.
     CORKBOARD_PICK_FILE: fakeNotify,
     CORKBOARD_NOTIFY_LOG: noticeLog,
@@ -831,6 +867,30 @@ try {
   check(args.at(-2)?.includes(`Tackle card ${tackleId}`) ?? false, `the prompt names ${tackleId}`)
   const tackled = readFileSync(path.join(root, MAIN.path, 'cards', `${tackleId}.md`), 'utf8')
   check(tackled.includes('sessions:') && tackled.includes('kind: local'), 'the session is recorded on the card')
+
+  // ---- the MCP server: the session got its config, and its tools change the card ----
+  const mcpArg = args.indexOf('--mcp-config')
+  const mcpFile = mcpArg > 0 ? args[mcpArg + 1] : ''
+  check(!!mcpFile && existsSync(mcpFile), `the session got the MCP server's config (${mcpFile})`)
+  const server = mcpFile ? JSON.parse(readFileSync(mcpFile, 'utf8')).mcpServers?.corkboard : undefined
+  const mcpUrl = server?.url
+  const mcpToken = server?.headers?.Authorization?.replace(/^Bearer /, '')
+  check(mcpUrl === `http://127.0.0.1:${mcpPort}/mcp` && server?.type === 'http', `on CORKBOARD_MCP_PORT, over HTTP (${mcpUrl})`)
+  check(mcpToken === readFileSync(path.join(scratch, 'profile', 'mcp-token'), 'utf8').trim(), 'with the token the app keeps in its user data')
+  check(!args.some(a => a.includes(mcpToken)), 'and the token is in no argument')
+  check(args.at(-2)?.includes('corkboard tools') ?? false, 'the prompt says to change the card with the tools')
+  check((await mcpCall(mcpUrl, undefined, 'tools/list')).status === 401, 'the server turns away a request without the token')
+  check((await mcpCall(mcpUrl, 'wrong', 'tools/list')).status === 401, 'and one with the wrong token')
+  const listed = await mcpTool(mcpUrl, mcpToken, 'list_boards', {})
+  const mcpBoard = listed.flatMap(p => p.boards).find(b => b.cardPrefix === MAIN.key)
+  check(!!mcpBoard && mcpBoard.flow?.done === 'done', `list_boards names ${MAIN.title} with its flow (${mcpBoard?.board})`)
+  const mcpBefore = Date.now()
+  const doneByTool = await mcpTool(mcpUrl, mcpToken, 'move_card', { id: tackleId, flow: 'done' })
+  check(doneByTool.list === 'done' && Date.parse(doneByTool.updated) >= mcpBefore - 1000, `move_card moved ${tackleId} to done, stamped by the app (${doneByTool.updated})`)
+  check(await until(() => /^list: done$/m.test(readFileSync(path.join(root, MAIN.path, 'cards', `${tackleId}.md`), 'utf8'))), 'the card file has it')
+  check(!!(await until(async () => (await page.locator(`.column[data-list="done"] .card[data-card="${tackleId}"]`).count()) === 1)), 'and the board on screen shows it')
+  const refused = await mcpTool(mcpUrl, mcpToken, 'move_card', { id: tackleId, list: 'no-such-list' })
+  check(refused.error?.includes('has no list no-such-list') ?? false, `a list that is not there is refused (${refused.error})`)
 
   // Forget it again from the drawer.
   await page.locator('.drawer .sessions li').first().waitFor()

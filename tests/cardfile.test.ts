@@ -221,6 +221,21 @@ describe('tackle prompts', () => {
     expect(tacklePrompt([base], ctx)).not.toContain('Work in')
   })
 
+  it('with the MCP server: the tools, never the file, and the move by flow', () => {
+    const prompt = tacklePrompt([base], { ...ctx, mcp: true })
+    expect(prompt).toContain('Change the cards with the corkboard tools')
+    expect(prompt).toContain('never by editing their files')
+    expect(prompt).toContain('move the card to "Done" with move_card (`flow: done`)')
+    expect(prompt).not.toContain('`list: done`')
+    expect(prompt).not.toContain('ISO UTC')
+    expect(prompt).toContain('`Card: RS-886`')
+    expect(prompt).toContain("Don't commit in the board repo")
+    const list = tacklePrompt([base, { ...base, id: 'RS-12', title: 'Turrets' }], { ...ctx, mcp: true, listTitle: 'Next' })
+    expect(list).toContain('move it to "Done" with move_card (`flow: done`) before starting the next')
+    // Without the server, the file rules as before.
+    expect(tacklePrompt([base], ctx)).not.toContain('corkboard tools')
+  })
+
   it('appends the board prompt notes', () => {
     const prompt = tacklePrompt([base], { ...ctx, meta: { ...meta, promptNotes: 'Use opus-xhigh.' } })
     expect(prompt.endsWith('Use opus-xhigh.')).toBe(true)
@@ -301,6 +316,21 @@ describe('work-mode tackle prompts', () => {
     expect(ids(cloud)).toEqual([])
   })
 
+  it('with the MCP server: the key goes on the card through the tools, ids still only where they were', () => {
+    const prompt = tacklePrompt([card], { ...ctx, mcp: true })
+    expect(prompt).toContain('Name the Jira key SPDI-42')
+    expect(prompt).toContain(rule)
+    expect(prompt).toContain('with move_card (`flow: done`)')
+    expect(prompt).not.toContain('`list: done`')
+    expect(ids(prompt.replace('/b/portal/cards/RS-886.md', '').replace(/^- RS-\d+.*$/gm, ''))).toEqual([])
+    const unkeyed = tacklePrompt([{ ...base, links: [] }], { ...ctx, mcp: true })
+    expect(unkeyed).toContain('ask me for it before your first commit and set it on the card with update_card (`jira`)')
+    expect(unkeyed).not.toContain('jira: <KEY>')
+    expect(ids(unkeyed.replace('/b/portal/cards/RS-886.md', ''))).toEqual([])
+    const several = tacklePrompt([card, { ...base, id: 'RS-13', title: 'Traps' }], { ...ctx, mcp: true, listTitle: 'Sprint 4' })
+    expect(several).toContain('ask me for it before its first commit and set it on that card with update_card (`jira`)')
+  })
+
   it('a personal project is as before', () => {
     const prompt = tacklePrompt([card], { ...ctx, work: false })
     expect(prompt.startsWith('Tackle card RS-886 from the task board')).toBe(true)
@@ -331,13 +361,15 @@ describe('worktree names', () => {
 })
 
 describe('the local session command', () => {
-  /** Claude Code's grammar for these flags: --add-dir is variadic, the others take one value. */
+  /** Claude Code's grammar for these flags: --add-dir and --mcp-config are variadic, the others take one value. */
   function parse(argv: string[]) {
-    const out: { dirs: string[]; prompt?: string; opts: Record<string, string> } = { dirs: [], opts: {} }
+    const out: { dirs: string[]; mcp: string[]; prompt?: string; opts: Record<string, string> } = { dirs: [], mcp: [], opts: {} }
     for (let i = 1; i < argv.length; i++) {
       const arg = argv[i]
       if (arg === '--add-dir') {
         while (i + 1 < argv.length && !argv[i + 1].startsWith('-')) out.dirs.push(argv[++i])
+      } else if (arg === '--mcp-config') {
+        while (i + 1 < argv.length && !argv[i + 1].startsWith('-')) out.mcp.push(argv[++i])
       } else if (['-n', '--session-id', '-w'].includes(arg)) {
         out.opts[arg] = argv[++i]
       } else {
@@ -356,5 +388,18 @@ describe('the local session command', () => {
       expect(parsed.dirs).toEqual(['/b'])
       expect(parsed.opts['-w']).toBe(worktree)
     }
+  })
+
+  it('keeps the prompt out of --mcp-config, which is a list too', async () => {
+    const { localCommand } = await import('../src/main/tackle')
+    for (const worktree of [undefined, 'card-rs-961']) {
+      const argv = localCommand({ claude: 'claude', boardRoot: '/b', name: 'RS-961 x', sessionId: 'id', worktree, mcpConfig: '/p/mcp.json', prompt: 'Tackle card RS-961' })
+      const parsed = parse(argv)
+      expect(parsed.prompt).toBe('Tackle card RS-961')
+      expect(parsed.dirs).toEqual(['/b'])
+      expect(parsed.mcp).toEqual(['/p/mcp.json'])
+      expect(parsed.opts['--session-id']).toBe('id')
+    }
+    expect(localCommand({ claude: 'claude', boardRoot: '/b', name: 'n', sessionId: 'id', prompt: 'p' })).not.toContain('--mcp-config')
   })
 })

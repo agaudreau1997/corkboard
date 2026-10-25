@@ -116,6 +116,22 @@ describe('discuss prompts', () => {
     expect(discussPrompt([card('G-1', 'Turrets')], ctx)).not.toContain('Jira')
   })
 
+  it('with the MCP server: agreed changes go through the tools, never the file, in both modes', () => {
+    const one = discussPrompt([card('G-1', 'Turrets')], { ...ctx, mcp: true })
+    expect(one).toContain('change the card with the corkboard tools')
+    expect(one).toContain('never by editing its file')
+    expect(one).not.toContain('ISO UTC')
+    expect(one).toContain('Do not commit in the board repo')
+    expect(one).toContain('Do not implement anything')
+    const work = discussPrompt([card('G-1', 'Turrets')], { ...ctx, mcp: true, work: true })
+    expect(work).toContain('change the card with the corkboard tools')
+    expect(work).toContain('ask me for it before your first commit and set it on the card with update_card (`jira`)')
+    expect(work).toContain('Never write a card id of the task board')
+    expect(work.replace('/b/game/cards/G-1.md', '')).not.toMatch(/\bG-\d+\b/)
+    // Without the server, the file rules.
+    expect(discussPrompt([card('G-1', 'Turrets')], ctx)).toContain('write it into the card file')
+  })
+
   it('names the session for what it is', () => {
     expect(sessionName([card('G-1', 'a'), card('G-2', 'b')], 'Game', 'discuss')).toBe('Triage Game (2 cards)')
     expect(sessionName([card('G-1', 'Turrets')], undefined, 'discuss')).toBe('Discuss G-1 Turrets')
@@ -146,6 +162,32 @@ describe('starting a discussion', () => {
     expect(store.board(p).cards.find(x => x.id === 'G-1')!.list).toBe('doing')
     // Its terminal knows the board it works for, so it wears that project's colours.
     expect(opened.boardKey).toBe(`game:${p}`)
+  })
+
+  it('hands the MCP config to a terminal or worktree session only, its prompt telling it to use the tools', async () => {
+    const store = new BoardStore(root)
+    await store.init()
+    const p = await store.createBoard('', 'Game', 'G')
+    await store.createCard(p, { title: 'Turrets', list: 'todo' })
+    const { ptys, runs } = fakePtys()
+    const open = async () => {}
+    for (const mode of ['local', 'local-worktree'] as const) {
+      await tackle({ boardPath: p, cardIds: ['G-1'], mode }, store, ptys, open, undefined, '/profile/mcp.json')
+      const argv = runs.at(-1)!
+      expect(argv[argv.indexOf('--mcp-config') + 1]).toBe('/profile/mcp.json')
+      expect(argv.at(-1)).toContain('corkboard tools')
+    }
+    await tackle({ boardPath: p, cardIds: ['G-1'], mode: 'local', purpose: 'discuss' }, store, ptys, open, undefined, '/profile/mcp.json')
+    expect(runs.at(-1)).toContain('--mcp-config')
+    expect(runs.at(-1)!.at(-1)).toContain('change the card with the corkboard tools')
+    // The cloud can't reach this machine: no config, and the prompt has no tools in it.
+    await tackle({ boardPath: p, cardIds: ['G-1'], mode: 'cloud' }, store, ptys, open, undefined, '/profile/mcp.json')
+    expect(runs.at(-1)).not.toContain('--mcp-config')
+    expect(runs.at(-1)!.at(-1)).not.toContain('corkboard tools')
+    // With no server running, a terminal session gets the file rules.
+    await tackle({ boardPath: p, cardIds: ['G-1'], mode: 'local' }, store, ptys, open)
+    expect(runs.at(-1)).not.toContain('--mcp-config')
+    expect(runs.at(-1)!.at(-1)).not.toContain('corkboard tools')
   })
 
   it('refuses a discussion in the cloud or a worktree', async () => {

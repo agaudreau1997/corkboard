@@ -40,7 +40,7 @@ The local `npm run dist*` scripts build the same packages into `dist/` and never
 ## Tests
 
 ```bash
-npm test           # unit tests: card files, the store and its watch, git, sync between two clones, prompts, terminal titles, themes, work mode
+npm test           # unit tests: card files, the store and its watch, git, sync between two clones, prompts, terminal titles, themes, work mode, the MCP server and its tools
 npm run e2e        # builds, then drives the real app on a made-up board repo
 ```
 
@@ -50,7 +50,7 @@ The end-to-end test (`tests/e2e/smoke.mjs`) writes a made-up board repo in a tem
 
 The test clones the board repo into a scratch bare remote and works on a clone of that, so the app's sync pushes there, never to a real remote; a second clone plays the other machine. `CORKBOARD_ROOT` is its only project, and the app commits under git's `GIT_AUTHOR_*` and `GIT_COMMITTER_*` variables, so it runs on a machine with no git identity. The app's own output is saved as `main-process.log` beside the screenshots.
 
-Environment seams: `CORKBOARD_ROOT` (a test's only project), `CORKBOARD_USER_DATA` (profile folder), `CORKBOARD_PICK_FOLDER` (what the folder picker answers), `CORKBOARD_PICK_FILE` (the file picker's), `CORKBOARD_HIDDEN=1` (an offscreen window: a hidden one stops animating after its first screenshot), `CORKBOARD_COMMIT_DELAY_MS`, `CORKBOARD_SYNC_INTERVAL_MS` (0 = no periodic sync), `CORKBOARD_CLAUDE_BIN`, `CORKBOARD_OPEN_URL_LOG` (writes the links the app would open, `claude://` and web pages, to this file instead), `CORKBOARD_UPDATES=0` (never look for Corkboard updates), `CORKBOARD_NOTIFY_LOG` (writes the desktop notifications to this file instead of showing them).
+Environment seams: `CORKBOARD_ROOT` (a test's only project), `CORKBOARD_USER_DATA` (profile folder), `CORKBOARD_PICK_FOLDER` (what the folder picker answers), `CORKBOARD_PICK_FILE` (the file picker's), `CORKBOARD_HIDDEN=1` (an offscreen window: a hidden one stops animating after its first screenshot), `CORKBOARD_COMMIT_DELAY_MS`, `CORKBOARD_SYNC_INTERVAL_MS` (0 = no periodic sync), `CORKBOARD_CLAUDE_BIN`, `CORKBOARD_OPEN_URL_LOG` (writes the links the app would open, `claude://` and web pages, to this file instead), `CORKBOARD_UPDATES=0` (never look for Corkboard updates), `CORKBOARD_NOTIFY_LOG` (writes the desktop notifications to this file instead of showing them), `CORKBOARD_MCP_PORT` (the MCP server's port, in place of 47823 installed or 47824 from the source: the end-to-end test gives it a free one, reads the URL and token from the config file the stand-in `claude` was handed, and calls the tools over HTTP).
 
 ## Screenshots
 
