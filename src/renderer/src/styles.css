@@ -1259,9 +1259,16 @@ button.copy-id:hover {
   color: var(--red);
 }
 
+/* A 16 px grab area around the divider's line, from its own padding rather than the list's gaps,
+   so it is easy to drag or right-click and the list stays as compact; a hover shows its extent. */
 .divider-card {
-  padding: 6px 4px;
+  padding: 7px 4px;
+  border-radius: 4px;
   cursor: grab;
+}
+
+.divider-card:hover {
+  background: var(--hover);
 }
 
 .divider-card span {

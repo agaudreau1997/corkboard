@@ -75,8 +75,11 @@ export function TableView({ board, matches }: { board: LoadedBoard; matches: (c:
               <tr
                 key={card.id}
                 className={`${card.archived ? 'archived' : ''}${selected.includes(card.id) ? ' selected' : ''}`}
+                // A Shift-click selects the rows up to it, as sorted, and no text across them.
+                onMouseDown={e => e.shiftKey && e.preventDefault()}
                 onClick={e => {
-                  if (e.ctrlKey || e.metaKey || e.shiftKey) actions.toggleSelected(board.path, card.id)
+                  if (e.shiftKey) actions.selectRange(board.path, rows.map(c => c.id), card.id)
+                  else if (e.ctrlKey || e.metaKey) actions.toggleSelected(board.path, card.id)
                   else actions.openCard(board.path, card.id)
                 }}
                 onContextMenu={e => openContextMenu(e, cardMenu(board, card))}

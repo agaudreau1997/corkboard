@@ -315,6 +315,45 @@ try {
   check((await firstCard('done')) === COMMITTED, `the done list shows its last updated card first (${await firstCard('done')})`)
   check((await firstCard('todo')) === `${MAIN.key}-1`, `the other lists keep their cards in their positions (${await firstCard('todo')})`)
   check((await page.locator('.divider-card').count()) > 0, 'dashes cards draw as dividers')
+  // A divider is still one 2 px line, in the middle of a grab area about 16 px tall that a hover
+  // fills; a right-click near its edge opens its menu.
+  const grabDivider = page.locator('.divider-card').first()
+  const grabLook = () =>
+    grabDivider.evaluate(el => {
+      const box = el.getBoundingClientRect()
+      const line = el.querySelector('span')
+      const r = line.getBoundingClientRect()
+      return {
+        height: box.height,
+        line: getComputedStyle(line).borderTopWidth,
+        lineHeight: r.height,
+        middle: Math.abs(r.y + r.height / 2 - (box.y + box.height / 2)),
+        fill: getComputedStyle(el).backgroundColor,
+        cursor: getComputedStyle(el).cursor,
+      }
+    })
+  const grabRest = await grabLook()
+  check(
+    grabRest.height >= 15.5 && grabRest.line === '2px' && grabRest.lineHeight === 2 && grabRest.middle <= 1 && grabRest.cursor === 'grab',
+    `a divider's grab area is about 16 px around its 2 px line (${JSON.stringify(grabRest)})`,
+  )
+  await grabDivider.scrollIntoViewIfNeeded()
+  const grabBox = await grabDivider.boundingBox()
+  await page.mouse.move(grabBox.x + grabBox.width / 2, grabBox.y + 2)
+  const grabHover = await grabLook()
+  check(grabHover.fill !== grabRest.fill, `a hover fills the divider's area (${grabRest.fill} → ${grabHover.fill})`)
+  await page.mouse.click(grabBox.x + grabBox.width / 2, grabBox.y + 2, { button: 'right' })
+  check((await page.locator('.ctx-menu').count()) === 1, "a right-click at the area's edge opens the divider's menu")
+  await page.keyboard.press('Escape')
+  await page.locator('.ctx-menu').waitFor({ state: 'detached' })
+  // Grabbed by that edge, it drags (the card tray comes up); Escape puts it back.
+  await page.mouse.move(grabBox.x + grabBox.width / 2, grabBox.y + 2)
+  await page.mouse.down()
+  await page.mouse.move(grabBox.x + grabBox.width / 2 + 20, grabBox.y + 30, { steps: 6 })
+  check(!!(await page.locator('.drag-tray.up').waitFor({ timeout: 3000 }).then(() => true, () => false)), 'a divider grabbed at the edge of its area drags')
+  await page.keyboard.press('Escape')
+  await page.mouse.up()
+  await page.locator('.drag-tray.up').waitFor({ state: 'detached' })
   // A list as tall as the board runs into the terminal panel; a short one keeps its rounded bottom.
   const meetsPanel = async () => {
     const list = await done.boundingBox()
@@ -629,8 +668,17 @@ try {
   const two = doneTitles.indexOf('Group two')
   check(one >= 0 && two >= 0 && Math.abs(one - two) === 1, `the selection lands together (${doneTitles.join(', ')})`)
   await sleep(120)
-  await page.locator('.column[data-list="done"] .card', { hasText: 'Group one' }).click({ modifiers: ['Control'] })
+  // A selected card archived from its menu leaves the selection: the bar counts the one left.
+  const archiveSelBar = page.locator('.selection-bar span')
+  check((await archiveSelBar.textContent()) === '2 selected', 'the dropped pair is still selected')
+  await page.locator('.column[data-list="done"] .card', { hasText: 'Group one' }).click({ button: 'right' })
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Archive', exact: true }).click()
+  check(
+    await until(async () => (await archiveSelBar.textContent().catch(() => '')) === '1 selected'),
+    `archiving a selected card takes it out of the selection (${await archiveSelBar.textContent().catch(() => 'no bar')})`,
+  )
   await page.locator('.column[data-list="done"] .card', { hasText: 'Group two' }).click({ modifiers: ['Control'] })
+  check((await page.locator('.selection-bar').count()) === 0, 'and the last one toggles off with Ctrl-click')
 
   // ---- lists from the board: add one, rename it, collapse it ----
   await page.getByRole('button', { name: '+ Add a list' }).click()
@@ -887,6 +935,28 @@ try {
   )
   await bar.getByRole('button', { name: 'Clear' }).click()
   check((await bar.count()) === 0, 'Clear empties the selection')
+
+  // Shift-click selects a range in the board's order as shown (lists left to right, collapsed
+  // ones and dividers left out), here from the card open in the drawer, into the next list.
+  const rangeCards = await page
+    .locator('.kanban .card[data-card]')
+    .evaluateAll(els => els.map(e => ({ id: e.dataset.card, list: e.closest('.column').dataset.list })))
+  const rangeFrom = rangeCards.findIndex(c => c.id === openId)
+  const rangeTo = rangeCards.findIndex((c, i) => i > rangeFrom && c.list !== rangeCards[rangeFrom].list) + 1
+  const rangeWant = rangeCards.slice(rangeFrom, rangeTo + 1).map(c => c.id)
+  await page.locator(`.kanban .card[data-card="${rangeCards[rangeTo].id}"]`).click({ modifiers: ['Shift'] })
+  const rangeGot = await page.locator('.kanban .card.selected').evaluateAll(els => els.map(e => e.dataset.card))
+  check(
+    rangeWant.length > 2 && rangeGot.length === rangeWant.length && rangeWant.every(id => rangeGot.includes(id)),
+    `Shift-click from the open ${openId} selects the cards up to ${rangeCards[rangeTo].id} as shown (${rangeGot.join(',')})`,
+  )
+  check(await page.evaluate(() => getSelection().toString() === ''), 'and selects no text across them')
+  await page.locator(`.kanban .card[data-card="${rangeWant[1]}"]`).click({ modifiers: ['Control'] })
+  check(
+    (await bar.locator('span').textContent()) === `${rangeWant.length - 1} selected` && (await page.locator(`.card.selected[data-card="${rangeWant[1]}"]`).count()) === 0,
+    'Ctrl-click still toggles one card',
+  )
+  await bar.getByRole('button', { name: 'Clear' }).click()
 
   // Its left edge resizes it; the width is remembered, and a double-click puts it back.
   const drawerWidth = () => page.locator('.drawer').evaluate(el => el.getBoundingClientRect().width)
@@ -1804,6 +1874,19 @@ try {
   const viewTh = await page.locator('.table-view th').first().evaluate(th => ({ wrap: getComputedStyle(th).whiteSpace, position: getComputedStyle(th).position }))
   check(viewTh.wrap === 'nowrap' && viewTh.position === 'sticky', `the Table view's headers keep their own rules (${JSON.stringify(viewTh)})`)
   await shot('07-table')
+  // Shift-click selects the rows from the last one Ctrl-clicked, as sorted.
+  if (await page.locator('.drawer').count()) await page.locator('.drawer').getByRole('button', { name: 'Close', exact: true }).click()
+  const tableRows = page.locator('.table-view tbody tr')
+  const tableRangeIds = await tableRows.evaluateAll(rows => rows.slice(1, 5).map(r => r.querySelector('td').textContent))
+  await tableRows.nth(1).click({ modifiers: ['Control'] })
+  await tableRows.nth(4).click({ modifiers: ['Shift'] })
+  const tableRangeGot = await page.locator('.table-view tbody tr.selected').evaluateAll(rows => rows.map(r => r.querySelector('td').textContent))
+  check(
+    tableRangeGot.join(',') === tableRangeIds.join(','),
+    `Shift-click in the table selects the rows from the anchor (${tableRangeGot.join(',')})`,
+  )
+  check(await page.evaluate(() => getSelection().toString() === ''), 'and selects no text across them')
+  await page.locator('.selection-bar').getByRole('button', { name: 'Clear' }).click()
 
   // A change made just before quitting: the quit commits and pushes it (the same work an update's
   // install waits for).

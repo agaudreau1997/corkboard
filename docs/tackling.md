@@ -4,7 +4,7 @@ A card is a prompt waiting to be sent. Corkboard starts Claude Code sessions fro
 
 ## Tackle
 
-From a card: *Tackle locally*, *In a worktree* or *Claude Cloud*. From a list header (*Tackle all*) or a selection of two or more (Ctrl/Shift-click cards; with a card open in the drawer, the selection starts from it): one local session for all of them in order, one session per card in parallel (each in its own worktree), or one cloud session. Every session runs in the embedded terminal panel (Ctrl+`), is recorded on its cards (`sessions:`), and can be resumed from the card; the card face shows a ▶ badge for them until the card is done (in the board's done list, or marked complete), the drawer keeps them after.
+From a card: *Tackle locally*, *In a worktree* or *Claude Cloud*. From a list header (*Tackle all*) or a selection of two or more (Ctrl-click cards, Shift-click a range; with a card open in the drawer, the selection starts from it): one local session for all of them in order, one session per card in parallel (each in its own worktree), or one cloud session. Every session runs in the embedded terminal panel (Ctrl+`), is recorded on its cards (`sessions:`), and can be resumed from the card; the card face shows a ▶ badge for them until the card is done (in the board's done list, or marked complete), the drawer keeps them after.
 
 ![A card's drawer: its links, commits and sessions](images/drawer.png)
 

@@ -21,18 +21,28 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
-import { between, freezeListColors, isDivider, listSort, orderList, reorderLists, slugify } from '@shared/cardfile'
+import {
+  createContext,
+  memo,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from 'react'
+import { between, freezeListColors, isDivider, listSort, reorderLists, slugify } from '@shared/cardfile'
 import { dueDay, isOverdue } from '@shared/due'
 import { imageUrl } from '@shared/images'
+import { boardColumns, boardOrder, UNLISTED, type Columns } from '@shared/selection'
 import type { Card, CodeCommit, ListDef, LoadedBoard } from '@shared/types'
 import { useGrabScroll } from '../grabScroll'
 import { cardMenu, listMenu } from '../menus'
 import { actions, api, commitsFor, listColor, NONE, useStore } from '../state'
 import { openContextMenu } from './ContextMenu'
 
-/** The column of cards with no list: ideas that only live on the map. Shown when it has any. */
-const UNLISTED = '__unlisted__'
 const COLUMN_LIMIT = 60
 /** Drop zones in the tray that slides up while a card is dragged. */
 const ZONE_UNLIST = 'zone:unlist'
@@ -40,7 +50,11 @@ const ZONE_ARCHIVE = 'zone:archive'
 /** A list is dragged by its header; its sortable id is `col:<list id>`. */
 const COL = 'col:'
 
-type Columns = Record<string, string[]>
+/**
+ * A Shift-click on a card of the board: selects the range up to it in the board's order as shown.
+ * A context rather than a prop, so the order changing re-renders no card.
+ */
+const SelectRange = createContext<((id: string) => void) | null>(null)
 
 /**
  * A dragged list only meets other lists. A dragged card meets the tray's zones when the pointer
@@ -82,19 +96,16 @@ export function KanbanView({ board, matches }: { board: LoadedBoard; matches: (c
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
   const byId = useMemo(() => new Map(board.cards.map(c => [c.id, c])), [board.cards])
-  const columns = useMemo(() => {
-    const cards: Record<string, Card[]> = { [UNLISTED]: [] }
-    for (const list of board.meta.lists) cards[list.id] = []
-    for (const card of board.cards) {
-      if (card.archived || !matches(card)) continue
-      const key = card.list === null ? UNLISTED : card.list
-      if (cards[key]) cards[key].push(card)
-    }
-    const cols: Columns = { [UNLISTED]: cards[UNLISTED].map(c => c.id) }
-    for (const list of board.meta.lists) cols[list.id] = orderList(cards[list.id], listSort(board.meta, list)).map(c => c.id)
-    return cols
-  }, [board, matches])
+  const columns = useMemo(() => boardColumns(board, matches), [board, matches])
   const shown = draft ?? columns
+  // The cards in the order a Shift-click's range runs: as shown, so not past a list's first 60.
+  const order = useRef<string[]>([])
+  order.current = useMemo(() => {
+    const cut: Columns = {}
+    for (const [key, ids] of Object.entries(columns)) cut[key] = ids.length > COLUMN_LIMIT && !expanded.has(key) ? ids.slice(0, COLUMN_LIMIT) : ids
+    return boardOrder(board, cut, collapsed)
+  }, [board, columns, collapsed, expanded])
+  const selectRange = useCallback((id: string) => actions.selectRange(board.path, order.current, id), [board.path])
 
   const containerOf = (cols: Columns, id: string): string | undefined => {
     if (id.startsWith('list:')) return id.slice(5)
@@ -231,85 +242,87 @@ export function KanbanView({ board, matches }: { board: LoadedBoard; matches: (c
   const draggedList = activeColumn ? lists.find(l => l.id === activeColumn) : undefined
 
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={collision}
-      // dnd-kit focuses the dragged card again a moment after a drop, which blurred (and so
-      // closed) an add-card field opened right after a drag.
-      accessibility={{ restoreFocus: false }}
-      onDragStart={onDragStart}
-      onDragOver={onDragOver}
-      onDragEnd={onDragEnd}
-      onDragCancel={() => (setActiveId(null), setMoving([]), setActiveColumn(null), setDraft(null))}
-    >
-      <div className="kanban-wrap">
-        <div className={`kanban${grab.grabbing ? ' grabbing' : ''}`} ref={scroller} {...grab.handlers}>
-          <SortableContext items={columnIds} strategy={horizontalListSortingStrategy}>
-          {lists.map(list => {
-            const ids = shown[list.id] ?? []
-            if (collapsed.includes(list.id) && !activeId) {
+    <SelectRange.Provider value={selectRange}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={collision}
+        // dnd-kit focuses the dragged card again a moment after a drop, which blurred (and so
+        // closed) an add-card field opened right after a drag.
+        accessibility={{ restoreFocus: false }}
+        onDragStart={onDragStart}
+        onDragOver={onDragOver}
+        onDragEnd={onDragEnd}
+        onDragCancel={() => (setActiveId(null), setMoving([]), setActiveColumn(null), setDraft(null))}
+      >
+        <div className="kanban-wrap">
+          <div className={`kanban${grab.grabbing ? ' grabbing' : ''}`} ref={scroller} {...grab.handlers}>
+            <SortableContext items={columnIds} strategy={horizontalListSortingStrategy}>
+            {lists.map(list => {
+              const ids = shown[list.id] ?? []
+              if (collapsed.includes(list.id) && !activeId) {
+                return (
+                  <CollapsedColumn
+                    key={list.id}
+                    board={board}
+                    list={list}
+                    count={ids.length}
+                    color={listColor(board, list.unlisted ? null : list.id)}
+                  />
+                )
+              }
+              const limited = ids.length > COLUMN_LIMIT && !expanded.has(list.id) && !activeId
+              const visible = limited ? ids.slice(0, COLUMN_LIMIT) : ids
+              const ColumnKind = list.unlisted ? Column : SortableColumn
               return (
-                <CollapsedColumn
+                <ColumnKind
                   key={list.id}
                   board={board}
                   list={list}
-                  count={ids.length}
+                  ids={ids}
                   color={listColor(board, list.unlisted ? null : list.id)}
-                />
+                  adding={adding === list.id}
+                  setAdding={on => setAdding(on ? list.id : null)}
+                  renaming={renaming === list.id}
+                  setRenaming={on => setRenaming(on ? list.id : null)}
+                >
+                  <SortableContext items={visible} strategy={verticalListSortingStrategy}>
+                    {visible.map(id => {
+                      const card = byId.get(id)
+                      return card ? (
+                        <SortableCard key={id} board={board} card={card} commits={commits} selected={selected.includes(id)} />
+                      ) : null
+                    })}
+                  </SortableContext>
+                  {limited && (
+                    <button className="show-more" onClick={() => setExpanded(s => new Set(s).add(list.id))}>
+                      Show all {ids.length}
+                    </button>
+                  )}
+                </ColumnKind>
               )
-            }
-            const limited = ids.length > COLUMN_LIMIT && !expanded.has(list.id) && !activeId
-            const visible = limited ? ids.slice(0, COLUMN_LIMIT) : ids
-            const ColumnKind = list.unlisted ? Column : SortableColumn
-            return (
-              <ColumnKind
-                key={list.id}
-                board={board}
-                list={list}
-                ids={ids}
-                color={listColor(board, list.unlisted ? null : list.id)}
-                adding={adding === list.id}
-                setAdding={on => setAdding(on ? list.id : null)}
-                renaming={renaming === list.id}
-                setRenaming={on => setRenaming(on ? list.id : null)}
-              >
-                <SortableContext items={visible} strategy={verticalListSortingStrategy}>
-                  {visible.map(id => {
-                    const card = byId.get(id)
-                    return card ? (
-                      <SortableCard key={id} board={board} card={card} commits={commits} selected={selected.includes(id)} />
-                    ) : null
-                  })}
-                </SortableContext>
-                {limited && (
-                  <button className="show-more" onClick={() => setExpanded(s => new Set(s).add(list.id))}>
-                    Show all {ids.length}
-                  </button>
-                )}
-              </ColumnKind>
-            )
-          })}
-          </SortableContext>
-          <AddListColumn board={board} />
-        </div>
-        <BoardScrollbar scroller={scroller} />
-        <DragTray active={!!activeId} />
-      </div>
-      <DragOverlay dropAnimation={null}>
-        {activeId && byId.get(activeId) ? (
-          <div className={moving.length > 1 ? 'drag-stack' : undefined}>
-            <CardFace board={board} card={byId.get(activeId)!} commits={commits} selected={false} dragging />
-            {moving.length > 1 && <span className="drag-count">{moving.length}</span>}
+            })}
+            </SortableContext>
+            <AddListColumn board={board} />
           </div>
-        ) : draggedList ? (
-          <ColumnPreview
-            title={draggedList.title}
-            color={listColor(board, draggedList.id)}
-            cards={(columns[draggedList.id] ?? []).map(id => byId.get(id)).filter((c): c is Card => !!c)}
-          />
-        ) : null}
-      </DragOverlay>
-    </DndContext>
+          <BoardScrollbar scroller={scroller} />
+          <DragTray active={!!activeId} />
+        </div>
+        <DragOverlay dropAnimation={null}>
+          {activeId && byId.get(activeId) ? (
+            <div className={moving.length > 1 ? 'drag-stack' : undefined}>
+              <CardFace board={board} card={byId.get(activeId)!} commits={commits} selected={false} dragging />
+              {moving.length > 1 && <span className="drag-count">{moving.length}</span>}
+            </div>
+          ) : draggedList ? (
+            <ColumnPreview
+              title={draggedList.title}
+              color={listColor(board, draggedList.id)}
+              cards={(columns[draggedList.id] ?? []).map(id => byId.get(id)).filter((c): c is Card => !!c)}
+            />
+          ) : null}
+        </DragOverlay>
+      </DndContext>
+    </SelectRange.Provider>
   )
 }
 
@@ -761,6 +774,7 @@ export function CardFace({
   setRenaming?: (on: boolean) => void
 }) {
   const open = useStore(s => s.openCard?.boardPath === board.path && s.openCard.id === card.id)
+  const selectRange = useContext(SelectRange)
   const menu = (e: React.MouseEvent) => openContextMenu(e, cardMenu(board, card))
   if (isDivider(card)) {
     return (
@@ -784,8 +798,11 @@ export function CardFace({
     <div
       className={`card${selected ? ' selected' : ''}${open ? ' open' : ''}${dragging ? ' dragging' : ''}${card.complete ? ' complete' : ''}${renaming ? ' renaming' : ''}`}
       data-card={card.id}
+      // Shift-click selects a range: without this the browser would select the text across it.
+      onMouseDown={e => e.shiftKey && e.preventDefault()}
       onClick={e => {
-        if (e.ctrlKey || e.metaKey || e.shiftKey) actions.toggleSelected(board.path, card.id)
+        if (e.shiftKey && selectRange) selectRange(card.id)
+        else if (e.ctrlKey || e.metaKey || e.shiftKey) actions.toggleSelected(board.path, card.id)
         else actions.openCard(board.path, card.id)
       }}
       onDoubleClick={e => {
