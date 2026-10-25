@@ -197,13 +197,20 @@ async function until(fn, ms = 6000) {
 
 // The app's MCP server listens on a port free right now (CORKBOARD_MCP_PORT), never on the
 // installed app's or a dev build's own.
-const mcpPort = await new Promise((resolve, reject) => {
-  const probe = net.createServer().once('error', reject)
-  probe.listen(0, '127.0.0.1', () => {
-    const { port } = probe.address()
-    probe.close(() => resolve(port))
+// A free port below the range the system hands outgoing connections (Linux: 32768 and up): a port
+// it handed out here (listen on 0) could go to a git or Playwright connection before the app
+// starts, and the server would then fall back to another.
+const freePort = port =>
+  new Promise(resolve => {
+    const probe = net.createServer().once('error', () => resolve(false))
+    probe.listen(port, '127.0.0.1', () => probe.close(() => resolve(true)))
   })
-})
+let mcpPort = 0
+for (let tries = 0; !mcpPort && tries < 50; tries++) {
+  const port = 20000 + Math.floor(Math.random() * 10000)
+  if (await freePort(port)) mcpPort = port
+}
+if (!mcpPort) throw new Error('No free port for the MCP server between 20000 and 30000')
 /** One JSON-RPC call to the MCP server, as a session's Claude Code makes it. */
 let rpcId = 0
 async function mcpCall(url, token, method, params = {}) {
