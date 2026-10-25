@@ -8,12 +8,15 @@
 // it, which stopped every commit after.) Conflicts are rare (one file per card) and resolved
 // without asking where the answer is clear: a card keeps the side edited last (its `updated`
 // stamp), a map keeps every position, a board.json keeps every list, the theme.json keeps this
-// machine's, the project.json keeps this machine's flags and every key either side has. Anything
-// else aborts the rebase and reports it.
+// machine's, the project.json keeps this machine's flags and every key either side has, and a
+// card's image keeps this machine's file (images are named by a hash of their bytes, so two
+// machines adding the same picture never conflict; only two pictures given one name by hand do).
+// Anything else aborts the rebase and reports it.
 
 import { existsSync, promises as fs } from 'node:fs'
 import path from 'node:path'
 import { tryParseCard } from '@shared/cardfile'
+import { cardImageOf } from '@shared/images'
 import { mergeProjectSettings, PROJECT_FILE } from '@shared/project'
 import { THEME_FILE } from '@shared/theme'
 import type { BoardMap, BoardMeta, SyncStatus } from '@shared/types'
@@ -211,6 +214,7 @@ export class BoardSync {
    * local commit being replayed.
    */
   private async resolve(file: string): Promise<boolean> {
+    if (cardImageOf(file)) return this.keepImage(file)
     const remote = await this.stage(2, file)
     const local = await this.stage(3, file)
     const abs = path.join(this.root, file)
@@ -239,6 +243,21 @@ export class BoardSync {
       await git(this.root, ['rm', '-q', '--', file])
     } else {
       await fs.writeFile(abs, merged)
+      await git(this.root, ['add', '--', file])
+    }
+    return true
+  }
+
+  /**
+   * A card's image both sides changed: the local one, or the side that still has it. Binary, so
+   * git checks the side out itself; the stages read as text would come back mangled.
+   */
+  private async keepImage(file: string): Promise<boolean> {
+    const local = (await this.stage(3, file)) !== undefined
+    const remote = (await this.stage(2, file)) !== undefined
+    if (!local && !remote) await git(this.root, ['rm', '-q', '--', file])
+    else {
+      await git(this.root, ['checkout', local ? '--theirs' : '--ours', '--', file])
       await git(this.root, ['add', '--', file])
     }
     return true

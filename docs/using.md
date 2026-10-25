@@ -20,6 +20,8 @@ Each board is a folder with a `board.json`; a board folder can hold child boards
 
 Cards are Markdown files (`cards/<ID>.md`: YAML front matter, then the description), so a move is a one-line diff and a Claude session can move a card by editing `list:`. The app watches the folder, so that move shows up on screen at once. It commits the board repo itself and keeps it in sync between machines: see [The board repo](board-repo.md).
 
+Paste an image (a screenshot from the clipboard) into a card's description while editing it, or drop image files on it, and the app saves it beside the card (`cards/<ID>/`) and puts `![](…)` where the cursor is; dropped on the description while it shows, it goes at the end. One over 1 MB is scaled down to fit first, and the app says so.
+
 ## Three views of the same cards
 
 A click on a card in any of them opens its drawer; click the id at the drawer's top left to copy it.

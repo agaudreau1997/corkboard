@@ -177,6 +177,26 @@ describe('BoardSync', () => {
     expect(JSON.parse(readFileSync(a.file('theme.json'), 'utf8')).name).toBe('Tide')
   })
 
+  it("keeps this machine's image when both added one of the same name, and both sides' others", async () => {
+    const a = machine(clone('a'))
+    const b = machine(clone('b'))
+    mkdirSync(a.file('game/cards/G-1'))
+    mkdirSync(b.file('game/cards/G-1'))
+    const png = (n: number) => Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0xff, n, 0x00, 0x80])
+    writeFileSync(a.file('game/cards/G-1/shot.png'), png(1))
+    writeFileSync(a.file('game/cards/G-1/same.png'), png(7))
+    writeFileSync(a.file('game/cards/G-1/only-a.png'), png(2))
+    await a.sync.sync()
+    writeFileSync(b.file('game/cards/G-1/shot.png'), png(3))
+    writeFileSync(b.file('game/cards/G-1/same.png'), png(7))
+    expect((await b.sync.sync()).state).toBe('synced')
+    expect(readFileSync(b.file('game/cards/G-1/shot.png'))).toEqual(png(3))
+    expect(readFileSync(b.file('game/cards/G-1/only-a.png'))).toEqual(png(2))
+    expect(run(b.root, 'status', '--porcelain')).toBe('')
+    expect((await a.sync.sync()).state).toBe('synced')
+    expect(readFileSync(a.file('game/cards/G-1/shot.png'))).toEqual(png(3))
+  })
+
   it('merges project.json, this machine\'s flag first, when both changed it', async () => {
     const a = machine(clone('a'))
     const b = machine(clone('b'))

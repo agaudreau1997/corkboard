@@ -31,6 +31,8 @@ describe('the board guide', () => {
     expect(text).toContain('never commit, pull or push in this repo')
     expect(text).toContain('`updated:`')
     expect(text).toContain('`archived: true`')
+    // Where a card's images live, for a session reading them and a hand edit moving a card.
+    expect(text).toContain('`cards/<ID>/`')
     expect(text).not.toMatch(/\/home\/|~\//)
   })
 

@@ -43,6 +43,7 @@ const api: CorkboardApi = {
     move: (fromPath, id, toPath, list, pos) => invoke('cards:move', fromPath, id, toPath, list, pos),
     duplicate: (boardPath, id) => invoke('cards:duplicate', boardPath, id),
     filePath: (boardPath, id) => invoke('cards:filePath', boardPath, id),
+    addImage: (boardPath, id, bytes) => invoke('cards:addImage', boardPath, id, bytes),
   },
   lists: {
     move: (fromPath, listId, toPath) => invoke('lists:move', fromPath, listId, toPath),

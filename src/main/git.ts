@@ -6,6 +6,7 @@ import { execFile } from 'node:child_process'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { tryParseCard } from '@shared/cardfile'
+import { cardImageOf } from '@shared/images'
 import { namesKey, parseProjectSettings, PROJECT_FILE } from '@shared/project'
 import { THEME_FILE } from '@shared/theme'
 import type { CodeCommit } from '@shared/types'
@@ -167,7 +168,10 @@ export class AutoCommitter {
       const file = parts[i + 1]
       const name = path.posix.basename(file)
       const dir = path.posix.dirname(file)
-      if (name.endsWith('.md') && path.posix.basename(dir) === 'cards') {
+      const imageOf = cardImageOf(file)
+      if (imageOf) {
+        lines.push(status === 'A' ? `Add an image to ${imageOf}` : status === 'D' ? `Remove an image from ${imageOf}` : `Edit an image of ${imageOf}`)
+      } else if (name.endsWith('.md') && path.posix.basename(dir) === 'cards') {
         const id = name.slice(0, -3)
         if (status === 'D') {
           lines.push(`Remove ${id}`)

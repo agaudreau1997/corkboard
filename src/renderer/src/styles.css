@@ -1462,6 +1462,25 @@ button.copy-id:hover {
   overflow-x: auto;
 }
 
+.markdown img {
+  display: block;
+  max-width: 100%;
+  margin: 8px 0;
+  border-radius: 4px;
+}
+
+/* An image the description names that this machine doesn't have (yet): where it would be. */
+.image-missing {
+  display: block;
+  margin: 8px 0;
+  padding: 18px 12px;
+  border: 1px dashed var(--line-2);
+  border-radius: 4px;
+  color: var(--text-2);
+  font-size: 12px;
+  text-align: center;
+}
+
 /* A table wider than the description scrolls sideways inside it rather than widening the
    drawer; display: block is what lets the table itself be the scroll box. */
 .markdown table {

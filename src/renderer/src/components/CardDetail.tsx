@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import Markdown from 'react-markdown'
+import Markdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Card, CodeCommit, LoadedBoard, SessionRef } from '@shared/types'
+import { imageUrl, insertAt } from '@shared/images'
+import { imageFiles, saveImages } from '../images'
 import { discussCards, tackleCards } from '../tackle'
 import { normalizeKey } from '@shared/project'
 import { actions, api, commitsFor, listColor, localTime, projectIdOf, useStore } from '../state'
@@ -63,6 +65,7 @@ function Drawer({ board, card }: { board: LoadedBoard; card: Card }) {
   const [jira, setJira] = useState(card.jira ?? '')
   const [editing, setEditing] = useState(!card.body.trim())
   const [index, setIndex] = useState<IndexEntry[]>([])
+  const bodyInput = useRef<HTMLTextAreaElement>(null)
 
   // A Claude session edits the file under us: follow it unless a field is being typed in.
   useEffect(() => {
@@ -80,6 +83,40 @@ function Drawer({ board, card }: { board: LoadedBoard; card: Card }) {
 
   const save = (patch: Partial<Card>) => void actions.updateCard(board.path, card.id, patch)
   const titleOf = (id: string) => index.find(e => e.id === id)
+
+  /**
+   * Saves pasted or dropped images beside the card and puts them into the description: at the
+   * cursor while it is being edited, else at its end. The description is saved at once, so the
+   * images are never left on disk with nothing naming them.
+   */
+  const addImages = async (files: File[], at?: { start: number; end: number }) => {
+    try {
+      const { markdown, scaled } = await saveImages(board.path, card.id, files)
+      const input = bodyInput.current
+      const text = at && input ? input.value : card.body
+      const where = at ?? { start: text.length, end: text.length }
+      const next = insertAt(text, where.start, where.end, markdown)
+      setBody(next.text)
+      save({ body: next.text })
+      if (at && input) requestAnimationFrame(() => input.setSelectionRange(next.cursor, next.cursor))
+      if (scaled) actions.toast(`Scaled ${scaled === 1 ? 'the image' : `${scaled} images`} down to fit under 1 MB`)
+    } catch (error) {
+      actions.toast((error as Error).message, 'error')
+    }
+  }
+  const dropImages = (e: React.DragEvent, at?: { start: number; end: number }) => {
+    const files = imageFiles(e.dataTransfer)
+    if (!files.length) return
+    e.preventDefault()
+    void addImages(files, at)
+  }
+  const selection = (el: HTMLTextAreaElement) => ({ start: el.selectionStart, end: el.selectionEnd })
+  // Kept from one render to the next: a new one would be a new component type each time, and every
+  // image of the description would load again.
+  const markdownParts = useMemo<Components>(
+    () => ({ img: ({ src, alt }) => <CardImage boardPath={board.path} src={typeof src === 'string' ? src : ''} alt={alt} /> }),
+    [board.path],
+  )
 
   return (
     <aside className="drawer" aria-label={`Card ${card.id}`} style={{ width }}>
@@ -200,18 +237,34 @@ function Drawer({ board, card }: { board: LoadedBoard; card: Card }) {
           </div>
           {editing ? (
             <textarea
+              ref={bodyInput}
               className="body-input"
               data-field="body"
               value={body}
-              placeholder="Markdown"
+              placeholder="Markdown; paste or drop an image to add it"
               rows={Math.min(24, Math.max(6, body.split('\n').length + 1))}
               onChange={e => setBody(e.target.value)}
               onBlur={() => body !== card.body && save({ body })}
+              onPaste={e => {
+                const files = imageFiles(e.clipboardData)
+                if (!files.length) return
+                e.preventDefault()
+                void addImages(files, selection(e.currentTarget))
+              }}
+              onDragOver={e => e.dataTransfer.types.includes('Files') && e.preventDefault()}
+              onDrop={e => dropImages(e, selection(e.currentTarget))}
             />
           ) : (
-            <div className="markdown" onDoubleClick={() => setEditing(true)}>
+            <div
+              className="markdown"
+              onDoubleClick={() => setEditing(true)}
+              onDragOver={e => e.dataTransfer.types.includes('Files') && e.preventDefault()}
+              onDrop={e => dropImages(e)}
+            >
               {card.body.trim() ? (
-                <Markdown remarkPlugins={[remarkGfm]}>{card.body}</Markdown>
+                <Markdown remarkPlugins={[remarkGfm]} components={markdownParts}>
+                  {card.body}
+                </Markdown>
               ) : (
                 <p className="muted">No description.</p>
               )}
@@ -324,6 +377,25 @@ function Drawer({ board, card }: { board: LoadedBoard; card: Card }) {
       </div>
     </aside>
   )
+}
+
+/**
+ * An image of the description. One in the board repo comes through the app's protocol; one not
+ * there (not pulled yet, or gone) shows its path in a placeholder until it is.
+ */
+function CardImage({ boardPath, src, alt }: { boardPath: string; src: string; alt?: string }) {
+  const url = imageUrl(boardPath, src)
+  const [missing, setMissing] = useState(false)
+  useEffect(() => setMissing(false), [url])
+  if (!url) return src ? <img src={src} alt={alt ?? ''} /> : null
+  if (missing) {
+    return (
+      <span className="image-missing" title="The image is not in the board repo on this machine (yet)">
+        Image not here yet: <code>{src}</code>
+      </span>
+    )
+  }
+  return <img src={url} alt={alt ?? ''} onError={() => setMissing(true)} />
 }
 
 async function openLinked(id: string, entry?: IndexEntry) {

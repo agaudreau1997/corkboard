@@ -12,7 +12,7 @@
 // e.g. dist/linux-unpacked/corkboard after `npm run dist:linux`.
 
 import { execFileSync } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -705,6 +705,73 @@ try {
   check(await page.evaluate(() => JSON.parse(localStorage.getItem('corkboard.ui')).drawerWidth === 560), 'and the width is remembered')
   await page.mouse.dblclick(edge.x + edge.width / 2 - 120, edge.y + 200)
   check((await drawerWidth()) === 440, 'double-clicking the edge puts it back')
+
+  // ---- images: pastedImage or droppedImage into the description, saved beside the card ----
+  // A paste and a drop as the page gets them, with a PNG the page draws: small (kept as it is) or
+  // a big one of noise, which no compression shrinks under 1 MB (scaled down to WebP).
+  const imageEvent = (selector, kind, big) =>
+    page.locator(selector).evaluate(
+      async (el, { kind, big }) => {
+        const side = big ? 1600 : 24
+        const canvas = document.createElement('canvas')
+        canvas.width = canvas.height = side
+        const ctx = canvas.getContext('2d')
+        if (big) {
+          const data = ctx.createImageData(side, side)
+          for (let i = 0; i < data.data.length; i++) data.data[i] = i % 4 === 3 ? 255 : Math.floor(Math.random() * 256)
+          ctx.putImageData(data, 0, 0)
+        } else {
+          ctx.fillStyle = '#d9645b'
+          ctx.fillRect(0, 0, side, side)
+        }
+        const blob = await new Promise(r => canvas.toBlob(r, 'image/png'))
+        const dt = new DataTransfer()
+        dt.items.add(new File([blob], 'shot.png', { type: 'image/png' }))
+        const init = { bubbles: true, cancelable: true }
+        el.dispatchEvent(kind === 'paste' ? new ClipboardEvent('paste', { ...init, clipboardData: dt }) : new DragEvent('drop', { ...init, dataTransfer: dt }))
+        return blob.size
+      },
+      { kind, big },
+    )
+  const imageCardFile = path.join(root, MAIN.path, 'cards', `${openId}.md`)
+  const imagesDir = path.join(root, MAIN.path, 'cards', openId)
+  const imageLinks = () => [...readFileSync(imageCardFile, 'utf8').matchAll(/!\[\]\(([^)]+)\)/g)].map(m => m[1])
+  await page.locator('.drawer .section-head').getByRole('button', { name: 'Edit', exact: true }).click()
+  const bodyInput = page.locator('.drawer .body-input')
+  await bodyInput.evaluate(el => {
+    el.focus()
+    el.setSelectionRange(0, 0)
+  })
+  await imageEvent('.drawer .body-input', 'paste', false)
+  const pastedImage = await until(() => imageLinks()[0])
+  check(new RegExp(`^${openId}/[0-9a-f]{16}\\.png$`).test(pastedImage ?? ''), `a pasted image is written into the description at the cursor: ${pastedImage}`)
+  check(!!pastedImage && (await bodyInput.inputValue()).startsWith(`![](${pastedImage})\n`), 'at the top, where the cursor was, on a line of its own')
+  check(!!pastedImage && existsSync(path.join(root, MAIN.path, 'cards', pastedImage)), `and saved beside the card, in cards/${openId}/`)
+  await page.locator('.drawer .section-head').getByRole('button', { name: 'Preview', exact: true }).click()
+  const bigSize = await imageEvent('.drawer .markdown', 'drop', true)
+  const droppedImage = await until(() => imageLinks()[1], 20000)
+  check(bigSize > 1024 * 1024 && /\.webp$/.test(droppedImage ?? ''), `a ${(bigSize / 1048576).toFixed(1)} MB image dropped on the description goes at its end, scaled down to WebP: ${droppedImage}`)
+  check(!!droppedImage && statSync(path.join(root, MAIN.path, 'cards', droppedImage)).size <= 1024 * 1024, 'under 1 MB')
+  check(!!(await until(async () => (await page.locator('.toast').textContent().catch(() => '')).includes('Scaled the image down'))), 'and the app says it scaled it')
+  const shown = () => page.locator('.drawer .markdown img').evaluateAll(imgs => imgs.map(i => ({ src: i.src, w: i.naturalWidth })))
+  const loaded = await until(async () => {
+    const imgs = await shown()
+    return imgs.length === 2 && imgs.every(i => i.w > 0) ? imgs : null
+  })
+  check(!!loaded && loaded.every(i => i.src.startsWith('card-image://')), `the description shows both through the app's protocol (${JSON.stringify(loaded ?? (await shown()))})`)
+  // One the description names that this machine lacks (not pulled yet) is a placeholder.
+  writeFileSync(imageCardFile, readFileSync(imageCardFile, 'utf8').replace(`![](${pastedImage})`, `![](${pastedImage}) ![](${openId}/not-pulled-yet.png)`))
+  check(!!(await until(async () => (await page.locator('.drawer .image-missing').count()) === 1)), 'an image not on this machine yet shows a placeholder with its path')
+  // The protocol serves nothing outside a board repo, nor a file of the repo that is no image.
+  writeFileSync(path.join(scratch, 'outside.png'), readFileSync(path.join(root, MAIN.path, 'cards', pastedImage)))
+  const projectOfTab = (await page.locator(`.tab[title$=":${MAIN.path}"]`).first().getAttribute('title')).split(':')[0]
+  const refused = await page.evaluate(
+    urls => Promise.all(urls.map(src => new Promise(r => Object.assign(new Image(), { onload: () => r(`loaded ${src}`), onerror: () => r(null), src })))),
+    [`card-image://${projectOfTab}/..%2Foutside.png`, `card-image://${projectOfTab}/%2E%2E/outside.png`, `card-image://${projectOfTab}/${MAIN.path}/board.json`, `file://${path.join(scratch, 'outside.png')}`],
+  )
+  check(refused.every(r => r === null), `paths out of the repo, a file that is no image and file: load nothing (${refused.filter(Boolean).join(', ') || 'none loaded'})`)
+  check(!!(await until(() => execFileSync('git', ['log', '--format=%B', '-8'], { cwd: root }).toString().includes(`Add an image to ${openId}`), 8000)), 'the board repo commits the images')
+  check(readdirSync(imagesDir).every(n => !n.endsWith('.tmp')), 'and leaves no temporary file beside them')
 
   await page.keyboard.press('Control+f')
   check(await page.locator('.filter').evaluate(el => el === document.activeElement), 'Ctrl+F focuses the filter')

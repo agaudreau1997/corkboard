@@ -14,6 +14,8 @@ moon-base/                  the board repo
     ├── map.json            the map view's positions and backdrops
     ├── cards/
     │   ├── MB-1.md
+    │   ├── MB-1/           MB-1's images
+    │   │   └── 3f2a9c01d4e5b6a7.png
     │   └── MB-2.md
     └── ideas/              a child board: a sub-folder with its own board.json
         ├── board.json
@@ -40,6 +42,7 @@ moon-base/                  the board repo
   ```
 
   The app writes the keys it knows in a fixed order and leaves out empty ones, so a move is a one-line diff and a file edited by hand comes back unchanged. A key it doesn't know is kept as it is. Every change stamps `updated`, which settles a sync conflict (below).
+- **`cards/<ID>/`**: the card's images, pasted or dropped into its description, each named by a hash of its bytes. The description names them relative to the card file (`![](MB-12/3f2a9c01d4e5b6a7.png)`), so a Claude session reads them at that path, and they go with the card when it moves to another board (archiving leaves them where they are). The app keeps PNG, JPEG, GIF and WebP up to 1 MB each, since an image stays in the history for good: a bigger one is scaled down to WebP until it fits. An image the description names that isn't on this machine yet (not pulled) shows as a placeholder with its path.
 - **`map.json`**: the map view's node positions, list backdrops and filters.
 - **`theme.json`**: the project's colours (see [Project colours](using.md#project-colours)).
 - **`project.json`**: the project's settings; today only `work` (see [Work mode](work-mode.md)).
@@ -50,7 +53,7 @@ The app commits the board repo itself a few seconds after the last change, with 
 
 ## Synced between machines
 
-With a remote, the app pulls (fetch + rebase) at start, every minute, when its window gets focus and on *Sync* in the sidebar, and pushes a moment after every commit. A conflict is settled without asking where the answer is clear: a card keeps the side edited last (its `updated` stamp), a map keeps every position from both sides, a `board.json` keeps every list, a `theme.json` keeps this machine's. Anything else (a README both machines edited) stops the sync with the rebase aborted, the repo as it was, and a red line in the sidebar.
+With a remote, the app pulls (fetch + rebase) at start, every minute, when its window gets focus and on *Sync* in the sidebar, and pushes a moment after every commit. A conflict is settled without asking where the answer is clear: a card keeps the side edited last (its `updated` stamp), a map keeps every position from both sides, a `board.json` keeps every list, a `theme.json` keeps this machine's. Two machines adding the same picture to a card write the same file (the name is its hash), so that never conflicts; two different images given one name by hand keep this machine's. Anything else (a README both machines edited) stops the sync with the rebase aborted, the repo as it was, and a red line in the sidebar.
 
 ## Per-machine code repo
 

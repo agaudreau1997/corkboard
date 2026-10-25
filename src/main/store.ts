@@ -1,10 +1,14 @@
 // The board repo on disk: every board (and the project's theme.json and project.json) is read into
 // memory at start, kept current by a recursive watch on the repo (so a Claude session editing a
-// card file moves it on screen), and every write goes through here.
+// card file moves it on screen), and every write goes through here. A card's images sit in a
+// folder beside its file (`cards/<ID>/`, see src/shared/images.ts): the store writes them, moves
+// them with the card and leaves them out of the card scan and the watch.
 
+import { createHash } from 'node:crypto'
 import { existsSync, promises as fs, watch, type FSWatcher } from 'node:fs'
 import path from 'node:path'
 import { between, cardNumber, parseCard, serializeCard, slugify, sortCards, tryParseCard } from '@shared/cardfile'
+import { MAX_IMAGE_BYTES, sniffImage } from '@shared/images'
 import { parseProjectSettings, PROJECT_FILE, projectSettingsText } from '@shared/project'
 import { isEmptyTheme, parseTheme, THEME_FILE, themeText } from '@shared/theme'
 import type {
@@ -228,6 +232,11 @@ export class BoardStore {
     return path.join(this.root, boardPath, 'cards', `${id}.md`)
   }
 
+  /** The folder of a card's images, beside its file. */
+  imagesDir(boardPath: string, id: string): string {
+    return path.join(this.root, boardPath, 'cards', id)
+  }
+
   private metaFile(boardPath: string): string {
     return path.join(this.root, boardPath, 'board.json')
   }
@@ -310,9 +319,12 @@ export class BoardStore {
       .map(([, b]) => b.meta.key)
   }
 
-  /** Writes a card that comes from another repo, as it is (its id kept). */
-  async adoptCard(boardPath: string, card: Card): Promise<Card> {
+  /** Writes a card that comes from another repo, as it is (its id kept), and copies its images. */
+  async adoptCard(boardPath: string, card: Card, imagesFrom?: string): Promise<Card> {
     const adopted = { ...card, updated: new Date().toISOString() }
+    if (imagesFrom && (await exists(imagesFrom))) {
+      await fs.cp(imagesFrom, this.imagesDir(boardPath, card.id), { recursive: true })
+    }
     await this.writeCard(boardPath, adopted)
     return adopted
   }
@@ -323,9 +335,35 @@ export class BoardStore {
     const file = this.cardFile(boardPath, id)
     this.texts.delete(file)
     await fs.rm(file, { force: true })
+    await fs.rm(this.imagesDir(boardPath, id), { recursive: true, force: true })
     board.cards = board.cards.filter(c => c.id !== id)
     this.events?.onDelta({ path: boardPath, cards: [], removed: [id] })
     this.events?.onTreeChanged()
+  }
+
+  /**
+   * Saves an image for a card, beside its file, and answers the path its description names it by
+   * (`<ID>/<hash>.png`). The type comes from the bytes, the name from their hash: the same picture
+   * saved twice, here or on another machine, is one file. Above MAX_IMAGE_BYTES it says no (the
+   * window scales an image down before it gets here).
+   */
+  async addImage(boardPath: string, id: string, bytes: Uint8Array): Promise<string> {
+    if (!this.board(boardPath).cards.some(c => c.id === id)) throw new Error(`No card ${id} on ${boardPath}`)
+    const ext = sniffImage(bytes)
+    if (!ext) throw new Error('That is not a PNG, JPEG, GIF or WebP image.')
+    if (bytes.length > MAX_IMAGE_BYTES) {
+      throw new Error(`The image is ${megabytes(bytes.length)}; a card's images stay under ${megabytes(MAX_IMAGE_BYTES)}.`)
+    }
+    const name = `${createHash('sha256').update(bytes).digest('hex').slice(0, 16)}.${ext}`
+    const dir = this.imagesDir(boardPath, id)
+    const file = path.join(dir, name)
+    if (!(await exists(file))) {
+      await fs.mkdir(dir, { recursive: true })
+      const tmp = `${file}.${process.pid}.tmp`
+      await fs.writeFile(tmp, bytes)
+      await renameOver(tmp, file)
+    }
+    return `${id}/${name}`
   }
 
   async createCard(
@@ -385,6 +423,7 @@ export class BoardStore {
       pos: pos ?? between(inList.at(-1)?.pos, undefined),
       updated: new Date().toISOString(),
     }
+    await this.moveImages(this.imagesDir(fromPath, id), this.imagesDir(toPath, id))
     await this.writeCard(toPath, card)
     const oldFile = this.cardFile(fromPath, id)
     this.texts.delete(oldFile)
@@ -393,6 +432,22 @@ export class BoardStore {
     this.events?.onDelta({ path: fromPath, cards: [], removed: [id] })
     this.events?.onTreeChanged()
     return card
+  }
+
+  /**
+   * Moves a card's image folder along with it. Its description names the images relative to the
+   * card file, so the paths stay right wherever the two land together.
+   */
+  private async moveImages(from: string, to: string): Promise<void> {
+    if (!(await exists(from))) return
+    await fs.mkdir(path.dirname(to), { recursive: true })
+    try {
+      await fs.rename(from, to)
+    } catch {
+      // A folder already there (an earlier copy) or Windows holding a file: merge, then remove.
+      await fs.cp(from, to, { recursive: true })
+      await fs.rm(from, { recursive: true, force: true })
+    }
   }
 
   /** Moves a list, with every card in it, to the end of another board's lists. */
@@ -665,6 +720,9 @@ export class BoardStore {
           delta(boardPath).cards.push(...board.cards)
           treeChanged = true
         }
+      } else if (parts.at(-2) === 'cards' && this.boards.has(parts.slice(0, -2).join('/'))) {
+        // A card's image folder (or a stray file in the cards folder): nothing on screen reads it.
+        continue
       } else if (!name.includes('.')) {
         // A folder appeared or went away: maybe a whole board (git checkout, a copy).
         const before = new Set(this.boards.keys())
@@ -725,6 +783,10 @@ async function renameOver(from: string, to: string): Promise<void> {
       await new Promise(r => setTimeout(r, 25 * attempt))
     }
   }
+}
+
+function megabytes(n: number): string {
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`
 }
 
 async function readOrUndefined(abs: string): Promise<string | undefined> {
