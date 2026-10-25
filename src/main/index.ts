@@ -3,6 +3,7 @@ import { execFile, execFileSync } from 'node:child_process'
 import { appendFileSync, existsSync, readdirSync, readFileSync, promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { patchSettings } from '@shared/project'
 import { patchOrder } from '@shared/sideorder'
 import type {
@@ -707,6 +708,27 @@ function createWindow(): void {
     if (/^https?:\/\//.test(url)) void openUrl(url, u => shell.openExternal(u))
     return { action: 'deny' }
   })
+  // The window only ever shows the app: a link followed anywhere in it (a description's, or one a
+  // page script sets) would leave the boards for a page with no way back. A web page goes to the
+  // browser instead, and anything else is dropped. The app's own page may load again: the dev
+  // server's hot reload, at its http://localhost URL, and the built app's file: URL.
+  const appPage = process.env.ELECTRON_RENDERER_URL
+    ? new URL(process.env.ELECTRON_RENDERER_URL)
+    : pathToFileURL(path.join(__dirname, '../renderer/index.html'))
+  const leaveApp = (e: Electron.Event, url: string) => {
+    let target: URL
+    try {
+      target = new URL(url)
+    } catch {
+      e.preventDefault()
+      return
+    }
+    if (target.protocol === appPage.protocol && target.host === appPage.host && target.pathname === appPage.pathname) return
+    e.preventDefault()
+    if (/^https?:$/.test(target.protocol)) void openUrl(url, u => shell.openExternal(u))
+  }
+  win.webContents.on('will-navigate', leaveApp)
+  win.webContents.on('will-redirect', leaveApp)
   if (process.env.ELECTRON_RENDERER_URL) void win.loadURL(process.env.ELECTRON_RENDERER_URL)
   else void win.loadFile(path.join(__dirname, '../renderer/index.html'))
 }

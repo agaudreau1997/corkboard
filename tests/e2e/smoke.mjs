@@ -819,6 +819,33 @@ try {
   })
   check(mdTable.inside && mdTable.wrap !== 'nowrap' && mdTable.position === 'static' && mdTable.cursor !== 'pointer', `a description's table wraps and stays in its box (${JSON.stringify(mdTable)})`)
 
+  // A description's links open in the browser and leave the window where it was (CORK-68).
+  const descLinkCardFile = path.join(root, MAIN.path, 'cards', `${openId}.md`)
+  const descLinkBody = readFileSync(descLinkCardFile, 'utf8')
+  writeFileSync(descLinkCardFile, `${descLinkBody.replace(/\s+$/, '')}\n\nSee [the docs](https://example.com/desc-link) and [the plan](notes/plan.md).\n`)
+  const descLinkWeb = page.locator('.drawer .markdown a', { hasText: 'the docs' })
+  await descLinkWeb.waitFor()
+  const descLinkPage = page.url()
+  await descLinkWeb.click()
+  check(!!(await until(() => openedUrls().includes('https://example.com/desc-link'))), "a click on a description's web link opens it in the browser")
+  await page.locator('.drawer .markdown a', { hasText: 'the plan' }).click()
+  await page.waitForTimeout(300)
+  check(page.url() === descLinkPage && openedUrls().every(u => !u.includes('plan.md')), `and the window stays on the app (${page.url()}); a relative link does nothing`)
+  // Any navigation away from the app is turned back by the main process, a web page sent to the
+  // browser. Emitted as the window gets it: a real one turned back leaves Playwright waiting on it.
+  const descNav = url =>
+    app.evaluate(({ BrowserWindow }, url) => {
+      let prevented = false
+      BrowserWindow.getAllWindows()[0].webContents.emit('will-navigate', { preventDefault: () => (prevented = true) }, url)
+      return prevented
+    }, url)
+  check((await descNav('https://example.com/desc-nav')) && !!(await until(() => openedUrls().includes('https://example.com/desc-nav'))), 'a navigation of the window to a web page is turned back and goes to the browser')
+  check((await descNav('file:///etc/hostname')) && !openedUrls().includes('file:///etc/hostname'), 'one to a file is turned back and opens nothing')
+  check(!(await descNav(descLinkPage)), "the app's own page may load again (a reload)")
+  check(page.url() === descLinkPage && (await page.locator('.drawer').count()) === 1, 'and the window keeps the app')
+  writeFileSync(descLinkCardFile, descLinkBody)
+  await until(async () => (await page.locator('.drawer .markdown a', { hasText: 'the docs' }).count()) === 0)
+
   // A selection started with a card open starts from that card; the bar's actions need two.
   const other = page.locator(`.kanban .card[data-card]:visible:not([data-card="${openId}"])`).first()
   const otherId = await other.getAttribute('data-card')

@@ -114,7 +114,10 @@ function Drawer({ board, card }: { board: LoadedBoard; card: Card }) {
   // Kept from one render to the next: a new one would be a new component type each time, and every
   // image of the description would load again.
   const markdownParts = useMemo<Components>(
-    () => ({ img: ({ src, alt }) => <CardImage boardPath={board.path} src={typeof src === 'string' ? src : ''} alt={alt} /> }),
+    () => ({
+      img: ({ src, alt }) => <CardImage boardPath={board.path} src={typeof src === 'string' ? src : ''} alt={alt} />,
+      a: DescriptionLink,
+    }),
     [board.path],
   )
 
@@ -398,6 +401,26 @@ function CardImage({ boardPath, src, alt }: { boardPath: string; src: string; al
     )
   }
   return <img src={url} alt={alt ?? ''} onError={() => setMissing(true)} />
+}
+
+/**
+ * A link of the description. A web page opens in the browser, never in the app's window; anything
+ * else (a relative path, `file:`, `javascript:`) goes nowhere.
+ */
+function DescriptionLink({ href, children }: { href?: string; children?: React.ReactNode }) {
+  const web = !!href && /^https?:\/\//.test(href)
+  return (
+    <a
+      href={href}
+      title={href}
+      onClick={e => {
+        e.preventDefault()
+        if (web) api.shell.openExternal(href!)
+      }}
+    >
+      {children}
+    </a>
+  )
 }
 
 /**
