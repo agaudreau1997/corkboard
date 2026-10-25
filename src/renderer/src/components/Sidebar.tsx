@@ -12,10 +12,15 @@ import { ProjectMark } from './ProjectMark'
 /** The menu of the side panel's own space: its header, and below the projects. */
 const panelMenu = (): MenuItem[] => [{ label: 'Add project…', onSelect: () => actions.setModal({ kind: 'addProject' }) }]
 
+/** The width of the side panel folded to its rail. */
+export const RAIL_WIDTH = 48
+
 export function Sidebar() {
   const order = useStore(s => s.config?.order?.projects)
   const projects = inOrder(useStore(s => s.projects), p => p.id, order)
+  const collapsed = useStore(s => s.sidebarCollapsed)
 
+  if (collapsed) return <Rail projects={projects} />
   return (
     <aside className="sidebar">
       <div className="sidebar-head" onContextMenu={e => openContextMenu(e, panelMenu())}>
@@ -23,6 +28,7 @@ export function Sidebar() {
         <button className="icon-button" title="Add project" onClick={() => actions.setModal({ kind: 'addProject' })}>
           +
         </button>
+        <FoldButton collapsed={false} />
       </div>
       {/* A row's own menu stops here (`openContextMenu` stops the event), so this one is the
           space around and below them. */}
@@ -49,6 +55,56 @@ export function Sidebar() {
       </footer>
       <ResizeHandle />
     </aside>
+  )
+}
+
+/**
+ * The side panel folded: its button and a mark per project (its icon, else its swatch), which opens
+ * the project's main board as its row does. Nothing else: no boards, no footer, no flyout; to see
+ * the boards, it unfolds again.
+ */
+function Rail({ projects }: { projects: ProjectNode[] }) {
+  const activeProject = useStore(s => (s.activeTab ? projectIdOf(s.activeTab) : null))
+  return (
+    <aside className="sidebar rail">
+      <div className="sidebar-head" onContextMenu={e => openContextMenu(e, panelMenu())}>
+        <FoldButton collapsed />
+      </div>
+      <nav className="rail-marks" onContextMenu={e => openContextMenu(e, panelMenu())}>
+        {projects.map(project => (
+          <button
+            key={project.id}
+            className={`rail-mark${activeProject === project.id ? ' active' : ''}`}
+            data-project={project.id}
+            title={project.name}
+            aria-label={project.name}
+            onClick={() => project.mainBoard && void actions.openBoard(project.mainBoard)}
+            onContextMenu={e => openContextMenu(e, projectMenu(project))}
+          >
+            <ProjectMark project={project} always />
+          </button>
+        ))}
+      </nav>
+    </aside>
+  )
+}
+
+/** Folds the side panel to its rail, and back; the choice is remembered with the layout. */
+function FoldButton({ collapsed }: { collapsed: boolean }) {
+  const label = collapsed ? 'Expand the side panel' : 'Collapse the side panel'
+  return (
+    <button
+      className="icon-button fold-button"
+      title={label}
+      aria-label={label}
+      aria-expanded={!collapsed}
+      onClick={() => useStore.setState({ sidebarCollapsed: !collapsed })}
+    >
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <rect x="2" y="3" width="12" height="10" rx="2" />
+        <path d="M6 3v10" />
+      </svg>
+    </button>
   )
 }
 

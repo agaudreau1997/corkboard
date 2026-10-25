@@ -1721,6 +1721,31 @@ try {
   check(!!(await until(() => savedOrder().projects?.[0] === lastProject)), `the project order is saved too (${JSON.stringify(savedOrder().projects)})`)
   rememberedOrder = { projects: await projectIds(), project: firstProjectId, boards: await siblingTitles() }
 
+  // ---- the side panel folds to a rail of project marks ----
+  const projectNames = await page.locator('.project-name').allTextContents()
+  await page.locator('.sidebar-head').getByRole('button', { name: 'Collapse the side panel' }).click()
+  check(!!(await until(async () => (await page.locator('.sidebar.rail').count()) === 1)), "the header's button folds the side panel to a rail")
+  const railIds = () => page.locator('.rail-mark').evaluateAll(els => els.map(el => el.dataset.project))
+  check(JSON.stringify(await railIds()) === JSON.stringify(rememberedOrder.projects), `with a mark per project, in the side panel's order (${await railIds()})`)
+  const railTitles = await page.locator('.rail-mark').evaluateAll(els => els.map(el => el.title))
+  check(JSON.stringify(railTitles) === JSON.stringify(projectNames), `each named in its tooltip (${railTitles.join(', ')})`)
+  check((await page.locator('.rail-mark .project-icon, .rail-mark .theme-swatch').count()) === projectNames.length, "each mark the project's icon or swatch")
+  const railLeftovers = await page.locator('.sidebar .project-row, .sidebar .tree-row, .sidebar-foot, .sidebar .resize-x, .sidebar .brand').count()
+  check(railLeftovers === 0, `and nothing else: no rows, footer, title or resize handle (${railLeftovers})`)
+  const railWidth = (await page.locator('.sidebar').boundingBox()).width
+  const mainLeft = (await page.locator('main.main').boundingBox()).x
+  check(railWidth <= 49 && mainLeft <= 49, `the main view takes the freed width (rail ${railWidth} px, main view from ${mainLeft})`)
+  await page.locator('.rail-mark[data-project="side-project"]').click()
+  check(!!(await until(async () => (await page.locator('.tab.active').getAttribute('title')) === 'side-project:side-project')), "a click on a project's mark opens its main board")
+  check((await page.locator('.rail-mark.active').getAttribute('data-project')) === 'side-project', 'and the mark shows its project is in front')
+  await page.locator('.sidebar-head').getByRole('button', { name: 'Expand the side panel' }).click()
+  check(!!(await until(async () => (await page.locator('.project-row').count()) === projectNames.length)), 'its button unfolds the side panel again')
+  check((await page.locator('.sidebar-foot').count()) === 1 && (await page.locator('.sidebar .resize-x').count()) === 1, 'with its footer and resize handle')
+  check((await page.locator('.sidebar').boundingBox()).width > 150, 'at its width before')
+  // Folded again for the restart, which finds it so.
+  await page.locator('.sidebar-head').getByRole('button', { name: 'Collapse the side panel' }).click()
+  await page.locator('.sidebar.rail').waitFor()
+
   // Table view.
   await page.locator(`.tab[title$=":${MAIN.path}"]`).click()
   await page.getByRole('tab', { name: 'Table', exact: true }).click()
@@ -1761,6 +1786,12 @@ if (rememberedOrder) {
   try {
     await pageAgain.setViewportSize({ width: 1500, height: 940 }).catch(() => {})
     await pageAgain.locator('.sidebar').waitFor()
+    const railAgain = await until(async () => {
+      const ids = await pageAgain.locator('.rail-mark').evaluateAll(els => els.map(el => el.dataset.project))
+      return ids.length === rememberedOrder.projects.length && ids
+    })
+    check(JSON.stringify(railAgain) === JSON.stringify(rememberedOrder.projects), `after a restart the side panel is still folded to its rail, marks in order (${railAgain})`)
+    await pageAgain.locator('.sidebar-head').getByRole('button', { name: 'Expand the side panel' }).click()
     const idsAgain = () => pageAgain.locator('.project').evaluateAll(els => els.map(el => el.dataset.project))
     const restartedIds = await until(async () => {
       const ids = await idsAgain()

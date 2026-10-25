@@ -32,6 +32,8 @@ type UiPrefs = {
   tabs: Tab[]
   activeTab: string | null
   sidebarWidth: number
+  /** The side panel folded to its rail of project marks. */
+  sidebarCollapsed: boolean
   terminalHeight: number
   /** The card drawer's width. */
   drawerWidth: number
@@ -51,6 +53,7 @@ function loadPrefs(): UiPrefs {
     tabs: [],
     activeTab: null,
     sidebarWidth: 260,
+    sidebarCollapsed: false,
     terminalHeight: 300,
     drawerWidth: 440,
     expanded: [],
@@ -145,6 +148,7 @@ useStore.subscribe(state => {
     tabs: state.tabs,
     activeTab: state.activeTab,
     sidebarWidth: state.sidebarWidth,
+    sidebarCollapsed: state.sidebarCollapsed,
     terminalHeight: state.terminalHeight,
     drawerWidth: state.drawerWidth,
     expanded: state.expanded,
