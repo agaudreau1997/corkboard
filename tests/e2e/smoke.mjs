@@ -971,8 +971,8 @@ try {
   check(doneByTool.list === 'done' && Date.parse(doneByTool.updated) >= mcpBefore - 1000, `move_card moved ${tackleId} to done, stamped by the app (${doneByTool.updated})`)
   check(await until(() => /^list: done$/m.test(readFileSync(path.join(root, MAIN.path, 'cards', `${tackleId}.md`), 'utf8'))), 'the card file has it')
   check(!!(await until(async () => (await page.locator(`.column[data-list="done"] .card[data-card="${tackleId}"]`).count()) === 1)), 'and the board on screen shows it')
-  const refused = await mcpTool(mcpUrl, mcpToken, 'move_card', { id: tackleId, list: 'no-such-list' })
-  check(refused.error?.includes('has no list no-such-list') ?? false, `a list that is not there is refused (${refused.error})`)
+  const noList = await mcpTool(mcpUrl, mcpToken, 'move_card', { id: tackleId, list: 'no-such-list' })
+  check(noList.error?.includes('has no list no-such-list') ?? false, `a list that is not there is refused (${noList.error})`)
 
   // Forget it again from the drawer.
   await page.locator('.drawer .sessions li').first().waitFor()
