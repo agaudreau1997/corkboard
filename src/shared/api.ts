@@ -74,6 +74,8 @@ export type CorkboardApi = {
     move(fromPath: string, id: string, toPath: string, list: string | null, pos?: number): Promise<Card>
     duplicate(boardPath: string, id: string): Promise<Card>
     filePath(boardPath: string, id: string): Promise<string>
+    /** Saves an image beside the card (PNG, JPEG, GIF or WebP, at most 1 MB); answers its path for `![](…)`. */
+    addImage(boardPath: string, id: string, bytes: Uint8Array): Promise<string>
   }
   lists: {
     /** Moves a list and its cards to the end of another board; answers the list's id there. */

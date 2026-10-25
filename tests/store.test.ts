@@ -18,6 +18,9 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true })
 })
 
+/** The first bytes of a PNG, as the store tells an image: by its bytes. */
+const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 1, 2, 3])
+
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 async function until<T>(fn: () => T | undefined, ms = 3000): Promise<T> {
@@ -147,6 +150,53 @@ describe('BoardStore', () => {
     rmSync(otherRoot, { recursive: true, force: true })
   })
 
+  it("saves a card's images beside it, by the hash of their bytes, and refuses what is no image", async () => {
+    const store = new BoardStore(root)
+    await store.init()
+    const p = await store.createBoard('', 'Game', 'G')
+    const card = await store.createCard(p, { title: 'Shot', list: 'todo' })
+    const src = await store.addImage(p, card.id, PNG)
+    expect(src).toMatch(/^G-1\/[0-9a-f]{16}\.png$/)
+    expect(readFileSync(path.join(root, p, 'cards', src))).toEqual(Buffer.from(PNG))
+    // The same picture again is the same file.
+    expect(await store.addImage(p, card.id, PNG)).toBe(src)
+    await expect(store.addImage(p, card.id, new TextEncoder().encode('<svg onload="x()"/>'))).rejects.toThrow(/not a PNG/)
+    const huge = new Uint8Array(2 * 1024 * 1024)
+    huge.set(PNG)
+    await expect(store.addImage(p, card.id, huge)).rejects.toThrow(/under 1.0 MB/)
+    await expect(store.addImage(p, 'G-99', PNG)).rejects.toThrow(/No card/)
+
+    // The folder is no card and no board: the card scan reads the same cards.
+    const fresh = new BoardStore(root)
+    await fresh.init()
+    expect(fresh.board(p).cards.map(c => c.id)).toEqual([card.id])
+    expect(fresh.tree().map(n => n.path)).toEqual([p])
+  })
+
+  it('moves the images with their card, to another board and to another repo; archiving keeps them', async () => {
+    const store = new BoardStore(root)
+    await store.init()
+    const a = await store.createBoard('', 'Alpha', 'A')
+    const b = await store.createBoard('', 'Beta', 'B')
+    const card = await store.createCard(a, { title: 'Pictured', list: 'todo' })
+    const src = await store.addImage(a, card.id, PNG)
+    await store.updateCard(a, card.id, { archived: true })
+    expect(existsSync(path.join(root, a, 'cards', src))).toBe(true)
+    await store.moveCard(a, card.id, b, 'done')
+    expect(existsSync(path.join(root, b, 'cards', src))).toBe(true)
+    expect(existsSync(store.imagesDir(a, card.id))).toBe(false)
+
+    const otherRoot = mkdtempSync(path.join(os.tmpdir(), 'corkboard-other-'))
+    const other = new BoardStore(otherRoot)
+    await other.init()
+    const c = await other.createBoard('', 'Gamma', 'C')
+    await other.adoptCard(c, store.board(b).cards[0], store.imagesDir(b, card.id))
+    await store.dropCard(b, card.id)
+    expect(existsSync(path.join(otherRoot, c, 'cards', src))).toBe(true)
+    expect(existsSync(store.imagesDir(b, card.id))).toBe(false)
+    rmSync(otherRoot, { recursive: true, force: true })
+  })
+
   it('falls back to the project code folder, and prefers a board.json repo that exists here', async () => {
     const store = new BoardStore(root, {}, '/project/code')
     await store.init()
@@ -215,6 +265,30 @@ describe('BoardStore', () => {
     rmSync(store.cardFile(p, 'G-7'))
     await until(() => deltas.find(d => d.removed.includes('G-7')))
     expect(store.board(p).cards.map(c => c.id)).toEqual([card.id])
+    store.close()
+  })
+
+  it("leaves a card's image folder out of the watch", async () => {
+    const store = new BoardStore(root)
+    await store.init()
+    const p = await store.createBoard('', 'Game', 'G')
+    const card = await store.createCard(p, { title: 'Shot', list: 'todo' })
+    const deltas: BoardDelta[] = []
+    let treeChanges = 0
+    store.watch({ onDelta: d => deltas.push(d), onTreeChanged: () => treeChanges++ })
+    await sleep(100)
+    await store.addImage(p, card.id, PNG)
+    mkdirSync(path.join(root, p, 'cards', 'G-1', 'nested'))
+    writeFileSync(path.join(root, p, 'cards', 'G-1', 'nested', 'board.json'), '{"key":"N","title":"No board","lists":[]}')
+    writeFileSync(path.join(root, p, 'cards', 'G-1', 'note.md'), '---\nid: G-50\n---\n')
+    await sleep(400)
+    expect(deltas).toEqual([])
+    expect(treeChanges).toBe(0)
+    expect(store.board(p).cards.map(c => c.id)).toEqual([card.id])
+
+    // The cards themselves are still seen.
+    writeFileSync(store.cardFile(p, card.id), serializeCard({ ...card, list: 'done' }))
+    await until(() => deltas.find(d => d.cards.some(c => c.list === 'done')))
     store.close()
   })
 
@@ -404,6 +478,10 @@ describe('git', () => {
     await store.updateCard(p, 'G-1', { archived: true })
     expect(await committer.flush()).toBe('Archive G-1')
     expect(await committer.flush()).toBeUndefined()
+    const shot = await store.addImage(p, 'G-1', PNG)
+    expect(await committer.flush()).toBe('Add an image to G-1')
+    rmSync(path.join(root, p, 'cards', shot))
+    expect(await committer.flush()).toBe('Remove an image from G-1')
     // A card that does not parse (saved half-way by hand) is still committed, never stuck.
     writeFileSync(store.cardFile(p, 'G-1'), '---\nid: G-1\ntitle: [unclosed\n---\n')
     expect(await committer.flush()).toBe('Edit G-1')
@@ -423,7 +501,7 @@ describe('git', () => {
     expect(await committer.flush()).toBe("Remove the project's settings")
     const log = await git(root, ['log', '--format=%s'])
     expect(log.trim().split('\n').slice(-3)).toEqual(['Archive G-1', 'Move G-1: todo → done', 'Board: 2 changes'])
-    expect(committed.length).toBe(11)
+    expect(committed.length).toBe(13)
   })
 
   it('waits for a commit in flight, then commits what came after it', async () => {

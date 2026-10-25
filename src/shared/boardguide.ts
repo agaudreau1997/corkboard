@@ -19,6 +19,7 @@ Task boards, read and edited by the Corkboard app. Plain files, versioned in git
 - Every folder holding a \`board.json\` is a board. A board folder may hold other board folders: those are its child boards.
 - \`board.json\`: \`key\` (the card id prefix, unique in the repo), \`title\`, \`lists\` (ordered \`{ id, title, sort }\`: \`sort\` is how the list orders its cards: \`manual\`, by \`pos\`; \`updated\`, last changed first; \`newest\`, \`oldest\`, \`number\` or \`title\`. Unset, the list \`flow.done\` names sorts by \`updated\` and the others are \`manual\`), \`codeRepo\` (the code repo its cards' commits live in; child boards inherit it), \`flow.doing\` / \`flow.done\` (the list ids the app's tackle buttons move cards to), \`promptNotes\` (added to every prompt the app sends for its cards).
 - \`cards/<ID>.md\`: one card per file, named by its id (\`TASK-12.md\`). YAML front matter, then the description in Markdown.
+- \`cards/<ID>/\`: the card's images (pasted or dropped into its description in the app), named by a hash of their bytes. The description shows each by its path relative to the card file, \`![](TASK-12/3f2a9c01d4e5b6a7.png)\`, which is also where to read it. To add one by hand, put a PNG, JPEG, GIF or WebP of at most 1 MB in that folder and link it the same way.
 - \`map.json\`: the map view's node positions and filters. Leave it to the app.
 
 ## A card
@@ -38,12 +39,12 @@ sessions: [...]       # Claude Code sessions the app started for it; leave as is
 Description.
 \`\`\`
 
-Other keys the app knows: \`due\` (a date), \`complete: true\`, \`archived: true\`, \`jira\` (the Jira issue key the card is tracked as, \`jira: ABC-123\`). Keys it does not know are kept as they are.
+Other keys the app knows: \`due\` (a date), \`complete: true\`, \`archived: true\`, \`jira\` (the Jira issue key the card is tracked as, \`jira: ABC-123\`), \`cover\` (one of its images, as its description names it, shown on its face on the board: \`cover: TASK-12/3f2a9c01d4e5b6a7.png\`). Keys it does not know are kept as they are.
 
 - **Move a card**: change \`list:\` to another list id of its board. Keep \`pos:\`: most lists are \`manual\`, where the old number sorts the card among the others, and a sorted one places the card itself.
 - **New card**: \`cards/<KEY>-<n>.md\` with the next free number on that board, and \`id\`, \`title\`, \`list\`, \`pos\`, \`created\` and \`updated\` set.
 - **Archive** a card with \`archived: true\`; never delete card files.
-- **Move a card to another board** by moving its file into that board's \`cards/\` folder and setting \`list:\` to one of that board's lists. It keeps its id, so its commits and links still find it.
+- **Move a card to another board** by moving its file (and its \`cards/<ID>/\` folder of images, when it has one) into that board's \`cards/\` folder and setting \`list:\` to one of that board's lists. It keeps its id, so its commits and links still find it.
 - A card titled \`---\` (any run of dashes) is a divider inside its list, not work.
 
 ${opts.work ? workSection() : trailerSection()}`

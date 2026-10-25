@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Notification, shell } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Notification, protocol, shell } from 'electron'
 import { execFile, execFileSync } from 'node:child_process'
 import { appendFileSync, existsSync, readdirSync, readFileSync, promises as fs } from 'node:fs'
 import os from 'node:os'
@@ -21,8 +21,10 @@ import type {
   UpdateStatus,
 } from '@shared/types'
 import { autoUpdater } from 'electron-updater'
+import { IMAGE_SCHEME } from '@shared/images'
 import { desktopAvailable, openUrl } from './desktop'
 import { codeCommits, CodeRepoWatch, commitFiles, pullRepo, pushRepo } from './git'
+import { serveImage } from './images'
 import { McpHost, mcpPort, mcpToken } from './mcp'
 import { desktopNotice, notify } from './notify'
 import { boardKey, prepareBoardRepo, Project, projectId, splitKey } from './projects'
@@ -39,6 +41,11 @@ const TIMING = {
   syncIntervalMs: Number(process.env.CORKBOARD_SYNC_INTERVAL_MS ?? 60_000),
 }
 const UPDATE_CHECK_MS = 4 * 60 * 60_000
+
+// The cards' images reach the window on a protocol of their own (src/main/images.ts), never `file:`.
+// It has to be named before the app is ready; `standard` gives its URLs a host (the project) and a
+// path, `secure` keeps them from counting as mixed content.
+protocol.registerSchemesAsPrivileged([{ scheme: IMAGE_SCHEME, privileges: { standard: true, secure: true } }])
 
 let win: BrowserWindow | undefined
 const projects = new Map<string, Project>()
@@ -245,7 +252,8 @@ async function moveCard(fromKey: string, id: string, toKey: string, list: string
   const card = from.project.store.board(from.rel).cards.find(c => c.id === id)
   if (!card) throw new Error(`No card ${id}`)
   if (to.project.store.findCard(id)) throw new Error(`${to.project.name} already has a card ${id}.`)
-  const adopted = await to.project.store.adoptCard(to.rel, { ...card, list, ...(pos === undefined ? {} : { pos }) })
+  const images = from.project.store.imagesDir(from.rel, id)
+  const adopted = await to.project.store.adoptCard(to.rel, { ...card, list, ...(pos === undefined ? {} : { pos }) }, images)
   await from.project.store.dropCard(from.rel, id)
   return adopted
 }
@@ -455,6 +463,13 @@ function registerIpc(): void {
   ipcMain.handle('cards:filePath', (_e, key: string, id: string) => {
     const s = store(key)
     return s.store.cardFile(s.rel, id)
+  })
+  ipcMain.handle('cards:addImage', async (_e, key: string, id: string, bytes: Uint8Array) => {
+    const s = store(key)
+    const src = await s.store.addImage(s.rel, id, bytes)
+    // The watch leaves a card's image folder alone: the commit has to be asked for.
+    s.project.committer.touch()
+    return src
   })
   ipcMain.handle('lists:move', (_e, from: string, listId: string, to: string) => moveList(from, listId, to))
   ipcMain.handle('map:save', (_e, key: string, map: BoardMap) => {
@@ -708,6 +723,7 @@ app.whenReady().then(() => {
   if (process.platform === 'win32') app.setAppUserModelId('com.corkboard.app')
   mcpReady = startMcp()
   registerIpc()
+  protocol.handle(IMAGE_SCHEME, request => serveImage(request.url, id => projects.get(id)?.root))
   createWindow()
   startUpdates()
 })
