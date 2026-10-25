@@ -22,7 +22,7 @@ import type {
 } from '@shared/types'
 import { autoUpdater } from 'electron-updater'
 import { desktopAvailable, openUrl } from './desktop'
-import { codeCommits, commitFiles } from './git'
+import { codeCommits, CodeRepoWatch, commitFiles, pullRepo, pushRepo } from './git'
 import { desktopNotice, notify } from './notify'
 import { boardKey, prepareBoardRepo, Project, projectId, splitKey } from './projects'
 import { PtyManager } from './pty'
@@ -46,6 +46,9 @@ const commitCache = new Map<string, { at: number; commits: Awaited<ReturnType<ty
 const send = (channel: string, ...args: unknown[]) => {
   if (win && !win.isDestroyed()) win.webContents.send(channel, ...args)
 }
+
+// The code repo panel's repo: the active tab's board's code repo, watched while it is shown.
+const repoWatch = new CodeRepoWatch((key, status) => send('git:repoStatus', key, status))
 
 const ptys = new PtyManager({
   created: info => send('pty:created', info),
@@ -477,6 +480,23 @@ function registerIpc(): void {
     const repo = codeRepoOf(key)
     return repo ? commitFiles(repo, sha) : []
   })
+  // The code repo panel: none for a board without a code repo here, or one that isn't a git repo.
+  ipcMain.handle('git:watchRepo', (_e, key: string | null) => repoWatch.watch(key, key ? codeRepoOf(key) : undefined))
+  ipcMain.handle('git:push', async (_e, key: string) => {
+    const repo = codeRepoOf(key)
+    if (!repo) throw new Error('This board has no code repo here.')
+    const status = await pushRepo(repo)
+    repoWatch.refresh()
+    return status
+  })
+  ipcMain.handle('git:pull', async (_e, key: string) => {
+    const repo = codeRepoOf(key)
+    if (!repo) throw new Error('This board has no code repo here.')
+    const result = await pullRepo(repo)
+    commitCache.clear()
+    repoWatch.refresh()
+    return result
+  })
   ipcMain.handle('sync:now', async (_e, id?: string) => {
     const list = id ? [projects.get(id)].filter((p): p is Project => !!p) : [...projects.values()]
     const results = await Promise.all(list.map(p => p.sync.sync()))
@@ -634,6 +654,8 @@ function createWindow(): void {
   // Coming back to the window is when the other machine's changes matter.
   win.on('focus', () => {
     for (const project of projects.values()) project.sync.syncIfStale()
+    // Work done in another window (a commit in an editor's own git) shows in the code repo panel.
+    repoWatch.refresh(true)
   })
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//.test(url)) void openUrl(url, u => shell.openExternal(u))
@@ -664,6 +686,7 @@ function prepareQuit(): Promise<void> {
     try {
       ptys.killAll()
       stopDesktopWatches()
+      repoWatch.stop()
       updates?.stop()
       const pending = [...projects.values()].map(async p => {
         p.store.close()

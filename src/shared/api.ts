@@ -15,6 +15,7 @@ import type {
   ProjectSettings,
   ProjectTheme,
   PtyInfo,
+  RepoStatus,
   SessionRef,
   SyncStatus,
   TackleRequest,
@@ -108,6 +109,15 @@ export type CorkboardApi = {
     cardCommits(boardPath: string): Promise<CodeCommit[]>
     commitFiles(boardPath: string, sha: string): Promise<{ status: string; file: string }[]>
     commitBoardNow(): Promise<string | undefined>
+    /**
+     * Watches the code repo of a board (the active tab's; null stops) for the code repo panel and
+     * answers where it stands; null when it has none here or it isn't a git repo.
+     */
+    watchRepo(boardPath: string | null): Promise<RepoStatus | null>
+    /** Pushes the code repo's branch (setting its upstream when it has none); commits nothing. */
+    push(boardPath: string): Promise<RepoStatus | null>
+    /** Pulls the code repo's upstream, fast-forward only; answers how many commits came in. */
+    pull(boardPath: string): Promise<{ status: RepoStatus | null; pulled: number }>
   }
   pty: {
     create(opts: { title: string; boardPath?: string; cwd?: string }): Promise<PtyInfo>
@@ -144,5 +154,7 @@ export type CorkboardApi = {
     /** A desktop notification about a terminal was clicked: show that tab. */
     ptyShow(cb: (id: string) => void): () => void
     updateStatus(cb: (status: UpdateStatus) => void): () => void
+    /** The watched code repo changed (a commit, a checkout, a fetch). */
+    repoStatus(cb: (boardPath: string, status: RepoStatus | null) => void): () => void
   }
 }

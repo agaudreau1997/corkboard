@@ -71,6 +71,9 @@ const api: CorkboardApi = {
     cardCommits: boardPath => invoke('git:cardCommits', boardPath),
     commitFiles: (boardPath, sha) => invoke('git:commitFiles', boardPath, sha),
     commitBoardNow: () => invoke('git:commitBoardNow'),
+    watchRepo: boardPath => invoke('git:watchRepo', boardPath),
+    push: boardPath => invoke('git:push', boardPath),
+    pull: boardPath => invoke('git:pull', boardPath),
   },
   pty: {
     create: opts => invoke('pty:create', opts),
@@ -101,6 +104,7 @@ const api: CorkboardApi = {
     ptyStatus: cb => subscribe('pty:status', cb),
     ptyShow: cb => subscribe('pty:show', cb),
     updateStatus: cb => subscribe('updates:changed', cb),
+    repoStatus: cb => subscribe('git:repoStatus', cb),
   },
 }
 
