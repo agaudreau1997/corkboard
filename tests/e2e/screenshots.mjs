@@ -205,8 +205,8 @@ const openCard = async id => {
 let failed = false
 try {
   await page.getByRole('treeitem').first().waitFor()
-  await page.locator('.tree-row', { hasText: MAIN.title }).first().locator('.twisty').click()
-  await page.locator('.tree-row', { hasText: MAIN.title }).first().click()
+  // The project's row opens its main board, the fixture's first top-level one.
+  await page.locator('.project-row').first().click()
   await page.locator('.column').first().waitFor()
 
   // The board, as it opens.

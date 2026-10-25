@@ -429,12 +429,15 @@ export class AutoCommitter {
       } else if (file === THEME_FILE) {
         lines.push(`${status === 'A' ? 'Add' : status === 'D' ? 'Remove' : 'Edit'} the project's theme`)
       } else if (file === PROJECT_FILE) {
-        // The one setting today is the work flag: say which way it went when it did.
+        // Say which setting changed, and which way, when it is one this app knows.
         const now = status === 'D' ? {} : parseProjectSettings(await fs.readFile(path.join(this.root, file), 'utf8'))
         const before = status === 'A' || !hasHead ? '{}' : await git(this.root, ['show', `HEAD:${file}`]).catch(() => '')
         const was = parseProjectSettings(before)
+        const said = lines.length
         if (now && was && !!now.work !== !!was.work) lines.push(`Turn work mode ${now.work ? 'on' : 'off'}`)
-        else lines.push(`${status === 'A' ? 'Add' : status === 'D' ? 'Remove' : 'Edit'} the project's settings`)
+        if (now && was && now.board !== was.board && now.board) lines.push(`Make ${now.board} the main board`)
+        if (now && was && now.icon !== was.icon) lines.push(now.icon ? "Set the project's icon" : "Remove the project's icon")
+        if (lines.length === said) lines.push(`${status === 'A' ? 'Add' : status === 'D' ? 'Remove' : 'Edit'} the project's settings`)
       } else {
         lines.push(`${status === 'A' ? 'Add' : status === 'D' ? 'Remove' : 'Edit'} ${file}`)
       }

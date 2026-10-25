@@ -1,5 +1,5 @@
 import { actions, findNode, useStore } from '../state'
-import { ThemeSwatch } from './ThemeEditor'
+import { ProjectMark } from './ProjectMark'
 
 export function TabBar() {
   const tabs = useStore(s => s.tabs)
@@ -25,7 +25,7 @@ export function TabBar() {
           >
             {projects.length > 1 && (
               <span className="tab-parent">
-                {project?.theme && <ThemeSwatch theme={project.theme} />}
+                <ProjectMark project={project} />
                 {project?.name} ›
               </span>
             )}

@@ -5,6 +5,7 @@ import { existsSync, promises as fs } from 'node:fs'
 import path from 'node:path'
 import { BOARD_GUIDE_FILE, boardGuide } from '@shared/boardguide'
 import { slugify } from '@shared/cardfile'
+import { mainBoardOf, patchSettings } from '@shared/project'
 import type {
   BoardDelta,
   BoardNode,
@@ -89,6 +90,8 @@ export class Project {
   node(): ProjectNode {
     const rekey = (nodes: BoardNode[]): BoardNode[] =>
       nodes.map(n => ({ ...n, path: this.key(n.path), children: rekey(n.children) }))
+    const tree = this.store.tree()
+    const main = mainBoardOf(this.store.settings, tree)
     return {
       id: this.id,
       name: this.name,
@@ -98,8 +101,35 @@ export class Project {
       ...(this.store.theme ? { theme: this.store.theme } : {}),
       guide: this.hasGuide(),
       work: !!this.store.settings.work,
-      boards: rekey(this.store.tree()),
+      ...(this.store.settings.icon ? { icon: this.store.settings.icon } : {}),
+      ...(main !== undefined ? { mainBoard: this.key(main) } : {}),
+      boards: rekey(tree),
     }
+  }
+
+  /** The folder of its main board (see `mainBoardOf`); undefined in a repo with no board. */
+  mainBoard(): string | undefined {
+    return mainBoardOf(this.store.settings, this.store.tree())
+  }
+
+  /**
+   * Refuses to take the main board away (a delete, a move to another project): a project is
+   * always opened at its main board, so another has to be picked first.
+   */
+  keepMainBoard(rel: string, doing: string): void {
+    if (rel !== this.mainBoard()) return
+    const title = this.store.board(rel).meta.title
+    throw new Error(`“${title}” is ${this.name}'s main board, so it can't be ${doing}: pick another main board in its Project settings first.`)
+  }
+
+  /**
+   * Makes the main board of a project that has none, as *New board…* makes a board (the default
+   * lists), and names it in `project.json`: a project has no purpose without one.
+   */
+  async makeMainBoard(title: string, key?: string): Promise<string> {
+    const rel = await this.store.createBoard('', title, key)
+    await this.store.saveSettings(patchSettings(this.store.settings, { board: rel }))
+    return rel
   }
 
   board(rel: string): LoadedBoard {
@@ -146,6 +176,21 @@ export async function prepareBoardRepo(root: string): Promise<void> {
 
 async function writeGuide(root: string, opts: { work?: boolean } = {}): Promise<void> {
   await fs.writeFile(path.join(root, BOARD_GUIDE_FILE), boardGuide(path.basename(root), opts))
+}
+
+/**
+ * Whether a folder holds a board anywhere below it (a `board.json`), for *Add project* to ask for
+ * the main board of one that has none. A folder that isn't there has none.
+ */
+export async function hasBoards(root: string, depth = 4): Promise<boolean> {
+  if (existsSync(path.join(root, 'board.json'))) return true
+  if (depth === 0) return false
+  const entries = await fs.readdir(root, { withFileTypes: true }).catch(() => [])
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'cards') continue
+    if (await hasBoards(path.join(root, entry.name), depth - 1)) return true
+  }
+  return false
 }
 
 export function projectId(name: string, taken: Set<string>): string {

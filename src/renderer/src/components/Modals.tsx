@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { slugify } from '@shared/cardfile'
 import { isEmptyTheme } from '@shared/theme'
-import type { BoardMeta, CodeRepoFrom, ListDef, ProjectSettings, ProjectTheme } from '@shared/types'
+import type { BoardMeta, CodeRepoFrom, ListDef, ProjectSettingsPatch, ProjectTheme } from '@shared/types'
 import { actions, api, findNode, projectIdOf, useStore } from '../state'
-import { ThemeEditor, ThemeSwatch } from './ThemeEditor'
+import { iconFromFile, ProjectMark } from './ProjectMark'
+import { ThemeEditor } from './ThemeEditor'
 
 export function Modals() {
   const modal = useStore(s => s.modal)
@@ -237,7 +238,7 @@ function Settings({ path }: { path: string }) {
         <div className="field">
           <span>Project</span>
           <div className="theme-pointer">
-            <ThemeSwatch theme={project.theme} />
+            <ProjectMark project={project} always />
             <span className="muted">
               {project.name}: its colours ({project.theme ? (project.theme.name ?? 'Custom') : 'Default'}) are every
               board's in it, and its code folder every board's fallback.
@@ -410,11 +411,32 @@ function Settings({ path }: { path: string }) {
 }
 
 
+/**
+ * Adds a board repo as a project. A folder with no board yet (a new or empty one) gets its main
+ * board with it, so the dialog asks for that board's title and key once it knows the folder has
+ * none; a repo that has boards is added as it is.
+ */
 function AddProject() {
   const [root, setRoot] = useState('')
   const [name, setName] = useState('')
   const [codeRepo, setCodeRepo] = useState('')
   const [busy, setBusy] = useState(false)
+  // Whether the folder typed or picked holds no board yet; undefined until the app has looked.
+  const [empty, setEmpty] = useState<{ root: string; empty: boolean }>()
+  const [title, setTitle] = useState<string>()
+  const [key, setKey] = useState<string>()
+  useEffect(() => {
+    const folder = root.trim()
+    if (!folder) return
+    const timer = setTimeout(() => {
+      void api.projects.hasBoards(folder).then(has => setEmpty({ root: folder, empty: !has }))
+    }, 200)
+    return () => clearTimeout(timer)
+  }, [root])
+  const asksBoard = !!root.trim() && empty?.root === root.trim() && empty.empty
+  const folderName = root.split(/[\\/]/).filter(Boolean).at(-1) ?? ''
+  const boardTitle = title ?? (name.trim() || folderName)
+  const boardKey = key ?? deriveKey(boardTitle)
   const pick = async (title: string, set: (v: string) => void, also?: (v: string) => void) => {
     const folder = await api.projects.pickFolder(title)
     if (folder) {
@@ -426,7 +448,12 @@ function AddProject() {
     if (!root.trim()) return
     setBusy(true)
     try {
-      const id = await actions.addProject({ boardRoot: root.trim(), name: name.trim() || undefined, codeRepo: codeRepo.trim() || undefined })
+      const id = await actions.addProject({
+        boardRoot: root.trim(),
+        name: name.trim() || undefined,
+        codeRepo: codeRepo.trim() || undefined,
+        ...(asksBoard ? { board: { title: boardTitle.trim() || undefined, key: boardKey || undefined } } : {}),
+      })
       actions.setModal(null)
       actions.toast(`Added ${name.trim() || id}`)
     } catch (error) {
@@ -483,6 +510,30 @@ function AddProject() {
           names its own.
         </small>
       </label>
+      {asksBoard && (
+        <section className="field-group" aria-labelledby="main-board-heading">
+          <h3 id="main-board-heading">Main board</h3>
+          <p className="muted small">
+            The folder has no board yet: the project starts with this one, opened by a click on the project. It starts
+            with To do / Doing / Done.
+          </p>
+          <div className="field-grid">
+            <label className="field">
+              <span>Board title</span>
+              <input value={boardTitle} onChange={e => setTitle(e.target.value)} />
+            </label>
+            <label className="field">
+              <span>Card key</span>
+              <input
+                value={boardKey}
+                maxLength={8}
+                onChange={e => setKey(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+              />
+            </label>
+          </div>
+          <small className="muted">Cards are numbered {boardKey || 'KEY'}-1, {boardKey || 'KEY'}-2…</small>
+        </section>
+      )}
       <div className="modal-actions">
         <button type="button" className="ghost" onClick={() => actions.setModal(null)}>
           Cancel
@@ -606,6 +657,9 @@ function ProjectSettings({ id }: { id: string }) {
   const [theme, setTheme] = useState<ProjectTheme | null>(project?.theme ?? null)
   const [themeEdited, setThemeEdited] = useState(false)
   const [work, setWork] = useState(!!project?.work)
+  const [icon, setIcon] = useState(project?.icon)
+  const iconInput = useRef<HTMLInputElement>(null)
+  const [mainBoard, setMainBoard] = useState(project?.mainBoard)
   // The window wears the theme as it is edited, and its own again once the settings close.
   useEffect(() => {
     if (themeEdited) useStore.setState({ themePreview: { projectId: id, theme } })
@@ -615,7 +669,12 @@ function ProjectSettings({ id }: { id: string }) {
   const save = async () => {
     try {
       if (themeEdited) await api.projects.setTheme(id, isEmptyTheme(theme) ? null : theme)
-      if (work !== project.work) await api.projects.setSettings(id, { work } satisfies ProjectSettings)
+      const patch: ProjectSettingsPatch = {
+        ...(work !== project.work ? { work } : {}),
+        ...(icon !== project.icon ? { icon: icon ?? null } : {}),
+        ...(mainBoard && mainBoard !== project.mainBoard ? { board: mainBoard.slice(mainBoard.indexOf(':') + 1) } : {}),
+      }
+      if (Object.keys(patch).length) await api.projects.setSettings(id, patch)
       await api.projects.update(id, { name, codeRepo: codeRepo.trim() || null })
       await actions.refreshTree()
       for (const key of Object.keys(useStore.getState().boards)) if (key.startsWith(`${id}:`)) await actions.loadBoard(key)
@@ -642,6 +701,43 @@ function ProjectSettings({ id }: { id: string }) {
         <input autoFocus value={name} onChange={e => setName(e.target.value)} />
       </label>
       <div className="field">
+        <span>Icon</span>
+        <div className="icon-picker">
+          <span className="icon-preview">
+            <ProjectMark project={{ icon, theme: theme ?? undefined }} always />
+          </span>
+          <button type="button" className="small" onClick={() => iconInput.current?.click()}>
+            {icon ? 'Change image…' : 'Choose an image…'}
+          </button>
+          <input
+            ref={iconInput}
+            type="file"
+            accept="image/*"
+            aria-label="Icon image"
+            hidden
+            onChange={async e => {
+              const file = e.target.files?.[0]
+              e.target.value = ''
+              if (!file) return
+              try {
+                setIcon(await iconFromFile(file))
+              } catch (error) {
+                actions.toast((error as Error).message, 'error')
+              }
+            }}
+          />
+          {icon && (
+            <button type="button" className="small" onClick={() => setIcon(undefined)}>
+              Clear
+            </button>
+          )}
+        </div>
+        <small className="muted">
+          Shown in place of the colour swatch wherever the project is named. Scaled down to 64 px and kept in{' '}
+          <code>project.json</code>, so every machine shows it.
+        </small>
+      </div>
+      <div className="field">
         <span>Board repo</span>
         <code className="path">{project.root}</code>
       </div>
@@ -667,6 +763,22 @@ function ProjectSettings({ id }: { id: string }) {
           own that exists on this machine (Board settings, <em>Code repo</em>).
         </small>
       </label>
+      {project.boards.length > 0 && (
+        <label className="field">
+          <span>Main board</span>
+          <select value={mainBoard} onChange={e => setMainBoard(e.target.value)}>
+            {project.boards.map(b => (
+              <option key={b.path} value={b.path}>
+                {b.title}
+              </option>
+            ))}
+          </select>
+          <small className="muted">
+            The board a click on the project opens, one of its top-level boards; its child boards and the others are
+            listed under the project. It can't be deleted or moved to another project while it is the main one.
+          </small>
+        </label>
+      )}
       <div className="field">
         <label className="check">
           <input type="checkbox" checked={work} onChange={e => setWork(e.target.checked)} />

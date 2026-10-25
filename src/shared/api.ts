@@ -10,9 +10,10 @@ import type {
   ClaudeInfo,
   CodeCommit,
   LoadedBoard,
+  NewProject,
   NotifyConfig,
   ProjectNode,
-  ProjectSettings,
+  ProjectSettingsPatch,
   ProjectTheme,
   PtyInfo,
   RepoStatus,
@@ -38,13 +39,21 @@ export type CorkboardApi = {
   /** One project per board repo; its boards are named `<project id>:<path>`. */
   projects: {
     list(): Promise<ProjectNode[]>
-    /** Adds a board repo (an empty or new folder becomes a git repo); answers its id. */
-    add(opts: { boardRoot: string; name?: string; codeRepo?: string }): Promise<string>
+    /**
+     * Adds a board repo (an empty or new folder becomes a git repo) and answers its id. One with no
+     * board yet gets its main board, `opts.board`.
+     */
+    add(opts: NewProject): Promise<string>
+    /** Whether a folder already holds a board, so *Add project* knows to ask for the main one. */
+    hasBoards(boardRoot: string): Promise<boolean>
     update(id: string, patch: { name?: string; codeRepo?: string | null }): Promise<void>
     /** Writes the project's `theme.json` (shared through the repo); null removes it. */
     setTheme(id: string, theme: ProjectTheme | null): Promise<void>
-    /** Writes the project's `project.json` (work mode; shared through the repo); nothing set removes it. */
-    setSettings(id: string, settings: ProjectSettings): Promise<void>
+    /**
+     * Changes the project's `project.json` (work mode, icon; shared through the repo): the keys
+     * given, `null` clearing one. Nothing left set removes the file.
+     */
+    setSettings(id: string, patch: ProjectSettingsPatch): Promise<void>
     /** Writes the board repo's CLAUDE.md (the card format) when it has none. */
     addGuide(id: string): Promise<void>
     /** Takes it out of the app; its folder stays. */

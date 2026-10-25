@@ -209,6 +209,19 @@ describe('BoardSync', () => {
     expect(JSON.parse(readFileSync(a.file('project.json'), 'utf8')).work).toBe(false)
   })
 
+  it("keeps the project's icon set on one machine when the other changed another setting", async () => {
+    const a = machine(clone('a'))
+    const b = machine(clone('b'))
+    const icon = 'data:image/png;base64,iVBORw0KGgo='
+    writeFileSync(a.file('project.json'), `${JSON.stringify({ icon })}\n`)
+    await a.sync.sync()
+    writeFileSync(b.file('project.json'), '{ "work": true }\n')
+    expect((await b.sync.sync()).state).toBe('synced')
+    expect(JSON.parse(readFileSync(b.file('project.json'), 'utf8'))).toEqual({ icon, work: true })
+    expect((await a.sync.sync()).state).toBe('synced')
+    expect(JSON.parse(readFileSync(a.file('project.json'), 'utf8'))).toEqual({ icon, work: true })
+  })
+
   it('stops on a conflict it cannot settle and leaves the repo as it was', async () => {
     const a = machine(clone('a'))
     const b = machine(clone('b'))

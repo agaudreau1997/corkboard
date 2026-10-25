@@ -3,6 +3,7 @@ import { execFile, execFileSync } from 'node:child_process'
 import { appendFileSync, existsSync, readdirSync, readFileSync, promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { patchSettings } from '@shared/project'
 import type {
   AppConfig,
   BoardMap,
@@ -10,9 +11,10 @@ import type {
   Card,
   CardPatch,
   ClaudeInfo,
+  NewProject,
   NotifyConfig,
   ProjectConfig,
-  ProjectSettings,
+  ProjectSettingsPatch,
   ProjectTheme,
   SessionRef,
   SyncStatus,
@@ -27,7 +29,7 @@ import { codeCommits, CodeRepoWatch, commitFiles, pullRepo, pushRepo } from './g
 import { serveImage } from './images'
 import { McpHost, mcpPort, mcpToken } from './mcp'
 import { desktopNotice, notify } from './notify'
-import { boardKey, prepareBoardRepo, Project, projectId, splitKey } from './projects'
+import { boardKey, hasBoards, prepareBoardRepo, Project, projectId, splitKey } from './projects'
 import { PtyManager } from './pty'
 import { shellProbe } from './shell'
 import { CLAUDE, openInDesktop, promptFor, resume, stopDesktopWatches, tackle } from './tackle'
@@ -283,6 +285,7 @@ async function moveBoardToProject(key: string, targetId: string): Promise<string
   const target = projects.get(targetId)
   if (!target) throw new Error(`No project ${targetId}`)
   if (target === from.project) throw new Error('The board is already in that project.')
+  from.project.keepMainBoard(from.rel, 'moved')
   const keys = from.project.store.keysUnder(from.rel)
   const taken = new Set(target.store.allBoards().map(b => b.meta.key))
   const clash = keys.filter(k => taken.has(k))
@@ -311,7 +314,8 @@ function registerIpc(): void {
     return [...projects.values()].map(p => p.node())
   })
   ipcMain.handle('projects:pickFolder', (_e, title: string) => pickFolder(title))
-  ipcMain.handle('projects:add', async (_e, opts: { boardRoot: string; name?: string; codeRepo?: string }) => {
+  ipcMain.handle('projects:hasBoards', (_e, boardRoot: string) => hasBoards(path.resolve(boardRoot)))
+  ipcMain.handle('projects:add', async (_e, opts: NewProject) => {
     await openProjects()
     const root = path.resolve(opts.boardRoot)
     if ([...projects.values()].some(p => p.root === root)) throw new Error('That board repo is already a project.')
@@ -324,7 +328,9 @@ function registerIpc(): void {
       ...(opts.codeRepo ? { codeRepo: opts.codeRepo } : {}),
     }
     const config = await writeConfig(c => ({ ...c, projects: [...c.projects, pc] }))
-    await openProject(pc, config)
+    const project = await openProject(pc, config)
+    // A folder with no board yet gets its main board with it.
+    if (project && !project.store.tree().length) await project.makeMainBoard(opts.board?.title?.trim() || name, opts.board?.key)
     send('boards:treeChanged')
     return pc.id
   })
@@ -356,10 +362,10 @@ function registerIpc(): void {
     if (!project) throw new Error(`No project ${id}`)
     await project.store.saveTheme(theme)
   })
-  ipcMain.handle('projects:setSettings', async (_e, id: string, settings: ProjectSettings) => {
+  ipcMain.handle('projects:setSettings', async (_e, id: string, patch: ProjectSettingsPatch) => {
     const project = projects.get(id)
     if (!project) throw new Error(`No project ${id}`)
-    await project.store.saveSettings(settings)
+    await project.store.saveSettings(patchSettings(project.store.settings, patch))
     commitCache.clear()
   })
   ipcMain.handle('projects:addGuide', async (_e, id: string) => {
@@ -428,6 +434,7 @@ function registerIpc(): void {
   })
   ipcMain.handle('boards:remove', (_e, key: string, force?: boolean) => {
     const s = store(key)
+    s.project.keepMainBoard(s.rel, 'deleted')
     return s.store.deleteBoard(s.rel, !!force)
   })
   ipcMain.handle('boards:moveToProject', (_e, key: string, targetId: string) => moveBoardToProject(key, targetId))

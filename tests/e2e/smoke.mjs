@@ -274,19 +274,33 @@ let quitCard
 try {
   // ---- the tree and tabs ----
   await page.getByRole('treeitem').first().waitFor()
+  // The project's main board (the first top-level one by title, project.json naming none) is the
+  // project's row: its child boards and the other top-level board are listed under the project.
   const rows = await page.locator('.tree-row .tree-title').allTextContents()
-  check(rows.includes(MAIN.title) && rows.includes(SPARE.title), `tree roots: ${rows.join(', ')}`)
-  await page.locator('.tree-row', { hasText: MAIN.title }).first().locator('.twisty').click()
-  const children = await page.locator('.tree-row .tree-title').allTextContents()
-  check(CHILDREN.every(t => children.includes(t)), `child boards listed under ${MAIN.title}`)
+  check(CHILDREN.every(t => rows.includes(t)) && rows.includes(SPARE.title), `under the project, ${MAIN.title}'s child boards and ${SPARE.title} (${rows.join(', ')})`)
+  check(!rows.includes(MAIN.title), `the main board ${MAIN.title} has no row of its own`)
+  const projectRow = page.locator('.project-row').first()
+  const projectTwisty = projectRow.locator('.twisty')
+  check((await projectTwisty.locator('svg').count()) === 1, 'the arrow is a drawn chevron')
+  const turned = () => projectTwisty.locator('svg').evaluate(el => getComputedStyle(el).transform)
+  const openTurn = await turned()
+  await projectTwisty.click()
+  check(!!(await until(async () => (await page.locator('.tree-row').count()) === 0)), "the project's arrow folds its boards")
+  check(!!(await until(async () => (await turned()) !== openTurn)), 'and the chevron turns')
+  check((await page.locator('.tab').count()) === 0, 'without opening a board')
+  await projectTwisty.click()
+  check(!!(await until(async () => (await page.locator('.tree-row').count()) === rows.length)), 'a second click unfolds them')
   const { version } = JSON.parse(readFileSync(path.join(appDir, 'package.json'), 'utf8'))
   const updateLine = page.locator('.update-line.update-off')
   await until(async () => (await updateLine.count()) === 1)
   const versionLine = await updateLine.textContent().catch(() => 'no line')
   check(versionLine === `Corkboard ${version}`, `the side panel shows the version, with updates off (${versionLine})`)
 
-  await page.locator('.tree-row', { hasText: MAIN.title }).first().click()
+  await projectRow.click()
   await page.locator('.column').first().waitFor()
+  check(((await page.locator('.tab.active').getAttribute('title')) ?? '').endsWith(`:${MAIN.path}`), `a click on the project opens its main board, ${MAIN.title}`)
+  check((await page.locator('.tree-row').count()) === rows.length, 'and folds nothing')
+  check((await projectRow.getAttribute('class')).includes('active'), "the project's row shows its main board is in front")
   const columns = await page.locator('.column-title').allTextContents()
   check(columns[0] === 'To do' && columns.includes('Next up') && columns.includes('Done'), `kanban columns: ${columns.join(' | ')}`)
   const done = page.locator('.column[data-list="done"]')
@@ -1041,10 +1055,11 @@ try {
   const triageLink = await until(() => openedUrls().find(u => u.startsWith('claude://code/new?') && new URL(u).searchParams.get('q').startsWith("Let's triage")))
   check(!!triageLink, 'Discuss / triage on a list opens one desktop session for the whole list')
 
-  const boardRow = page.locator('.tree-row.active')
-  const boardTitle = (await boardRow.locator('.tree-title').textContent())?.trim()
+  // The board in front is the main one: its menu is the project's *Main board*.
+  const boardTitle = MAIN.title
   const callsBeforeBoardTalk = sessionCalls().length
-  await boardRow.click({ button: 'right' })
+  await page.locator('.project-row').first().click({ button: 'right' })
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: /Main board/ }).hover()
   await page.locator('.ctx-menu').getByRole('menuitem', { name: /Discuss \/ triage/ }).hover()
   await page.locator('.ctx-menu').getByRole('menuitem', { name: 'In a terminal' }).click()
   const boardTalk = await until(() => sessionCalls().slice(callsBeforeBoardTalk)[0], 15000)
@@ -1388,18 +1403,99 @@ try {
   check((await page.locator('.board-head .head-settings .theme-swatch').count()) === 1, 'and carries the project swatch')
   await dialog.getByRole('button', { name: 'Cancel' }).click()
 
+  // ---- a project icon: picked in the settings, scaled down, shown in place of the swatch ----
+  const iconPng = Buffer.from(
+    await page.evaluate(() => {
+      const canvas = document.createElement('canvas')
+      canvas.width = 200
+      canvas.height = 100
+      const context = canvas.getContext('2d')
+      context.fillStyle = '#e0a96d'
+      context.fillRect(0, 0, 200, 100)
+      return canvas.toDataURL('image/png').split(',')[1]
+    }),
+    'base64',
+  )
+  await openProjectSettings()
+  await dialog.locator('input[type=file]').setInputFiles({ name: 'moon.png', mimeType: 'image/png', buffer: iconPng })
+  check(!!(await until(async () => (await dialog.locator('.icon-preview .project-icon').count()) === 1)), 'a picked image shows in the project settings')
+  await dialog.getByRole('button', { name: 'Save' }).click()
+  const projectFile = path.join(root, 'project.json')
+  const savedIcon = await until(() => existsSync(projectFile) && JSON.parse(readFileSync(projectFile, 'utf8')).icon)
+  check(typeof savedIcon === 'string' && savedIcon.startsWith('data:image/png;base64,'), 'Save writes the icon to project.json as a data URI')
+  const iconSize = await page.evaluate(
+    src => new Promise(resolve => {
+      const image = new Image()
+      image.onload = () => resolve([image.naturalWidth, image.naturalHeight])
+      image.onerror = () => resolve([0, 0])
+      image.src = src
+    }),
+    savedIcon || '',
+  )
+  check(iconSize[0] === 64 && iconSize[1] === 32, `scaled down to 64 px, its proportions kept (${iconSize.join('×')})`)
+  check(
+    !!(await until(async () => (await page.locator('.project-row .project-icon').count()) === 1)) &&
+      (await page.locator('.project-row .theme-swatch').count()) === 0,
+    'the side panel shows the icon in place of the swatch',
+  )
+  check((await page.locator('.board-head .head-settings .project-icon').count()) === 1, "and so does the header's Project settings button")
+  check(!!(await until(() => boardLogHas("Set the project's icon"), 12000)), 'the board repo commits the icon')
+  await openProjectSettings()
+  await dialog.getByRole('button', { name: 'Clear', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Save' }).click()
+  check(!!(await until(() => !existsSync(projectFile))), 'clearing the icon takes it out of project.json (and the file, with nothing else in it)')
+  check(!!(await until(async () => (await page.locator('.project-row .theme-swatch').count()) === 1)), 'and the swatch is back')
+
   // ---- projects: add one, move a board into it, delete a board with cards ----
   const second = path.join(scratch, 'second-board')
   await page.locator('.sidebar-head').getByRole('button', { name: '+' }).click()
   await page.getByRole('dialog').getByLabel('Board repo folder').fill(second)
   await page.getByRole('dialog').getByLabel(/^Name/).fill('Side project')
+  // A folder with no board: the project's main board is made with it.
+  const boardTitleField = page.getByRole('dialog').getByLabel('Board title')
+  check(!!(await until(async () => (await boardTitleField.count()) === 1)), 'Add project on a new folder asks for its main board')
+  const askedKey = await page.getByRole('dialog').getByLabel('Card key').inputValue()
+  check((await boardTitleField.inputValue()) === 'Side project' && askedKey === 'SP', `titled after the project, its key derived (${askedKey})`)
   await page.getByRole('dialog').getByRole('button', { name: 'Add project' }).click()
   await page.locator('.project-row', { hasText: 'Side project' }).waitFor()
   check(existsSync(path.join(second, '.git')), 'a new project folder becomes a git repo')
+  const sideMeta = await until(() => existsSync(path.join(second, 'side-project', 'board.json')) && JSON.parse(readFileSync(path.join(second, 'side-project', 'board.json'), 'utf8')))
+  check(sideMeta?.title === 'Side project' && sideMeta?.key === 'SP' && sideMeta?.lists?.length === 3, 'with its main board, the default lists in it')
+  check(JSON.parse(readFileSync(path.join(second, 'project.json'), 'utf8')).board === 'side-project', 'named in its project.json')
+  check(!!(await until(async () => ((await page.locator('.tab.active').getAttribute('title')) ?? '') === 'side-project:side-project')), 'and opened')
+  check((await page.locator('.project[data-project="side-project"] .empty-project').count()) === 0, 'so the project offers no + New board')
   check((await page.locator('.sidebar-foot').getByRole('button', { name: /Add project/ }).count()) === 0, 'the + beside the title replaces the footer\'s Add project link')
   check(existsSync(path.join(second, 'CLAUDE.md')) && existsSync(path.join(second, 'README.md')), 'with a README and a CLAUDE.md')
   check((await page.locator('.guide-offer').count()) === 0, 'so neither project offers a CLAUDE.md')
   check((await page.locator('.project-row').count()) === 2, 'the side panel shows both projects')
+  // The main board stays while it is the main one: its menu says why, and the app refuses.
+  await page.locator('.project-row').first().click({ button: 'right' })
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: /Main board/ }).hover()
+  const mainDelete = page.getByRole('menuitem', { name: /Delete board/ })
+  const mainMove = page.getByRole('menuitem', { name: /Move to project/ })
+  check(await mainDelete.isDisabled(), "the main board's Delete board… is disabled")
+  check(await mainMove.isDisabled(), 'and so is its Move to project')
+  check((await mainDelete.textContent()).includes('the main board'), `with a hint saying why (${await mainDelete.textContent()})`)
+  await page.keyboard.press('Escape')
+  const firstProject = await page.locator('.project').first().getAttribute('data-project')
+  const refused = await page.evaluate(key => window.corkboard.boards.remove(key).then(() => 'deleted', e => e.message), `${firstProject}:${MAIN.path}`)
+  check(refused.includes('main board') && existsSync(path.join(root, MAIN.path, 'board.json')), `and the app refuses to delete it (${refused})`)
+  // Another main board, picked in the project settings: project.json names it, the row opens it.
+  const pickMain = async title => {
+    await openProjectSettings()
+    await dialog.getByLabel('Main board').selectOption({ label: title })
+    await dialog.getByRole('button', { name: 'Save' }).click()
+  }
+  const namedMain = () => existsSync(projectFile) && JSON.parse(readFileSync(projectFile, 'utf8')).board
+  await pickMain(SPARE.title)
+  check((await until(namedMain)) === SPARE.path, `picking ${SPARE.title} as the main board writes it to project.json`)
+  check(!!(await until(async () => (await page.locator('.tree-row', { hasText: MAIN.title }).count()) === 1 && (await page.locator('.tree-row', { hasText: SPARE.title }).count()) === 0)), `${MAIN.title} gets a row under the project, ${SPARE.title} loses its own`)
+  await page.locator('.project-row').first().click()
+  check(!!(await until(async () => ((await page.locator('.tab.active').getAttribute('title')) ?? '').endsWith(`:${SPARE.path}`))), 'and the project opens it')
+  await page.locator('.tab.active .tab-close').click()
+  await pickMain(MAIN.title)
+  check((await until(async () => namedMain() === MAIN.path)) === true, `picking ${MAIN.title} again`)
+  await page.locator(`.tab[title$=":${MAIN.path}"]`).first().click()
   await page.locator('.tree-row', { hasText: SPARE.title }).click({ button: 'right' })
   await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Move to project' }).hover()
   await page.getByRole('menuitem', { name: 'Side project' }).click()
@@ -1408,6 +1504,7 @@ try {
   check(movedBoard, `${SPARE.title} moved into the other project, folder and cards`)
   check(cardFiles(path.join(second, SPARE.path, 'cards')).length === SPARE.files, `with its ${SPARE.files} cards`)
   await page.locator('.project[data-project] .tree-row', { hasText: SPARE.title }).waitFor()
+  check((await page.locator('.tab[title="side-project:side-project"]').count()) === 1, "the receiving project's main board keeps its tab through the move")
   const secondLogHas = text => {
     try {
       return execFileSync('git', ['log', '--format=%B'], { cwd: second, stdio: 'pipe' }).toString().includes(text)
@@ -1486,6 +1583,8 @@ try {
   await page.locator('.sidebar-head').getByRole('button', { name: '+' }).click()
   await page.getByRole('dialog').getByLabel('Board repo folder').fill(workRoot)
   await page.getByRole('dialog').getByLabel(/^Name/).fill(WORK.project)
+  await sleep(500)
+  check((await page.getByRole('dialog').getByLabel('Board title').count()) === 0, 'a repo that has boards is added without asking for one')
   await page.getByRole('dialog').getByRole('button', { name: 'Add project' }).click()
   const workRow = page.locator('.project-row', { hasText: WORK.project })
   await workRow.waitFor()
@@ -1497,7 +1596,7 @@ try {
   check(await dialog.getByLabel('Work mode').isChecked(), 'the project settings show work mode on, read from project.json')
   await shot('20-work-settings')
   await dialog.getByRole('button', { name: 'Cancel' }).click()
-  await page.locator('.tree-row', { hasText: WORK.title }).click()
+  await workRow.click()
   const keyedCard = page.locator(`.card[data-card="${KEYED.id}"]`)
   await keyedCard.click()
   await page.locator('.drawer').waitFor()

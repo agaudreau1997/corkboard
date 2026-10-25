@@ -12,6 +12,7 @@ import type {
   ListDef,
   ListSort,
   LoadedBoard,
+  NewProject,
   ProjectNode,
   ProjectTheme,
   PtyInfo,
@@ -278,11 +279,14 @@ export const actions = {
     for (const tab of tabs) await actions.loadBoard(tab.path)
   },
 
-  async addProject(opts: { boardRoot: string; name?: string; codeRepo?: string }) {
+  /** Adds a project and opens its main board (made with it when the repo had none). */
+  async addProject(opts: NewProject) {
     const id = await api.projects.add(opts)
     set({ config: await api.config.get() })
     await actions.refreshTree()
     set(s => ({ foldedProjects: s.foldedProjects.filter(p => p !== id) }))
+    const main = get().projects.find(p => p.id === id)?.mainBoard
+    if (main) await actions.openBoard(main)
     return id
   },
 
