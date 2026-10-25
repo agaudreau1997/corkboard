@@ -16,7 +16,7 @@ A project can wear colours of its own, so a glance at the window says which one 
 
 ## Boards and cards
 
-Each board is a folder with a `board.json`; a board folder can hold child boards, so boards nest like folders. Every board you open is a tab; `+` (or right-click → *New board inside…*) creates one. *Delete board…* removes an empty board (archived cards don't count) at once and one with cards (and child boards) once its name is typed; all of it stays in the repo's git history.
+Each board is a folder with a `board.json`; a board folder can hold child boards, so boards nest like folders. Every board you open is a tab; `+` (or right-click → *New board inside…*) creates one. Mouse buttons 4 and 5 go back and forward through the tabs and views you have shown, as in a browser (a closed tab is passed over; the history lasts while the app runs). *Delete board…* removes an empty board (archived cards don't count) at once and one with cards (and child boards) once its name is typed; all of it stays in the repo's git history.
 
 Cards are Markdown files (`cards/<ID>.md`: YAML front matter, then the description), so a move is a one-line diff and a Claude session can move a card by editing `list:`. The app watches the folder, so that move shows up on screen at once. It commits the board repo itself and keeps it in sync between machines: see [The board repo](board-repo.md).
 
@@ -28,7 +28,7 @@ A click on a card in any of them opens its drawer; click the id at the drawer's 
 
 ![The board view](images/board.png)
 
-Lists as columns, drag and drop. Dragging one card of a selection (Ctrl/Shift-click) moves the whole selection, dropped together in board order; dragging a card raises a tray at the bottom with *Map only (idea)* and *Archive* drop zones. Drag the empty background to pan, with momentum; a list taller than the board runs on under the terminal panel and scrolls inside the board. *+ Add a list* at the end; drag a list by its header to reorder the lists (each keeps its colour), double-click a list title to rename it. Double-click a card to edit its title in place on the card (Enter saves, Shift+Enter starts a line, Escape cancels). A list over 60 cards shows the first 60 until you ask.
+Lists as columns, drag and drop. Dragging one card of a selection (Ctrl/Shift-click) moves the whole selection, dropped together in board order; dragging a card raises a tray at the bottom with *Map only (idea)* and *Archive* drop zones. Drag the empty background to pan, with momentum; a list taller than the board runs on under the terminal panel and scrolls inside the board. *+ Add a list* at the end; drag a list by its header to reorder the lists (each keeps its colour), double-click a list title to rename it. Double-click a card to edit its title in place on the card (Enter saves, Shift+Enter starts a line, Escape cancels); the card takes a darker fill while it is edited, as the *+ Add a card* field has. A list over 60 cards shows the first 60 until you ask.
 
 ### Map
 

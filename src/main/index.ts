@@ -635,6 +635,15 @@ function createWindow(): void {
   win.on('focus', () => {
     for (const project of projects.values()) project.sync.syncIfStale()
   })
+  // Mouse 4 and 5 on Windows: the window gets them as app commands, and the renderer keeps the
+  // history of tabs they go through. Linux sends the same app commands, but the page also sees the
+  // buttons there and steps on them itself: listening on both would step twice.
+  if (process.platform === 'win32') {
+    win.on('app-command', (_e, command) => {
+      if (command === 'browser-backward') send('nav:step', 'back')
+      else if (command === 'browser-forward') send('nav:step', 'forward')
+    })
+  }
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//.test(url)) void openUrl(url, u => shell.openExternal(u))
     return { action: 'deny' }

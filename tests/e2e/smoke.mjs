@@ -285,6 +285,39 @@ try {
   check((await page.locator('.map-node').count()) > 30, `map draws the open idea cards (${await page.locator('.map-node').count()})`)
   await shot('02-map')
 
+  // ---- mouse 4 and 5 go back and forward through the tabs and their views ----
+  const where = () =>
+    page.evaluate(() => ({
+      tab: document.querySelector('.tab.active')?.getAttribute('title') ?? '',
+      view: document.querySelector('.segmented .on')?.textContent ?? '',
+    }))
+  const mouseNav = button =>
+    page.evaluate(b => {
+      const opts = { button: b, bubbles: true, cancelable: true }
+      document.querySelector('.board-pane').dispatchEvent(new MouseEvent('mousedown', opts))
+      return !document.querySelector('.board-pane').dispatchEvent(new MouseEvent('mouseup', opts))
+    }, button)
+  const isAt = async (tab, view) => {
+    const at = await until(async () => {
+      const w = await where()
+      return w.tab.endsWith(`:${tab}`) && w.view === view && w
+    }, 2000)
+    return !!at
+  }
+  const prevented = await mouseNav(3)
+  check(prevented && (await isAt(IDEAS.path, 'Board')), `mouse 4 goes back to the tab's board view, and nothing else sees it (${JSON.stringify(await where())})`)
+  await mouseNav(3)
+  check(await isAt(MAIN.path, 'Board'), `mouse 4 again goes back to the tab before (${JSON.stringify(await where())})`)
+  await mouseNav(4)
+  await mouseNav(4)
+  check(await isAt(IDEAS.path, 'Map'), `mouse 5 goes forward again (${JSON.stringify(await where())})`)
+  await mouseNav(3)
+  await page.getByRole('tab', { name: 'Table', exact: true }).click()
+  await mouseNav(4)
+  check(await isAt(IDEAS.path, 'Table'), `a view chosen after going back drops the way forward (${JSON.stringify(await where())})`)
+  await page.getByRole('tab', { name: 'Map', exact: true }).click()
+  await page.locator('.map-node').first().waitFor()
+
   // Link two ideas by dragging handle to node.
   const nodes = page.locator('.react-flow__node-card')
   const a = nodes.nth(0)
@@ -448,6 +481,7 @@ try {
   await todo.getByText('+ Add a card').click()
   const adder = await todo.locator('.add-card-form textarea').evaluate(el => getComputedStyle(el).resize)
   check(adder === 'none', `the add-a-card field has no resize grip (${adder})`)
+  const adderFill = await todo.locator('.add-card-form textarea').evaluate(el => getComputedStyle(el).backgroundColor)
   await page.keyboard.type('Drag me to done')
   await page.keyboard.press('Enter')
   await page.keyboard.press('Escape')
@@ -563,6 +597,12 @@ try {
     faceEditing.title[0] === faceBefore.title[0] && faceEditing.title[1] === faceBefore.title[1] && faceEditing.meta === faceBefore.meta,
     `opening a card's title for editing moves nothing (${JSON.stringify(faceBefore)} → ${JSON.stringify(faceEditing)})`,
   )
+  const fills = await page.evaluate(() => {
+    const bg = sel => getComputedStyle(document.querySelector(sel)).backgroundColor
+    return { editing: bg('.card[data-card="SB-1"]'), rest: bg('.card:not([data-card="SB-1"])') }
+  })
+  check(fills.editing !== fills.rest, `a card being renamed has a fill of its own (${fills.editing} vs ${fills.rest})`)
+  check(fills.editing === adderFill, `the add-a-card field has the same fill (${adderFill})`)
   await page.keyboard.type(' and a title long enough to wrap over several lines of the card, to be edited whole')
   const field = await renamed.locator('.rename-card').evaluate(el => {
     const s = getComputedStyle(el)

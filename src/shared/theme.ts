@@ -195,6 +195,9 @@ const TOKENS: { name: string; from: ThemeColor[]; value: (c: Bases) => string }[
   },
   { name: '--card', from: ['surface', 'background', 'text'], value: c => hex(card(c)) },
   { name: '--card-hover', from: ['surface', 'background', 'text'], value: c => hex(mix(card(c), c.text, 0.047)) },
+  // A card whose title is being edited, and the new card's field: sunk below the column, so it
+  // reads as a field and stands out from the cards at rest, on a light theme as on a dark one.
+  { name: '--card-edit', from: ['background', 'text'], value: c => hex(mix(c.background, c.text, 0.02)) },
   { name: '--line', from: ['line', 'background', 'text'], value: c => hex(line(c)) },
   { name: '--line-2', from: ['line', 'background', 'text'], value: c => hex(mix(line(c), c.text, 0.07)) },
   { name: '--text', from: ['text'], value: c => hex(c.text) },
