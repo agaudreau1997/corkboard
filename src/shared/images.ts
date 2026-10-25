@@ -132,14 +132,15 @@ export function scaledSize(width: number, height: number, step: number): { width
 }
 
 /**
- * A description with an image's Markdown put in at a selection, on a line of its own: whatever
- * stood around the cursor stays on either side. Answers the text and where the cursor goes.
+ * A description with an image's Markdown put in at a selection, as a paragraph of its own (a blank
+ * line on either side, so it never joins a table or a list above it): whatever stood around the
+ * cursor stays on either side. Answers the text and where the cursor goes.
  */
 export function insertAt(text: string, start: number, end: number, insert: string): { text: string; cursor: number } {
   const before = text.slice(0, start)
   const after = text.slice(end)
-  const lead = before && !before.endsWith('\n') ? '\n' : ''
-  const trail = after && !after.startsWith('\n') ? '\n' : ''
+  const lead = !before ? '' : before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n'
+  const trail = !after ? '' : after.startsWith('\n\n') ? '' : after.startsWith('\n') ? '\n' : '\n\n'
   const out = `${before}${lead}${insert}${trail}${after}`
   return { text: out, cursor: before.length + lead.length + insert.length }
 }

@@ -82,11 +82,13 @@ describe('card image paths', () => {
     }
   })
 
-  it('puts an image on a line of its own at the cursor', () => {
+  it('puts an image in a paragraph of its own at the cursor', () => {
     expect(insertAt('', 0, 0, '![](a.png)')).toEqual({ text: '![](a.png)', cursor: 10 })
-    expect(insertAt('one two', 3, 3, '![](a.png)')).toEqual({ text: 'one\n![](a.png)\n two', cursor: 14 })
-    expect(insertAt('one\n', 4, 4, '![](a.png)').text).toBe('one\n![](a.png)')
-    expect(insertAt('one REPLACED two', 4, 12, 'X').text).toBe('one \nX\n two')
+    expect(insertAt('one two', 3, 3, '![](a.png)')).toEqual({ text: 'one\n\n![](a.png)\n\n two', cursor: 15 })
+    expect(insertAt('one\n', 4, 4, '![](a.png)').text).toBe('one\n\n![](a.png)')
+    expect(insertAt('one\n\n', 5, 5, '![](a.png)').text).toBe('one\n\n![](a.png)')
+    expect(insertAt('| a |\n| - |\n| 1 |', 17, 17, 'X').text).toBe('| a |\n| - |\n| 1 |\n\nX')
+    expect(insertAt('one REPLACED two', 4, 12, 'X').text).toBe('one \n\nX\n\n two')
   })
 
   it('scales the longest side down to the cap, then by quarters', () => {
