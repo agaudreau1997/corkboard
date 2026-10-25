@@ -315,6 +315,45 @@ try {
   check((await firstCard('done')) === COMMITTED, `the done list shows its last updated card first (${await firstCard('done')})`)
   check((await firstCard('todo')) === `${MAIN.key}-1`, `the other lists keep their cards in their positions (${await firstCard('todo')})`)
   check((await page.locator('.divider-card').count()) > 0, 'dashes cards draw as dividers')
+  // A divider is still one 2 px line, in the middle of a grab area about 16 px tall that a hover
+  // fills; a right-click near its edge opens its menu.
+  const grabDivider = page.locator('.divider-card').first()
+  const grabLook = () =>
+    grabDivider.evaluate(el => {
+      const box = el.getBoundingClientRect()
+      const line = el.querySelector('span')
+      const r = line.getBoundingClientRect()
+      return {
+        height: box.height,
+        line: getComputedStyle(line).borderTopWidth,
+        lineHeight: r.height,
+        middle: Math.abs(r.y + r.height / 2 - (box.y + box.height / 2)),
+        fill: getComputedStyle(el).backgroundColor,
+        cursor: getComputedStyle(el).cursor,
+      }
+    })
+  const grabRest = await grabLook()
+  check(
+    grabRest.height >= 15.5 && grabRest.line === '2px' && grabRest.lineHeight === 2 && grabRest.middle <= 1 && grabRest.cursor === 'grab',
+    `a divider's grab area is about 16 px around its 2 px line (${JSON.stringify(grabRest)})`,
+  )
+  await grabDivider.scrollIntoViewIfNeeded()
+  const grabBox = await grabDivider.boundingBox()
+  await page.mouse.move(grabBox.x + grabBox.width / 2, grabBox.y + 2)
+  const grabHover = await grabLook()
+  check(grabHover.fill !== grabRest.fill, `a hover fills the divider's area (${grabRest.fill} → ${grabHover.fill})`)
+  await page.mouse.click(grabBox.x + grabBox.width / 2, grabBox.y + 2, { button: 'right' })
+  check((await page.locator('.ctx-menu').count()) === 1, "a right-click at the area's edge opens the divider's menu")
+  await page.keyboard.press('Escape')
+  await page.locator('.ctx-menu').waitFor({ state: 'detached' })
+  // Grabbed by that edge, it drags (the card tray comes up); Escape puts it back.
+  await page.mouse.move(grabBox.x + grabBox.width / 2, grabBox.y + 2)
+  await page.mouse.down()
+  await page.mouse.move(grabBox.x + grabBox.width / 2 + 20, grabBox.y + 30, { steps: 6 })
+  check(!!(await page.locator('.drag-tray.up').waitFor({ timeout: 3000 }).then(() => true, () => false)), 'a divider grabbed at the edge of its area drags')
+  await page.keyboard.press('Escape')
+  await page.mouse.up()
+  await page.locator('.drag-tray.up').waitFor({ state: 'detached' })
   // A list as tall as the board runs into the terminal panel; a short one keeps its rounded bottom.
   const meetsPanel = async () => {
     const list = await done.boundingBox()
