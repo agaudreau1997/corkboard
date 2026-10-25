@@ -846,6 +846,30 @@ try {
   writeFileSync(descLinkCardFile, descLinkBody)
   await until(async () => (await page.locator('.drawer .markdown a', { hasText: 'the docs' }).count()) === 0)
 
+  // The drawer's due date sets and clears `due:`; the face's ⏰ turns red once it is past (CORK-83).
+  const dueInput = page.locator('.drawer .due-input')
+  const dueBadge = page.locator(`.card[data-card="${openId}"] .badge`, { hasText: '⏰' })
+  const dueUpdated = () => /^updated: (.*)$/m.exec(readFileSync(descLinkCardFile, 'utf8'))?.[1]
+  const dueUpdatedBefore = dueUpdated()
+  await dueInput.fill('2026-11-02')
+  check(await until(() => /^due: 2026-11-02$/m.test(readFileSync(descLinkCardFile, 'utf8'))), 'a date in the drawer writes due: 2026-11-02 into the card file')
+  check(dueUpdated() !== dueUpdatedBefore, 'and stamps updated')
+  check(await until(async () => (await dueBadge.textContent().catch(() => '')) === '⏰ 2026-11-02'), 'the card shows it on its face')
+  await dueInput.fill('2020-01-01')
+  check(await until(async () => (await dueBadge.getAttribute('class').catch(() => '')) === 'badge overdue'), 'a past date shows in the danger colour')
+  const dueRed = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--red').trim())
+  check(!!(await until(async () => (await dueBadge.evaluate(el => getComputedStyle(el).color)) === (await page.evaluate(c => {
+    const probe = document.createElement('span')
+    probe.style.color = c
+    document.body.append(probe)
+    const color = getComputedStyle(probe).color
+    probe.remove()
+    return color
+  }, dueRed)))), `the theme's --red (${dueRed})`)
+  await page.locator('.drawer').getByRole('button', { name: 'Clear the due date' }).click()
+  check(await until(() => !/^due:/m.test(readFileSync(descLinkCardFile, 'utf8'))), 'clearing it takes due: out of the card file')
+  check(await until(async () => (await dueBadge.count()) === 0 && (await dueInput.inputValue()) === ''), 'and the ⏰ off the face')
+
   // A selection started with a card open starts from that card; the bar's actions need two.
   const other = page.locator(`.kanban .card[data-card]:visible:not([data-card="${openId}"])`).first()
   const otherId = await other.getAttribute('data-card')

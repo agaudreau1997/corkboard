@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Markdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Card, CodeCommit, LoadedBoard, SessionRef } from '@shared/types'
+import { dueDay } from '@shared/due'
 import { cardImages, imageUrl, insertAt } from '@shared/images'
 import { imageFiles, saveImages } from '../images'
 import { discussCards, tackleCards } from '../tackle'
@@ -63,6 +64,7 @@ function Drawer({ board, card }: { board: LoadedBoard; card: Card }) {
   const [title, setTitle] = useState(card.title)
   const [body, setBody] = useState(card.body)
   const [jira, setJira] = useState(card.jira ?? '')
+  const [due, setDue] = useState(card.due ? dueDay(card.due) : '')
   const [editing, setEditing] = useState(!card.body.trim())
   const [index, setIndex] = useState<IndexEntry[]>([])
   const bodyInput = useRef<HTMLTextAreaElement>(null)
@@ -77,6 +79,9 @@ function Drawer({ board, card }: { board: LoadedBoard; card: Card }) {
   useEffect(() => {
     if (document.activeElement?.getAttribute('data-field') !== 'jira') setJira(card.jira ?? '')
   }, [card.jira])
+  useEffect(() => {
+    if (document.activeElement?.getAttribute('data-field') !== 'due') setDue(card.due ? dueDay(card.due) : '')
+  }, [card.due])
   useEffect(() => {
     void api.boards.index().then(setIndex)
   }, [card.links.length])
@@ -176,6 +181,36 @@ function Drawer({ board, card }: { board: LoadedBoard; card: Card }) {
             <input type="checkbox" checked={!!card.complete} onChange={e => save({ complete: e.target.checked || undefined })} />
             Complete
           </label>
+          <span className="due-field">
+            <label htmlFor="card-due">Due</label>
+            <input
+              id="card-due"
+              type="date"
+              className="due-input"
+              data-field="due"
+              value={due}
+              title="The date the card is due: its face shows it, in the danger colour once it is past and the card is not done"
+              onChange={e => {
+                const value = e.target.value
+                setDue(value)
+                // A date typed part by part passes through years like 0002 and through no value at
+                // all while a part is empty: save a whole date, or an input emptied on purpose.
+                if (value === '') {
+                  if (!e.target.validity.badInput && card.due) save({ due: undefined })
+                } else if (Number(value.slice(0, 4)) >= 1000 && value !== dueDay(card.due ?? '')) {
+                  save({ due: value })
+                }
+              }}
+              onBlur={e => {
+                if (e.target.validity.badInput || (due && Number(due.slice(0, 4)) < 1000)) setDue(card.due ? dueDay(card.due) : '')
+              }}
+            />
+            {card.due && (
+              <button className="icon-button small" aria-label="Clear the due date" onClick={() => save({ due: undefined })}>
+                ×
+              </button>
+            )}
+          </span>
         </div>
         {(work || card.jira) && (
           <div className="field-row">

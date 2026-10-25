@@ -23,6 +23,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { between, freezeListColors, isDivider, listSort, orderList, reorderLists, slugify } from '@shared/cardfile'
+import { dueDay, isOverdue } from '@shared/due'
 import { imageUrl } from '@shared/images'
 import type { Card, CodeCommit, ListDef, LoadedBoard } from '@shared/types'
 import { useGrabScroll } from '../grabScroll'
@@ -778,6 +779,7 @@ export function CardFace({
   const finished = card.complete || (!!board.meta.flow?.done && card.list === board.meta.flow.done)
   const running = finished ? 0 : card.sessions.filter(s => s.purpose !== 'discuss').length
   const talks = finished ? 0 : card.sessions.filter(s => s.purpose === 'discuss').length
+  const late = isOverdue(card.due, finished)
   return (
     <div
       className={`card${selected ? ' selected' : ''}${open ? ' open' : ''}${dragging ? ' dragging' : ''}${card.complete ? ' complete' : ''}${renaming ? ' renaming' : ''}`}
@@ -805,7 +807,14 @@ export function CardFace({
         {linked > 0 && <span className="badge commit" title="Commits naming this card">⎇ {linked}</span>}
         {running > 0 && <span className="badge session" title="Claude sessions started for it">▶ {running}</span>}
         {talks > 0 && <span className="badge discuss" title="Discussions about it">✎ {talks}</span>}
-        {card.due && <span className="badge" title="Due">⏰ {card.due.slice(0, 10)}</span>}
+        {card.due && (
+          <span
+            className={`badge${late ? ' overdue' : ''}`}
+            title={late ? 'Past due' : 'Due'}
+          >
+            ⏰ {dueDay(card.due)}
+          </span>
+        )}
       </div>
     </div>
   )
