@@ -213,8 +213,10 @@ function workRule(cards: Card[], ctx: PromptContext): string {
   return `${name} Never write a card id of the task board (this card's or any other's) in anything that goes into the code repo or its remote: not in a commit message, a branch name, a PR title or description, code, a comment or a file. The code repo is shared with people who never see the board, and Jira tracks this work. This overrides the board repo's CLAUDE.md, which asks for \`Card:\` trailers: put none.`
 }
 
-// Why the tools and not the files.
-const MCP_NOTE = 'The tools keep the card format and stamp `updated:` themselves.'
+// Why the tools and not the files, and what to do when the app that serves them has been closed
+// since the session started.
+const MCP_NOTE =
+  "The tools keep the card format and stamp `updated:` themselves. Only if they stop answering (Corkboard was closed), edit the card file instead, as the board repo's CLAUDE.md describes."
 
 /** How a prompt calls a card in its opening line: its id, or in work mode its Jira key or nothing. */
 function cardName(card: Card, ctx: PromptContext): string {
