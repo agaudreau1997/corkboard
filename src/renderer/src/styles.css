@@ -1255,6 +1255,10 @@ button.copy-id:hover {
   color: var(--accent);
 }
 
+.badge.overdue {
+  color: var(--red);
+}
+
 .divider-card {
   padding: 6px 4px;
   cursor: grab;
@@ -1647,6 +1651,7 @@ button.copy-id:hover {
 
 .field-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
 }
@@ -1658,6 +1663,20 @@ button.copy-id:hover {
 .field-row select {
   border-left-width: 4px;
   min-width: 180px;
+}
+
+.due-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.due-field label {
+  color: var(--text-2);
+}
+
+.due-input {
+  width: 150px;
 }
 
 .jira-input {
