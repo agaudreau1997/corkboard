@@ -8,7 +8,7 @@ Corkboard keeps no database. A project's boards are a git repo of plain files: f
 moon-base/                  the board repo
 ├── CLAUDE.md               the card format, for Claude sessions and hand edits
 ├── theme.json              the project's colours (optional)
-├── project.json            the project's settings: work mode, icon (optional)
+├── project.json            the project's settings: work mode, main board, icon (optional)
 └── game/                   a board
     ├── board.json          its key, title, lists, code repo, flow
     ├── map.json            the map view's positions and backdrops
@@ -42,7 +42,7 @@ moon-base/                  the board repo
   The app writes the keys it knows in a fixed order and leaves out empty ones, so a move is a one-line diff and a file edited by hand comes back unchanged. A key it doesn't know is kept as it is. Every change stamps `updated`, which settles a sync conflict (below).
 - **`map.json`**: the map view's node positions, list backdrops and filters.
 - **`theme.json`**: the project's colours (see [Project colours](using.md#project-colours)).
-- **`project.json`**: the project's settings: `work` (see [Work mode](work-mode.md)) and `icon`, the project's icon as a `data:image/png;base64,...` URI, 64 px at most a side (see [Project colours](using.md#project-colours)). A key the app doesn't know is kept, and a sync conflict keeps every key either side has, this machine's value where both set one.
+- **`project.json`**: the project's settings: `work` (see [Work mode](work-mode.md)), `board`, the folder of the project's main board (a top-level one: `"board": "game"`; unset or gone, the only top-level board, else the first by title), and `icon`, the project's icon as a `data:image/png;base64,...` URI, 64 px at most a side (see [Project colours](using.md#project-colours)). A key the app doesn't know is kept, and a sync conflict keeps every key either side has, this machine's value where both set one.
 
 ## Versioned
 

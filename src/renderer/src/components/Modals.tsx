@@ -609,6 +609,7 @@ function ProjectSettings({ id }: { id: string }) {
   const [work, setWork] = useState(!!project?.work)
   const [icon, setIcon] = useState(project?.icon)
   const iconInput = useRef<HTMLInputElement>(null)
+  const [mainBoard, setMainBoard] = useState(project?.mainBoard)
   // The window wears the theme as it is edited, and its own again once the settings close.
   useEffect(() => {
     if (themeEdited) useStore.setState({ themePreview: { projectId: id, theme } })
@@ -621,6 +622,7 @@ function ProjectSettings({ id }: { id: string }) {
       const patch: ProjectSettingsPatch = {
         ...(work !== project.work ? { work } : {}),
         ...(icon !== project.icon ? { icon: icon ?? null } : {}),
+        ...(mainBoard && mainBoard !== project.mainBoard ? { board: mainBoard.slice(mainBoard.indexOf(':') + 1) } : {}),
       }
       if (Object.keys(patch).length) await api.projects.setSettings(id, patch)
       await api.projects.update(id, { name, codeRepo: codeRepo.trim() || null })
@@ -711,6 +713,22 @@ function ProjectSettings({ id }: { id: string }) {
           own that exists on this machine (Board settings, <em>Code repo</em>).
         </small>
       </label>
+      {project.boards.length > 0 && (
+        <label className="field">
+          <span>Main board</span>
+          <select value={mainBoard} onChange={e => setMainBoard(e.target.value)}>
+            {project.boards.map(b => (
+              <option key={b.path} value={b.path}>
+                {b.title}
+              </option>
+            ))}
+          </select>
+          <small className="muted">
+            The board a click on the project opens, one of its top-level boards; its child boards and the others are
+            listed under the project. It can't be deleted or moved to another project while it is the main one.
+          </small>
+        </label>
+      )}
       <div className="field">
         <label className="check">
           <input type="checkbox" checked={work} onChange={e => setWork(e.target.checked)} />

@@ -116,7 +116,7 @@ export function BoardPane({ path }: { path: string }) {
           {project && (
             <button
               className="ghost"
-              title={`${project.name}: its name, code folder, work mode and colours`}
+              title={`${project.name}: its name, code folder, main board, work mode, icon and colours`}
               onClick={() => actions.setModal({ kind: 'projectSettings', id: project.id })}
             >
               <ProjectMark project={project} always />

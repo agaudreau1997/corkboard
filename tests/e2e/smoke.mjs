@@ -238,19 +238,33 @@ let quitCard
 try {
   // ---- the tree and tabs ----
   await page.getByRole('treeitem').first().waitFor()
+  // The project's main board (the first top-level one by title, project.json naming none) is the
+  // project's row: its child boards and the other top-level board are listed under the project.
   const rows = await page.locator('.tree-row .tree-title').allTextContents()
-  check(rows.includes(MAIN.title) && rows.includes(SPARE.title), `tree roots: ${rows.join(', ')}`)
-  await page.locator('.tree-row', { hasText: MAIN.title }).first().locator('.twisty').click()
-  const children = await page.locator('.tree-row .tree-title').allTextContents()
-  check(CHILDREN.every(t => children.includes(t)), `child boards listed under ${MAIN.title}`)
+  check(CHILDREN.every(t => rows.includes(t)) && rows.includes(SPARE.title), `under the project, ${MAIN.title}'s child boards and ${SPARE.title} (${rows.join(', ')})`)
+  check(!rows.includes(MAIN.title), `the main board ${MAIN.title} has no row of its own`)
+  const projectRow = page.locator('.project-row').first()
+  const projectTwisty = projectRow.locator('.twisty')
+  check((await projectTwisty.locator('svg').count()) === 1, 'the arrow is a drawn chevron')
+  const turned = () => projectTwisty.locator('svg').evaluate(el => getComputedStyle(el).transform)
+  const openTurn = await turned()
+  await projectTwisty.click()
+  check(!!(await until(async () => (await page.locator('.tree-row').count()) === 0)), "the project's arrow folds its boards")
+  check(!!(await until(async () => (await turned()) !== openTurn)), 'and the chevron turns')
+  check((await page.locator('.tab').count()) === 0, 'without opening a board')
+  await projectTwisty.click()
+  check(!!(await until(async () => (await page.locator('.tree-row').count()) === rows.length)), 'a second click unfolds them')
   const { version } = JSON.parse(readFileSync(path.join(appDir, 'package.json'), 'utf8'))
   const updateLine = page.locator('.update-line.update-off')
   await until(async () => (await updateLine.count()) === 1)
   const versionLine = await updateLine.textContent().catch(() => 'no line')
   check(versionLine === `Corkboard ${version}`, `the side panel shows the version, with updates off (${versionLine})`)
 
-  await page.locator('.tree-row', { hasText: MAIN.title }).first().click()
+  await projectRow.click()
   await page.locator('.column').first().waitFor()
+  check(((await page.locator('.tab.active').getAttribute('title')) ?? '').endsWith(`:${MAIN.path}`), `a click on the project opens its main board, ${MAIN.title}`)
+  check((await page.locator('.tree-row').count()) === rows.length, 'and folds nothing')
+  check((await projectRow.getAttribute('class')).includes('active'), "the project's row shows its main board is in front")
   const columns = await page.locator('.column-title').allTextContents()
   check(columns[0] === 'To do' && columns.includes('Next up') && columns.includes('Done'), `kanban columns: ${columns.join(' | ')}`)
   const done = page.locator('.column[data-list="done"]')
@@ -899,10 +913,11 @@ try {
   const triageLink = await until(() => openedUrls().find(u => u.startsWith('claude://code/new?') && new URL(u).searchParams.get('q').startsWith("Let's triage")))
   check(!!triageLink, 'Discuss / triage on a list opens one desktop session for the whole list')
 
-  const boardRow = page.locator('.tree-row.active')
-  const boardTitle = (await boardRow.locator('.tree-title').textContent())?.trim()
+  // The board in front is the main one: its menu is the project's *Main board*.
+  const boardTitle = MAIN.title
   const callsBeforeBoardTalk = sessionCalls().length
-  await boardRow.click({ button: 'right' })
+  await page.locator('.project-row').first().click({ button: 'right' })
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: /Main board/ }).hover()
   await page.locator('.ctx-menu').getByRole('menuitem', { name: /Discuss \/ triage/ }).hover()
   await page.locator('.ctx-menu').getByRole('menuitem', { name: 'In a terminal' }).click()
   const boardTalk = await until(() => sessionCalls().slice(callsBeforeBoardTalk)[0], 15000)
@@ -1301,6 +1316,34 @@ try {
   check(existsSync(path.join(second, 'CLAUDE.md')) && existsSync(path.join(second, 'README.md')), 'with a README and a CLAUDE.md')
   check((await page.locator('.guide-offer').count()) === 0, 'so neither project offers a CLAUDE.md')
   check((await page.locator('.project-row').count()) === 2, 'the side panel shows both projects')
+  // The main board stays while it is the main one: its menu says why, and the app refuses.
+  await page.locator('.project-row').first().click({ button: 'right' })
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: /Main board/ }).hover()
+  const mainDelete = page.getByRole('menuitem', { name: /Delete board/ })
+  const mainMove = page.getByRole('menuitem', { name: /Move to project/ })
+  check(await mainDelete.isDisabled(), "the main board's Delete board… is disabled")
+  check(await mainMove.isDisabled(), 'and so is its Move to project')
+  check((await mainDelete.textContent()).includes('the main board'), `with a hint saying why (${await mainDelete.textContent()})`)
+  await page.keyboard.press('Escape')
+  const firstProject = await page.locator('.project').first().getAttribute('data-project')
+  const refused = await page.evaluate(key => window.corkboard.boards.remove(key).then(() => 'deleted', e => e.message), `${firstProject}:${MAIN.path}`)
+  check(refused.includes('main board') && existsSync(path.join(root, MAIN.path, 'board.json')), `and the app refuses to delete it (${refused})`)
+  // Another main board, picked in the project settings: project.json names it, the row opens it.
+  const pickMain = async title => {
+    await openProjectSettings()
+    await dialog.getByLabel('Main board').selectOption({ label: title })
+    await dialog.getByRole('button', { name: 'Save' }).click()
+  }
+  const namedMain = () => existsSync(projectFile) && JSON.parse(readFileSync(projectFile, 'utf8')).board
+  await pickMain(SPARE.title)
+  check((await until(namedMain)) === SPARE.path, `picking ${SPARE.title} as the main board writes it to project.json`)
+  check(!!(await until(async () => (await page.locator('.tree-row', { hasText: MAIN.title }).count()) === 1 && (await page.locator('.tree-row', { hasText: SPARE.title }).count()) === 0)), `${MAIN.title} gets a row under the project, ${SPARE.title} loses its own`)
+  await page.locator('.project-row').first().click()
+  check(!!(await until(async () => ((await page.locator('.tab.active').getAttribute('title')) ?? '').endsWith(`:${SPARE.path}`))), 'and the project opens it')
+  await page.locator('.tab.active .tab-close').click()
+  await pickMain(MAIN.title)
+  check((await until(async () => namedMain() === MAIN.path)) === true, `picking ${MAIN.title} again`)
+  await page.locator(`.tab[title$=":${MAIN.path}"]`).first().click()
   await page.locator('.tree-row', { hasText: SPARE.title }).click({ button: 'right' })
   await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Move to project' }).hover()
   await page.getByRole('menuitem', { name: 'Side project' }).click()

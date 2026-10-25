@@ -5,6 +5,7 @@ import { existsSync, promises as fs } from 'node:fs'
 import path from 'node:path'
 import { BOARD_GUIDE_FILE, boardGuide } from '@shared/boardguide'
 import { slugify } from '@shared/cardfile'
+import { mainBoardOf } from '@shared/project'
 import type {
   BoardDelta,
   BoardNode,
@@ -89,6 +90,8 @@ export class Project {
   node(): ProjectNode {
     const rekey = (nodes: BoardNode[]): BoardNode[] =>
       nodes.map(n => ({ ...n, path: this.key(n.path), children: rekey(n.children) }))
+    const tree = this.store.tree()
+    const main = mainBoardOf(this.store.settings, tree)
     return {
       id: this.id,
       name: this.name,
@@ -99,8 +102,24 @@ export class Project {
       guide: this.hasGuide(),
       work: !!this.store.settings.work,
       ...(this.store.settings.icon ? { icon: this.store.settings.icon } : {}),
-      boards: rekey(this.store.tree()),
+      ...(main !== undefined ? { mainBoard: this.key(main) } : {}),
+      boards: rekey(tree),
     }
+  }
+
+  /** The folder of its main board (see `mainBoardOf`); undefined in a repo with no board. */
+  mainBoard(): string | undefined {
+    return mainBoardOf(this.store.settings, this.store.tree())
+  }
+
+  /**
+   * Refuses to take the main board away (a delete, a move to another project): a project is
+   * always opened at its main board, so another has to be picked first.
+   */
+  keepMainBoard(rel: string, doing: string): void {
+    if (rel !== this.mainBoard()) return
+    const title = this.store.board(rel).meta.title
+    throw new Error(`“${title}” is ${this.name}'s main board, so it can't be ${doing}: pick another main board in its Project settings first.`)
   }
 
   board(rel: string): LoadedBoard {

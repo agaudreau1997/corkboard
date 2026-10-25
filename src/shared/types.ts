@@ -270,6 +270,11 @@ export type ProjectNode = {
   work: boolean
   /** Its icon (`project.json`), a data URI; without one the project shows its colour swatch. */
   icon?: string
+  /**
+   * The key of its main board (`project.json`'s `board`, or the first top-level one), which the
+   * project's row opens; none only in a repo with no board at all.
+   */
+  mainBoard?: string
   boards: BoardNode[]
 }
 
@@ -283,6 +288,11 @@ export type ProjectSettings = {
    * tracks the work: every card id stays out of them, and the card's `jira` key is named instead.
    */
   work?: boolean
+  /**
+   * The folder of the project's main board, one of its top-level boards: a click on the project
+   * opens it. Unset (or gone), the only top-level board, else the first by title.
+   */
+  board?: string
   /**
    * The project's icon, shown wherever the project is named in place of its colour swatch: a
    * `data:image/...;base64,` URI of an image scaled down to 64 px when it was picked.

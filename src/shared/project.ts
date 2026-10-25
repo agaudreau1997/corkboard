@@ -3,15 +3,16 @@
 // and clients, Jira tracks the work, and a card id of the board means nothing there, so sessions
 // keep every card id out of the code repo and name the card's Jira key instead. The file is the
 // project's, not a board's: a new board of a work project is work from its first tackle, where a
-// flag in board.json would have started it personal and let an id through. And the project's
-// `icon`, a small image kept as a data URI, so it travels with the repo like the colours do.
+// flag in board.json would have started it personal and let an id through. The project's `icon`,
+// a small image kept as a data URI, so it travels with the repo like the colours do. And its main
+// `board`, the one a click on the project opens: named here so every machine opens the same one.
 
 import type { ProjectSettings, ProjectSettingsPatch } from './types'
 
 export const PROJECT_FILE = 'project.json'
 
 /** The keys this app knows, in the order it writes them. */
-const KNOWN = ['work', 'icon'] as const
+const KNOWN = ['work', 'board', 'icon'] as const
 
 /** Whether a value is an image the window can show as it is: a base64 `data:image/...` URI. */
 export function isIcon(value: unknown): value is string {
@@ -34,10 +35,25 @@ export function parseProjectSettings(text: string): ProjectSettings | undefined 
 function cleanSettings(raw: Record<string, unknown>): ProjectSettings {
   return {
     ...(raw.work === true ? { work: true } : {}),
+    ...(isTopFolder(raw.board) ? { board: raw.board } : {}),
     ...(isIcon(raw.icon) ? { icon: raw.icon } : {}),
   }
 }
 
+/** A folder name at the repo's root: a main board is one of the project's top-level boards. */
+function isTopFolder(value: unknown): value is string {
+  return typeof value === 'string' && /^[^/\\]+$/.test(value) && value !== '.' && value !== '..'
+}
+
+/**
+ * The project's main board among its top-level boards (in the side panel's order, by title): the
+ * one `project.json` names while it exists, else the only one, else the first.
+ */
+export function mainBoardOf(settings: ProjectSettings, topLevel: { path: string }[]): string | undefined {
+  return topLevel.find(b => b.path === settings.board)?.path ?? topLevel[0]?.path
+}
+
+/** The settings with a patch applied: a key given replaces it, `null` clears it. */
 export function patchSettings(settings: ProjectSettings, patch: ProjectSettingsPatch): ProjectSettings {
   const next: Record<string, unknown> = { ...settings }
   for (const [key, value] of Object.entries(patch)) {

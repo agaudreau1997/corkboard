@@ -58,12 +58,22 @@ function syncText(sync: SyncStatus): string {
   }
 }
 
-/** A project: one board repo, its sync state, and its boards below it. */
+/**
+ * A project: one board repo, its sync state, and its boards below it. The row is the way in to its
+ * main board, so that board's own row isn't repeated: its child boards and the project's other
+ * top-level boards are listed under the project, and only the arrow folds them.
+ */
 function ProjectRow({ project }: { project: ProjectNode }) {
   const folded = useStore(s => s.foldedProjects.includes(project.id))
   const lastCommit = useStore(s => (s.lastCommit?.projectId === project.id ? s.lastCommit : null))
   const declined = useStore(s => s.noGuide.includes(project.id))
+  const active = useStore(s => !!project.mainBoard && s.activeTab === project.mainBoard)
+  const open = useStore(s => s.tabs.some(t => t.path === project.mainBoard))
+  const main = project.boards.find(b => b.path === project.mainBoard)
+  const listed = [...(main?.children ?? []), ...project.boards.filter(b => b !== main)]
+  const offer = !project.guide && !declined
   const tip = [
+    main ? `Opens ${main.title} (${main.key}), the main board` : undefined,
     project.root,
     project.codeRepo ? `Code folder: ${project.codeRepo}` : 'No code folder set on this machine',
     syncText(project.sync),
@@ -80,12 +90,12 @@ function ProjectRow({ project }: { project: ProjectNode }) {
   return (
     <div role="treeitem" aria-expanded={!folded} className="project" data-project={project.id}>
       <div
-        className={`project-row sync-${project.sync.state}`}
+        className={`project-row sync-${project.sync.state}${active ? ' active' : ''}${open ? ' open' : ''}`}
         title={tip}
-        onClick={toggle}
+        onClick={() => main && void actions.openBoard(main.path)}
         onContextMenu={e => openContextMenu(e, projectMenu(project))}
       >
-        <span className="twisty-mark">{folded ? '▸' : '▾'}</span>
+        <Twisty open={!folded} hidden={!listed.length && !offer && !!main} onToggle={toggle} />
         <ProjectMark project={project} title={project.icon ? undefined : `Colours: ${project.theme?.name ?? 'custom'}`} />
         <span className="project-name">{project.name}</span>
         <span className="dot" aria-label={syncText(project.sync)} />
@@ -102,7 +112,7 @@ function ProjectRow({ project }: { project: ProjectNode }) {
       </div>
       {!folded && (
         <div role="group">
-          {project.boards.map(node => (
+          {listed.map(node => (
             <TreeNode key={node.path} node={node} depth={1} />
           ))}
           {!project.boards.length && (
@@ -113,7 +123,7 @@ function ProjectRow({ project }: { project: ProjectNode }) {
               + New board
             </button>
           )}
-          {!project.guide && !declined && <GuideOffer project={project} />}
+          {offer && <GuideOffer project={project} />}
         </div>
       )}
     </div>
@@ -146,8 +156,10 @@ function GuideOffer({ project }: { project: ProjectNode }) {
 }
 
 function projectMenu(project: ProjectNode): MenuItem[] {
+  const main = project.boards.find(b => b.path === project.mainBoard)
   return [
     { heading: project.name },
+    ...(main ? [{ label: 'Main board', hint: main.title, items: boardMenu(main) }] : []),
     { label: 'New board…', onSelect: () => actions.setModal({ kind: 'newBoard', parent: `${project.id}:` }) },
     {
       label: 'Sync now',
@@ -157,7 +169,7 @@ function projectMenu(project: ProjectNode): MenuItem[] {
     },
     {
       label: 'Project settings…',
-      hint: 'name, code folder, colours',
+      hint: 'name, main board, colours',
       onSelect: () => actions.setModal({ kind: 'projectSettings', id: project.id }),
     },
     { label: 'Open the board repo folder', onSelect: () => api.shell.openPath(project.root) },
@@ -184,6 +196,9 @@ function boardMenu(node: BoardNode): MenuItem[] {
   const projects = useStore.getState().projects
   const here = projectIdOf(node.path)
   const others = projects.filter(p => p.id !== here)
+  // The main board stays while it is the main one: the project opens there.
+  const main = projects.find(p => p.id === here)?.mainBoard === node.path
+  const mainHint = 'the main board: pick another first'
   const desktop = useStore.getState().desktop
   const discuss = (mode: 'desktop' | 'local') => () => void discussBoard(node.path, mode)
   return [
@@ -207,7 +222,8 @@ function boardMenu(node: BoardNode): MenuItem[] {
     { label: 'Copy key', hint: node.key, onSelect: () => actions.copy(node.key) },
     {
       label: 'Move to project',
-      disabled: !others.length,
+      hint: main ? mainHint : undefined,
+      disabled: !others.length || main,
       items: others.map(p => ({
         label: p.name,
         onSelect: async () => {
@@ -229,7 +245,13 @@ function boardMenu(node: BoardNode): MenuItem[] {
       })),
     },
     'separator',
-    { label: 'Delete board…', danger: true, onSelect: () => void deleteBoard(node) },
+    {
+      label: 'Delete board…',
+      hint: main ? mainHint : undefined,
+      danger: true,
+      disabled: main,
+      onSelect: () => void deleteBoard(node),
+    },
   ]
 }
 
@@ -270,16 +292,7 @@ function TreeNode({ node, depth }: { node: BoardNode; depth: number }) {
         onContextMenu={e => openContextMenu(e, boardMenu(node))}
         title={`${node.path.slice(node.path.indexOf(':') + 1)} (${node.key})`}
       >
-        <button
-          className={`twisty${hasChildren ? '' : ' hidden'}`}
-          onClick={e => {
-            e.stopPropagation()
-            actions.toggleExpanded(node.path)
-          }}
-          aria-label={expanded ? 'Collapse' : 'Expand'}
-        >
-          {expanded ? '▾' : '▸'}
-        </button>
+        <Twisty open={expanded} hidden={!hasChildren} onToggle={() => actions.toggleExpanded(node.path)} />
         <span className="tree-icon">{isFolder ? '▤' : '▦'}</span>
         <span className="tree-title">{node.title}</span>
         <span className="tree-count">{node.cardCount}</span>
@@ -292,6 +305,26 @@ function TreeNode({ node, depth }: { node: BoardNode; depth: number }) {
         </div>
       )}
     </div>
+  )
+}
+
+/** The arrow that folds a project or a board's children, and nothing else: a click on it stays on it. */
+function Twisty({ open, hidden, onToggle }: { open: boolean; hidden?: boolean; onToggle: () => void }) {
+  return (
+    <button
+      className={`twisty${open ? ' open' : ''}${hidden ? ' hidden' : ''}`}
+      aria-label={open ? 'Collapse' : 'Expand'}
+      aria-expanded={open}
+      tabIndex={hidden ? -1 : undefined}
+      onClick={e => {
+        e.stopPropagation()
+        onToggle()
+      }}
+    >
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M6 3.5 10.5 8 6 12.5" />
+      </svg>
+    </button>
   )
 }
 

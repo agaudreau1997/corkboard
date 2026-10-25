@@ -431,6 +431,7 @@ export class AutoCommitter {
         const was = parseProjectSettings(before)
         const said = lines.length
         if (now && was && !!now.work !== !!was.work) lines.push(`Turn work mode ${now.work ? 'on' : 'off'}`)
+        if (now && was && now.board !== was.board && now.board) lines.push(`Make ${now.board} the main board`)
         if (now && was && now.icon !== was.icon) lines.push(now.icon ? "Set the project's icon" : "Remove the project's icon")
         if (lines.length === said) lines.push(`${status === 'A' ? 'Add' : status === 'D' ? 'Remove' : 'Edit'} the project's settings`)
       } else {

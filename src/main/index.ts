@@ -275,6 +275,7 @@ async function moveBoardToProject(key: string, targetId: string): Promise<string
   const target = projects.get(targetId)
   if (!target) throw new Error(`No project ${targetId}`)
   if (target === from.project) throw new Error('The board is already in that project.')
+  from.project.keepMainBoard(from.rel, 'moved')
   const keys = from.project.store.keysUnder(from.rel)
   const taken = new Set(target.store.allBoards().map(b => b.meta.key))
   const clash = keys.filter(k => taken.has(k))
@@ -420,6 +421,7 @@ function registerIpc(): void {
   })
   ipcMain.handle('boards:remove', (_e, key: string, force?: boolean) => {
     const s = store(key)
+    s.project.keepMainBoard(s.rel, 'deleted')
     return s.store.deleteBoard(s.rel, !!force)
   })
   ipcMain.handle('boards:moveToProject', (_e, key: string, targetId: string) => moveBoardToProject(key, targetId))

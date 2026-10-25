@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   mergeProjectSettings,
   isIcon,
+  mainBoardOf,
   namesKey,
   normalizeKey,
   parseProjectSettings,
@@ -43,6 +44,25 @@ describe('project.json', () => {
     expect(JSON.parse(text)).toEqual({ work: true, icon, x: 1 })
     // Cleared, the icon goes and what else the file holds stays.
     expect(JSON.parse(projectSettingsText({ work: true }, text)!)).toEqual({ work: true, x: 1 })
+  })
+
+  it('reads and writes the main board, a folder at the root, keeping what it does not know', () => {
+    expect(parseProjectSettings('{ "board": "cork" }')).toEqual({ board: 'cork' })
+    expect(parseProjectSettings('{ "board": "cork/ideas" }')).toEqual({})
+    expect(parseProjectSettings('{ "board": ".." }')).toEqual({})
+    expect(parseProjectSettings('{ "board": 3 }')).toEqual({})
+    const text = projectSettingsText({ board: 'cork' }, '{ "jira": { "site": "https://x" }, "board": "old" }')!
+    expect(JSON.parse(text)).toEqual({ board: 'cork', jira: { site: 'https://x' } })
+    expect(patchSettings({ board: 'cork', work: true }, { board: null })).toEqual({ work: true })
+  })
+
+  it('finds the main board: the one named while it is there, else the first top-level one', () => {
+    const top = [{ path: 'moon-base' }, { path: 'old-prototype' }]
+    expect(mainBoardOf({}, top)).toBe('moon-base')
+    expect(mainBoardOf({ board: 'old-prototype' }, top)).toBe('old-prototype')
+    expect(mainBoardOf({ board: 'gone' }, top)).toBe('moon-base')
+    expect(mainBoardOf({}, [{ path: 'only' }])).toBe('only')
+    expect(mainBoardOf({ board: 'x' }, [])).toBeUndefined()
   })
 
   it('patches the settings: a key given replaces, null clears, one left out stays', () => {
