@@ -4,6 +4,7 @@ import { appendFileSync, existsSync, readdirSync, readFileSync, promises as fs }
 import os from 'node:os'
 import path from 'node:path'
 import { patchSettings } from '@shared/project'
+import { patchOrder } from '@shared/sideorder'
 import type {
   AppConfig,
   BoardMap,
@@ -17,6 +18,7 @@ import type {
   ProjectSettingsPatch,
   ProjectTheme,
   SessionRef,
+  SidebarOrder,
   SyncStatus,
   TackleRequest,
   TerminalEvent,
@@ -149,7 +151,12 @@ async function readSavedConfig(): Promise<AppConfig> {
     list = [{ id, name: path.basename(saved.boardRoot), boardRoot: saved.boardRoot }]
     codeRepos = Object.fromEntries(Object.entries(codeRepos).map(([k, v]) => [k.includes(':') ? k : boardKey(id, k), v]))
   }
-  return { projects: list, codeRepos, ...(saved.notify ? { notify: saved.notify } : {}) }
+  return {
+    projects: list,
+    codeRepos,
+    ...(saved.notify ? { notify: saved.notify } : {}),
+    ...(saved.order ? { order: saved.order } : {}),
+  }
 }
 
 /**
@@ -406,6 +413,13 @@ function registerIpc(): void {
     await writeConfig(c => {
       const { notify: _, ...rest } = c
       return Object.keys(next).length ? { ...rest, notify: next } : rest
+    })
+  })
+  ipcMain.handle('config:setOrder', async (_e, patch: SidebarOrder) => {
+    await writeConfig(c => {
+      const { order: _, ...rest } = c
+      const order = patchOrder(c.order, patch)
+      return Object.keys(order).length ? { ...rest, order } : rest
     })
   })
   // Runs a program as the notifications would, with a `test` event; answers what went wrong.

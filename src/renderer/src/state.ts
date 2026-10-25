@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { listColorAt, sortCards } from '@shared/cardfile'
 import { emptyHistory, step, visit, type Place } from '@shared/navhistory'
+import { reordered } from '@shared/sideorder'
 import type { CorkboardApi } from '@shared/api'
 import type {
   AppConfig,
@@ -31,6 +32,8 @@ type UiPrefs = {
   tabs: Tab[]
   activeTab: string | null
   sidebarWidth: number
+  /** The side panel folded to its rail of project marks. */
+  sidebarCollapsed: boolean
   terminalHeight: number
   /** The card drawer's width. */
   drawerWidth: number
@@ -50,6 +53,7 @@ function loadPrefs(): UiPrefs {
     tabs: [],
     activeTab: null,
     sidebarWidth: 260,
+    sidebarCollapsed: false,
     terminalHeight: 300,
     drawerWidth: 440,
     expanded: [],
@@ -144,6 +148,7 @@ useStore.subscribe(state => {
     tabs: state.tabs,
     activeTab: state.activeTab,
     sidebarWidth: state.sidebarWidth,
+    sidebarCollapsed: state.sidebarCollapsed,
     terminalHeight: state.terminalHeight,
     drawerWidth: state.drawerWidth,
     expanded: state.expanded,
@@ -294,6 +299,19 @@ export const actions = {
   async setNotify(notify: { desktop: boolean; command: string }) {
     await api.config.setNotify({ desktop: notify.desktop, command: notify.command.trim() || undefined })
     set({ config: await api.config.get() })
+  },
+
+  /**
+   * A sibling list of the side panel dragged into a new order: saved in this machine's config and
+   * shown at once. The keys of boards since gone drop out with it.
+   */
+  async reorder(kind: 'projects' | 'boards', siblings: string[]) {
+    const config = get().config
+    if (!config) return
+    const known = new Set(kind === 'projects' ? get().projects.map(p => p.id) : flatten(get().tree).map(n => n.path))
+    const list = reordered(config.order?.[kind], siblings, known)
+    set({ config: { ...config, order: { ...config.order, [kind]: list } } })
+    await api.config.setOrder({ [kind]: list })
   },
 
   async removeProject(id: string) {

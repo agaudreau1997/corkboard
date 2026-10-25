@@ -3,7 +3,7 @@ import { BoardPane } from './components/BoardPane'
 import { CardDetail } from './components/CardDetail'
 import { ContextMenuHost } from './components/ContextMenu'
 import { Modals } from './components/Modals'
-import { Sidebar } from './components/Sidebar'
+import { RAIL_WIDTH, Sidebar } from './components/Sidebar'
 import { TabBar } from './components/TabBar'
 import { TerminalPanel } from './components/TerminalPanel'
 import { actions, useStore } from './state'
@@ -13,7 +13,7 @@ export function App() {
   const config = useStore(s => s.config)
   const activeTab = useStore(s => s.activeTab)
   const toast = useStore(s => s.toast)
-  const sidebarWidth = useStore(s => s.sidebarWidth)
+  const sidebarWidth = useStore(s => (s.sidebarCollapsed ? RAIL_WIDTH : s.sidebarWidth))
   useProjectTheme()
 
   useEffect(() => {

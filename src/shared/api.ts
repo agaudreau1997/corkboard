@@ -18,6 +18,7 @@ import type {
   PtyInfo,
   RepoStatus,
   SessionRef,
+  SidebarOrder,
   SyncStatus,
   TackleRequest,
   TerminalStatus,
@@ -35,6 +36,8 @@ export type CorkboardApi = {
     setNotify(notify: NotifyConfig | null): Promise<void>
     /** Runs a program as the notifications would, with a `test` event; answers the error, or null. */
     tryNotify(command: string): Promise<string | null>
+    /** Replaces the parts of the side panel's order given (this machine's); an empty list clears one. */
+    setOrder(patch: SidebarOrder): Promise<void>
   }
   /** One project per board repo; its boards are named `<project id>:<path>`. */
   projects: {

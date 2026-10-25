@@ -17,6 +17,7 @@ const api: CorkboardApi = {
     pickFile: title => invoke('config:pickFile', title),
     setNotify: notify => invoke('config:setNotify', notify),
     tryNotify: command => invoke('config:tryNotify', command),
+    setOrder: patch => invoke('config:setOrder', patch),
   },
   projects: {
     list: () => invoke('projects:list'),
