@@ -61,6 +61,11 @@ mkdirSync(codeRepo)
 execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: codeRepo })
 execFileSync('git', ['-c', 'user.email=e@x', '-c', 'user.name=E', 'commit', '-q', '--allow-empty', '-m', `Fix the drill sound\n\nCard: ${COMMITTED}`], { cwd: codeRepo })
 execFileSync('git', ['-c', 'user.email=e@x', '-c', 'user.name=E', 'commit', '-q', '--allow-empty', '-m', `${KEYED.jira} Fix the login form on Safari`], { cwd: codeRepo })
+// Its own scratch bare remote, not pushed to yet: the code repo panel pushes it there (setting the
+// upstream), and pulls what a second clone pushed.
+const codeRemote = path.join(scratch, 'code-remote.git')
+execFileSync('git', ['init', '-q', '--bare', '-b', 'main', codeRemote])
+execFileSync('git', ['remote', 'add', 'origin', codeRemote], { cwd: codeRepo })
 // The work project's board repo: no remote, added to the app during the test.
 const workRoot = path.join(scratch, 'client-boards')
 mkdirSync(workRoot)
@@ -693,6 +698,49 @@ try {
     return out.includes('SB-1') ? out : ''
   }, 8000)
   check(!!log, `board repo auto-committed:\n${log}`)
+
+  // ---- the code repo panel: the branch, a push that sets the upstream, a commit, a pull ----
+  await page.locator(`.tab[title$=":${MAIN.path}"]`).click()
+  const repoPanel = page.locator('.repo-panel')
+  check(await until(async () => (await repoPanel.locator('.repo-branch').textContent().catch(() => '')) === 'main'), 'the code repo panel shows the branch')
+  check((await repoPanel.locator('.repo-note').textContent().catch(() => '')) === 'no upstream', 'and that it has no upstream yet')
+  const panelBox = await repoPanel.boundingBox()
+  const paneBox = await page.locator('.board-pane').boundingBox()
+  const termBox = await page.locator('.terminal-panel').boundingBox()
+  check(
+    panelBox.y + panelBox.height < termBox.y && Math.abs(paneBox.x + paneBox.width - (panelBox.x + panelBox.width)) < 30,
+    'it sits at the board\'s bottom right, above the terminal panel',
+  )
+  await repoPanel.getByRole('button', { name: 'Push' }).click()
+  const pushDialog = page.getByRole('dialog')
+  check((await pushDialog.locator('h2').textContent()) === 'Push main to origin?', 'Push asks first, naming the branch and the remote')
+  await pushDialog.getByRole('button', { name: 'Push' }).click()
+  const ahead = () => repoPanel.locator('.repo-ahead').textContent().catch(() => '')
+  check(await until(async () => (await ahead()) === '↑0'), 'the push set the upstream: nothing ahead')
+  const remoteHead = () => execFileSync('git', ['rev-parse', 'main'], { cwd: codeRemote }).toString().trim()
+  const localHead = () => execFileSync('git', ['rev-parse', 'HEAD'], { cwd: codeRepo }).toString().trim()
+  check(remoteHead() === localHead(), 'the branch reached the code repo\'s remote')
+  execFileSync('git', ['-c', 'user.email=e@x', '-c', 'user.name=E', 'commit', '-q', '--allow-empty', '-m', 'Tune the drill'], { cwd: codeRepo })
+  check(await until(async () => (await ahead()) === '↑1'), 'a commit made outside the app shows as one ahead')
+  writeFileSync(path.join(codeRepo, 'notes.txt'), 'not committed\n')
+  // A new file touches nothing git watches: coming back to the window reads it.
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].emit('focus'))
+  check(await until(async () => (await repoPanel.locator('.repo-changed').textContent().catch(() => '')) === '1 changed'), 'an uncommitted file shows as changed, on focus')
+  await repoPanel.getByRole('button', { name: 'Push' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Push' }).click()
+  check(await until(async () => (await ahead()) === '↑0'), 'Push (confirmed) brings it back to 0')
+  check(remoteHead() === localHead(), 'and the commit is on the remote')
+  const codeOther = path.join(scratch, 'code-other')
+  execFileSync('git', ['clone', '-q', codeRemote, codeOther])
+  execFileSync('git', ['-c', 'user.email=e@x', '-c', 'user.name=E', 'commit', '-q', '--allow-empty', '-m', 'From the other machine'], { cwd: codeOther })
+  execFileSync('git', ['push', '-q'], { cwd: codeOther })
+  await repoPanel.getByRole('button', { name: 'Pull' }).click()
+  check(!!(await until(async () => (await page.locator('.toast').textContent().catch(() => '')) === 'Pulled 1 commit')), 'Pull brought in the other clone\'s commit')
+  check(execFileSync('git', ['log', '-1', '--format=%s'], { cwd: codeRepo }).toString().trim() === 'From the other machine', 'fast-forwarding the branch')
+  check((await readFileSync(path.join(codeRepo, 'notes.txt'), 'utf8')) === 'not committed\n', 'and leaving the uncommitted file alone')
+  await page.locator('.tree-row', { hasText: SPARE.title }).first().click()
+  check(await until(async () => (await repoPanel.count()) === 0), 'a board with no code repo shows no panel')
+  await page.locator(`.tab[title$=":${SPARE.path}"] .tab-close`).click()
 
   // ---- card detail, commits and tackling ----
   await page.locator(`.tab[title$=":${MAIN.path}"]`).click()

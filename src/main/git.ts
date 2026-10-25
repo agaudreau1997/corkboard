@@ -1,14 +1,17 @@
 // Git, both ways: the board repo is committed by the app after every quiet spell, and a board's
 // code repo is read for the commits whose `Card:` trailers name its cards or, for a work project,
-// whose message names a card's Jira key (teammates' commits on the same issue included).
+// whose message names a card's Jira key (teammates' commits on the same issue included). The code
+// repo panel reads the code repo's branch and where it stands against its upstream, pushes and
+// pulls it (fast-forward only), and watches its git folder so what it shows follows commits made
+// in a terminal. Nothing here commits in the code repo.
 
 import { execFile } from 'node:child_process'
-import { promises as fs } from 'node:fs'
+import { existsSync, type FSWatcher, promises as fs, watch } from 'node:fs'
 import path from 'node:path'
 import { tryParseCard } from '@shared/cardfile'
 import { namesKey, parseProjectSettings, PROJECT_FILE } from '@shared/project'
 import { THEME_FILE } from '@shared/theme'
-import type { CodeCommit } from '@shared/types'
+import type { CodeCommit, RepoStatus } from '@shared/types'
 
 export function git(cwd: string, args: string[], timeoutMs = 0): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -92,6 +95,220 @@ export async function commitFiles(repo: string, sha: string): Promise<{ status: 
       const [status, ...rest] = line.split('\t')
       return { status, file: rest.join('\t') }
     })
+}
+
+// ---- the code repo panel ----------------------------------------------------------------------
+
+const NETWORK_TIMEOUT_MS = 60_000
+
+/**
+ * Reads `git status --porcelain=v2 --branch -z`: the branch, its upstream and the counts. An
+ * upstream with no `branch.ab` line is one whose branch is gone from the remote: left out, as
+ * though none were set, so Push sets it again.
+ */
+export function parseStatus(out: string): Omit<RepoStatus, 'repo' | 'remote'> {
+  const status: Omit<RepoStatus, 'repo' | 'remote'> = { ahead: 0, behind: 0, changed: 0 }
+  let upstream: string | undefined
+  let counted = false
+  const fields = out.split('\0')
+  for (let i = 0; i < fields.length; i++) {
+    const field = fields[i]
+    if (field.startsWith('# ')) {
+      const [name, ...rest] = field.slice(2).split(' ')
+      const value = rest.join(' ')
+      if (name === 'branch.oid' && value !== '(initial)') status.head = value.slice(0, 7)
+      else if (name === 'branch.head' && value !== '(detached)') status.branch = value
+      else if (name === 'branch.upstream') upstream = value
+      else if (name === 'branch.ab') {
+        const m = /^\+(\d+) -(\d+)$/.exec(value)
+        if (m) {
+          status.ahead = Number(m[1])
+          status.behind = Number(m[2])
+          counted = true
+        }
+      }
+    } else if (/^[12u?] /.test(field)) {
+      status.changed++
+      // A rename or copy is followed by the path it came from, a field of its own.
+      if (field.startsWith('2 ')) i++
+    }
+  }
+  if (upstream && counted) status.upstream = upstream
+  return status
+}
+
+const config = (repo: string, key: string) => git(repo, ['config', '--get', key]).then(out => out.trim(), () => '')
+
+/** Where the repo stands, or null when the folder is missing or not a git repo. */
+export async function repoStatus(repo: string): Promise<RepoStatus | null> {
+  if (!existsSync(repo) || !(await isRepo(repo))) return null
+  // No optional locks: a status that refreshed the index would wake the watch below, which reads
+  // the status again.
+  const out = await git(repo, ['--no-optional-locks', 'status', '--porcelain=v2', '--branch', '-z'])
+  const status: RepoStatus = { repo, ...parseStatus(out) }
+  let remote = status.upstream && status.branch ? await config(repo, `branch.${status.branch}.remote`) : ''
+  if (!remote) {
+    const remotes = (await git(repo, ['remote'])).split('\n').filter(Boolean)
+    remote = remotes.includes('origin') ? 'origin' : (remotes[0] ?? '')
+  }
+  if (remote) status.remote = remote
+  return status
+}
+
+/**
+ * Pushes the branch: to its upstream, or, with none, to the remote, setting it as the upstream
+ * (`-u`). The window asks first.
+ */
+export async function pushRepo(repo: string): Promise<RepoStatus | null> {
+  const status = await repoStatus(repo)
+  if (!status) throw new Error(`${repo} is not a git repo.`)
+  if (!status.branch) throw new Error('HEAD is detached: there is no branch to push.')
+  if (!status.remote) throw new Error(`${path.basename(repo)} has no remote to push to.`)
+  const merge = status.upstream ? await config(repo, `branch.${status.branch}.merge`) : ''
+  const args = merge ? ['push', status.remote, `HEAD:${merge}`] : ['push', '-u', status.remote, status.branch]
+  await git(repo, args, NETWORK_TIMEOUT_MS)
+  return repoStatus(repo)
+}
+
+/**
+ * Pulls the branch's upstream, fast-forward only; answers the status after and how many commits
+ * came in. A branch that diverged is left as it is, and the error says so.
+ */
+export async function pullRepo(repo: string): Promise<{ status: RepoStatus | null; pulled: number }> {
+  const before = await repoStatus(repo)
+  if (!before) throw new Error(`${repo} is not a git repo.`)
+  if (!before.branch) throw new Error('HEAD is detached: there is no branch to pull into.')
+  if (!before.upstream) throw new Error(`${before.branch} has no upstream to pull from.`)
+  const headBefore = before.head ? (await git(repo, ['rev-parse', 'HEAD'])).trim() : ''
+  try {
+    await git(repo, ['pull', '--no-rebase', '--ff-only'], NETWORK_TIMEOUT_MS)
+  } catch (error) {
+    const after = await repoStatus(repo).catch(() => null)
+    if (after && after.ahead && after.behind) throw new Error(diverged(after))
+    throw error
+  }
+  const range = headBefore ? `${headBefore}..HEAD` : 'HEAD'
+  const pulled = Number((await git(repo, ['rev-list', '--count', range])).trim()) || 0
+  return { status: await repoStatus(repo), pulled }
+}
+
+/** What a branch that diverged from its upstream says. */
+export function diverged(status: Pick<RepoStatus, 'branch' | 'upstream' | 'ahead' | 'behind'>): string {
+  return `${status.branch} and ${status.upstream} have diverged (${status.ahead} here, ${status.behind} there): merge or rebase it yourself.`
+}
+
+/**
+ * The code repo of the board in the active tab, watched: its git folder (HEAD, the index, the
+ * packed refs) and its refs, so a commit, a checkout or a fetch made anywhere shows within a
+ * moment, with no polling. In a worktree `.git` is a file: HEAD lives in the worktree's own git
+ * folder and the refs in the common one, so both are watched. One repo at a time: a new tab
+ * replaces it. A fetch now and then (when the tab opens and on focus, never more than every few
+ * minutes) keeps *behind* meaningful; one that fails (offline, a credential the helper lacks) is
+ * not tried again in the background, where it could only fail quietly or prompt.
+ */
+export class CodeRepoWatch {
+  private watchers: FSWatcher[] = []
+  private key?: string
+  private repo?: string
+  private last = ''
+  private timer?: NodeJS.Timeout
+  private generation = 0
+  private fetchedAt = new Map<string, number>()
+  private fetchFailed = new Set<string>()
+
+  constructor(
+    private onStatus: (key: string, status: RepoStatus | null) => void,
+    private fetchEveryMs = 5 * 60_000,
+    private debounceMs = 250,
+  ) {}
+
+  /** Watches a board's code repo (none: stops watching); answers its status. */
+  async watch(key: string | null, repo: string | undefined): Promise<RepoStatus | null> {
+    const generation = ++this.generation
+    if (!key || !repo) {
+      this.stop()
+      return null
+    }
+    if (repo !== this.repo) {
+      this.stop()
+      this.repo = repo
+      const dirs = await gitDirs(repo)
+      if (generation !== this.generation) return null
+      for (const [dir, recursive] of dirs) {
+        try {
+          const watcher = watch(dir, { recursive }, () => this.changed())
+          watcher.on('error', () => {})
+          this.watchers.push(watcher)
+        } catch {
+          /* a folder gone since: the focus refresh still keeps it current */
+        }
+      }
+    }
+    this.key = key
+    const status = await repoStatus(repo).catch(() => null)
+    if (generation !== this.generation) return null
+    this.last = JSON.stringify(status)
+    this.fetchIfStale()
+    return status
+  }
+
+  /** Reads the status again and sends it when it changed; `fetch` first fetches when that's due. */
+  refresh(fetch = false): void {
+    if (fetch) this.fetchIfStale()
+    this.changed()
+  }
+
+  stop(): void {
+    clearTimeout(this.timer)
+    for (const watcher of this.watchers) watcher.close()
+    this.watchers = []
+    this.key = undefined
+    this.repo = undefined
+    this.last = ''
+  }
+
+  private changed(): void {
+    clearTimeout(this.timer)
+    this.timer = setTimeout(() => void this.send(), this.debounceMs)
+  }
+
+  private async send(): Promise<void> {
+    const { key, repo } = this
+    if (!key || !repo) return
+    const status = await repoStatus(repo).catch(() => null)
+    if (key !== this.key || repo !== this.repo) return
+    const text = JSON.stringify(status)
+    if (text === this.last) return
+    this.last = text
+    this.onStatus(key, status)
+  }
+
+  private fetchIfStale(): void {
+    const repo = this.repo
+    if (!repo || this.fetchFailed.has(repo)) return
+    if (Date.now() - (this.fetchedAt.get(repo) ?? 0) < this.fetchEveryMs) return
+    this.fetchedAt.set(repo, Date.now())
+    void (async () => {
+      const status = await repoStatus(repo).catch(() => null)
+      if (!status?.upstream || !status.remote) return
+      // The refs it brings wake the watch, which sends the status.
+      await git(repo, ['fetch', '--quiet', status.remote], NETWORK_TIMEOUT_MS).catch(() => this.fetchFailed.add(repo))
+    })()
+  }
+}
+
+/** The folders a repo's HEAD and refs live in, each with whether it is watched recursively. */
+async function gitDirs(repo: string): Promise<[string, boolean][]> {
+  try {
+    const out = await git(repo, ['rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir'])
+    const [own, common] = out.split('\n').map(l => l.trim())
+    const dirs: [string, boolean][] = [[own, false]]
+    if (common && common !== own) dirs.push([common, false])
+    dirs.push([path.join(common || own, 'refs'), true])
+    return dirs
+  } catch {
+    return []
+  }
 }
 
 /**

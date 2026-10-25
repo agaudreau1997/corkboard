@@ -15,6 +15,7 @@ import type {
   ProjectNode,
   ProjectTheme,
   PtyInfo,
+  RepoStatus,
   TerminalStatus,
   UpdateStatus,
 } from '@shared/types'
@@ -103,6 +104,8 @@ type State = UiPrefs & {
   focusLinks: number
   /** A project's theme as its settings edit it, shown on the whole window until they close. */
   themePreview: { projectId: string; theme: ProjectTheme | null } | null
+  /** The code repo panel's: the active tab's board, where its code repo stands, a push or pull under way. */
+  repo: { path: string; status: RepoStatus | null; busy?: 'push' | 'pull' } | null
 }
 
 export const useStore = create<State>(() => ({
@@ -129,6 +132,7 @@ export const useStore = create<State>(() => ({
   contextMenu: null,
   focusLinks: 0,
   themePreview: null,
+  repo: null,
 }))
 
 const set = useStore.setState
@@ -246,6 +250,7 @@ export const actions = {
     if (!navigator.userAgent.includes('Windows')) {
       for (const type of ['mousedown', 'mouseup', 'auxclick']) window.addEventListener(type, navButtons as EventListener, true)
     }
+    api.on.repoStatus((path, status) => set(s => (s.repo?.path === path ? { repo: { ...s.repo, status } } : s)))
     void actions.refreshClaude()
     void api.updates.status().then(update => set({ update }))
     void api.claude.desktopAvailable().then(desktop => set({ desktop }))
@@ -457,6 +462,54 @@ export const actions = {
     }))
     const status = await api.sync.now(projectId)
     if (status.state === 'conflict' || status.state === 'offline') actions.toast(status.message ?? status.state, 'error')
+  },
+
+  /** Follows a board's code repo in the code repo panel (null: none shown). */
+  async watchRepo(path: string | null) {
+    set({ repo: path ? { path, status: get().repo?.path === path ? (get().repo?.status ?? null) : null } : null })
+    const status = await api.git.watchRepo(path).catch(() => null)
+    if (path && get().repo?.path === path) set(s => ({ repo: { ...s.repo!, status } }))
+  },
+
+  /** Pushes the code repo's branch, once the person agrees to where it goes. */
+  async pushRepo(path: string) {
+    const status = get().repo?.path === path ? get().repo?.status : null
+    if (!status?.branch || !status.remote) return
+    const what = status.upstream
+      ? `${status.ahead} commit${status.ahead === 1 ? '' : 's'} go${status.ahead === 1 ? 'es' : ''} to ${status.upstream}.`
+      : `${status.branch} has no upstream yet: it goes to ${status.remote} as ${status.remote}/${status.branch}, which becomes its upstream.`
+    const ok = await actions.confirm(`Push ${status.branch} to ${status.remote}?`, `${what} Nothing is committed.`, 'Push')
+    if (!ok) return
+    await actions.repoOperation(path, 'push', async () => {
+      const after = await api.git.push(path)
+      actions.toast(`Pushed ${status.branch} to ${status.remote}`)
+      return after
+    })
+  },
+
+  /** Pulls the code repo's upstream, fast-forward only. */
+  async pullRepo(path: string) {
+    await actions.repoOperation(path, 'pull', async () => {
+      const { status, pulled } = await api.git.pull(path)
+      actions.toast(pulled ? `Pulled ${pulled} commit${pulled === 1 ? '' : 's'}` : 'Already up to date')
+      void actions.loadCommits(path)
+      return status
+    })
+  },
+
+  /** A push or pull: the panel's buttons wait for it, and what went wrong is a toast. */
+  async repoOperation(path: string, busy: 'push' | 'pull', run: () => Promise<RepoStatus | null>) {
+    const mark = (next: Partial<NonNullable<State['repo']>>) =>
+      set(s => (s.repo?.path === path ? { repo: { ...s.repo, ...next } } : s))
+    mark({ busy })
+    try {
+      const status = await run()
+      mark({ status, busy: undefined })
+    } catch (error) {
+      mark({ busy: undefined })
+      // Electron prefixes a handler's error with where it came from: only git's own words are shown.
+      actions.toast((error as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), 'error')
+    }
   },
 
   async addGuide(projectId: string) {

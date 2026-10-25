@@ -6,6 +6,7 @@ import { MapView } from './MapView'
 import { TableView } from './TableView'
 import { discussItems, tackleAllItems } from '../menus'
 import { openContextMenu } from './ContextMenu'
+import { RepoPanel } from './RepoPanel'
 
 const VIEWS: { id: ViewMode; label: string }[] = [
   { id: 'board', label: 'Board' },
@@ -17,6 +18,7 @@ export function BoardPane({ path }: { path: string }) {
   const board = useStore(s => s.boards[path])
   const view = useStore(s => s.tabs.find(t => t.path === path)?.view ?? 'board')
   const selected = useStore(s => s.selected[path] ?? NONE)
+  const hasRepo = useStore(s => s.repo?.path === path && !!s.repo.status)
   const [filter, setFilter] = useState('')
   const filterInput = useRef<HTMLInputElement>(null)
 
@@ -45,7 +47,7 @@ export function BoardPane({ path }: { path: string }) {
   if (!board) return <div className="empty-state">Loading board…</div>
 
   return (
-    <section className="board-pane">
+    <section className={`board-pane${hasRepo ? ' has-repo' : ''}`}>
       <header className="board-head">
         <h2>{board.meta.title}</h2>
         <span className="board-key">{board.meta.key}</span>
@@ -117,6 +119,7 @@ export function BoardPane({ path }: { path: string }) {
       {view === 'board' && <KanbanView board={board} matches={matches} />}
       {view === 'map' && <MapView board={board} matches={matches} />}
       {view === 'table' && <TableView board={board} matches={matches} />}
+      <RepoPanel path={path} codeRepo={board.codeRepo} />
     </section>
   )
 }

@@ -128,6 +128,25 @@ export type CodeCommit = {
   keys: string[]
 }
 
+/** Where a board's code repo stands, as the code repo panel shows it. */
+export type RepoStatus = {
+  /** The code repo's folder. */
+  repo: string
+  /** The branch checked out; none when HEAD is detached. */
+  branch?: string
+  /** HEAD's short commit; none before the first commit. */
+  head?: string
+  /** The upstream branch, e.g. `origin/main`, when one is set and still exists. */
+  upstream?: string
+  /** The remote Push goes to: the upstream's, else `origin` or the only one; none without a remote. */
+  remote?: string
+  /** Commits here and not on the upstream, and there and not here (as of the last fetch). */
+  ahead: number
+  behind: number
+  /** Files changed, staged or untracked, not yet committed. */
+  changed: number
+}
+
 export type CardPatch = Partial<Omit<Card, 'id' | 'extra'>>
 
 export type BoardDelta = {
