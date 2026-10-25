@@ -635,6 +635,12 @@ function createWindow(): void {
   win.on('focus', () => {
     for (const project of projects.values()) project.sync.syncIfStale()
   })
+  // Mouse 4 and 5 on Windows: the window gets them as app commands, and the renderer keeps the
+  // history of tabs they go through (on Linux the page sees the buttons itself).
+  win.on('app-command', (_e, command) => {
+    if (command === 'browser-backward') send('nav:step', 'back')
+    else if (command === 'browser-forward') send('nav:step', 'forward')
+  })
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//.test(url)) void openUrl(url, u => shell.openExternal(u))
     return { action: 'deny' }

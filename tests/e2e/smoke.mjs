@@ -285,6 +285,39 @@ try {
   check((await page.locator('.map-node').count()) > 30, `map draws the open idea cards (${await page.locator('.map-node').count()})`)
   await shot('02-map')
 
+  // ---- mouse 4 and 5 go back and forward through the tabs and their views ----
+  const where = () =>
+    page.evaluate(() => ({
+      tab: document.querySelector('.tab.active')?.getAttribute('title') ?? '',
+      view: document.querySelector('.segmented .on')?.textContent ?? '',
+    }))
+  const mouseNav = button =>
+    page.evaluate(b => {
+      const opts = { button: b, bubbles: true, cancelable: true }
+      document.querySelector('.board-pane').dispatchEvent(new MouseEvent('mousedown', opts))
+      return !document.querySelector('.board-pane').dispatchEvent(new MouseEvent('mouseup', opts))
+    }, button)
+  const isAt = async (tab, view) => {
+    const at = await until(async () => {
+      const w = await where()
+      return w.tab.endsWith(`:${tab}`) && w.view === view && w
+    }, 2000)
+    return !!at
+  }
+  const prevented = await mouseNav(3)
+  check(prevented && (await isAt(IDEAS.path, 'Board')), `mouse 4 goes back to the tab's board view, and nothing else sees it (${JSON.stringify(await where())})`)
+  await mouseNav(3)
+  check(await isAt(MAIN.path, 'Board'), `mouse 4 again goes back to the tab before (${JSON.stringify(await where())})`)
+  await mouseNav(4)
+  await mouseNav(4)
+  check(await isAt(IDEAS.path, 'Map'), `mouse 5 goes forward again (${JSON.stringify(await where())})`)
+  await mouseNav(3)
+  await page.getByRole('tab', { name: 'Table', exact: true }).click()
+  await mouseNav(4)
+  check(await isAt(IDEAS.path, 'Table'), `a view chosen after going back drops the way forward (${JSON.stringify(await where())})`)
+  await page.getByRole('tab', { name: 'Map', exact: true }).click()
+  await page.locator('.map-node').first().waitFor()
+
   // Link two ideas by dragging handle to node.
   const nodes = page.locator('.react-flow__node-card')
   const a = nodes.nth(0)

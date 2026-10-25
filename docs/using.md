@@ -16,7 +16,7 @@ A project can wear colours of its own, so a glance at the window says which one 
 
 ## Boards and cards
 
-Each board is a folder with a `board.json`; a board folder can hold child boards, so boards nest like folders. Every board you open is a tab; `+` (or right-click → *New board inside…*) creates one. *Delete board…* removes an empty board (archived cards don't count) at once and one with cards (and child boards) once its name is typed; all of it stays in the repo's git history.
+Each board is a folder with a `board.json`; a board folder can hold child boards, so boards nest like folders. Every board you open is a tab; `+` (or right-click → *New board inside…*) creates one. Mouse buttons 4 and 5 go back and forward through the tabs and views you have shown, as in a browser (a closed tab is passed over; the history lasts while the app runs). *Delete board…* removes an empty board (archived cards don't count) at once and one with cards (and child boards) once its name is typed; all of it stays in the repo's git history.
 
 Cards are Markdown files (`cards/<ID>.md`: YAML front matter, then the description), so a move is a one-line diff and a Claude session can move a card by editing `list:`. The app watches the folder, so that move shows up on screen at once. It commits the board repo itself and keeps it in sync between machines: see [The board repo](board-repo.md).
 

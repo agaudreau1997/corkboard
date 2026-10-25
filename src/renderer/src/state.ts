@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { listColorAt, sortCards } from '@shared/cardfile'
+import { emptyHistory, step, visit, type Place } from '@shared/navhistory'
 import type { CorkboardApi } from '@shared/api'
 import type {
   AppConfig,
@@ -158,6 +159,31 @@ useStore.subscribe(state => {
   if (shown && state.attention.includes(shown)) set({ attention: state.attention.filter(t => t !== shown) })
 })
 
+// ---- back and forward through the tabs ----------------------------------------------------------
+
+// Every way of showing a tab or a view (the tab bar, the side panel, a link, a menu) ends in the
+// store, so the history is kept here rather than at each of them.
+let history = emptyHistory()
+
+function placeOf(state: State): Place | undefined {
+  const tab = state.tabs.find(t => t.path === state.activeTab)
+  return tab && { path: tab.path, view: tab.view }
+}
+
+useStore.subscribe(state => {
+  const place = placeOf(state)
+  if (place) history = visit(history, place)
+})
+
+/** Mouse 4 (back) and 5 (forward), on Linux; on Windows they come as app commands from main. */
+function navButtons(e: MouseEvent) {
+  if (e.button !== 3 && e.button !== 4) return
+  // Nothing else reacts to them: not the page's own history, not a terminal.
+  e.preventDefault()
+  e.stopPropagation()
+  if (e.type === 'mouseup') actions.navigate(e.button === 3 ? -1 : 1)
+}
+
 // ---- terminal output: buffered until its xterm mounts -----------------------------------------
 
 const ptyBuffers = new Map<string, string[]>()
@@ -216,6 +242,10 @@ export const actions = {
       set(s => ({ projects: s.projects.map(p => (p.id === projectId ? { ...p, sync } : p)) })),
     )
     api.on.updateStatus(update => set({ update }))
+    api.on.navigate(dir => actions.navigate(dir === 'back' ? -1 : 1))
+    if (!navigator.userAgent.includes('Windows')) {
+      for (const type of ['mousedown', 'mouseup', 'auxclick']) window.addEventListener(type, navButtons as EventListener, true)
+    }
     void actions.refreshClaude()
     void api.updates.status().then(update => set({ update }))
     void api.claude.desktopAvailable().then(desktop => set({ desktop }))
@@ -318,6 +348,16 @@ export const actions = {
 
   setView(path: string, view: ViewMode) {
     set(s => ({ tabs: s.tabs.map(t => (t.path === path ? { ...t, view } : t)) }))
+  },
+
+  /** Back (-1) or forward (1) to the tab and view shown before, passing over closed tabs. */
+  navigate(dir: -1 | 1) {
+    const s = get()
+    const moved = step(history, dir, placeOf(s), path => s.tabs.some(t => t.path === path))
+    if (!moved) return
+    history = moved.history
+    const { path, view } = moved.place
+    set({ activeTab: path, tabs: s.tabs.map(t => (t.path === path ? { ...t, view: view as ViewMode } : t)) })
   },
 
   toggleExpanded(path: string) {
