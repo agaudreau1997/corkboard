@@ -73,9 +73,13 @@ export class BoardStore {
   // ---- reading -------------------------------------------------------------------------------
 
   async init(): Promise<void> {
-    this.boards.clear()
+    // Boards are replaced as they are read, and the ones gone dropped at the end, rather than
+    // cleared first: a tree asked for while a reload reads (a board moved in) never lacks the
+    // boards it had, which the window would take as deleted and close their tabs.
     this.texts.clear()
-    for (const boardPath of await this.findBoards('')) await this.readBoard(boardPath)
+    const read = new Set<string>()
+    for (const boardPath of await this.findBoards('')) if (await this.readBoard(boardPath)) read.add(boardPath)
+    for (const boardPath of [...this.boards.keys()]) if (!read.has(boardPath)) this.boards.delete(boardPath)
     this.resolveInheritance()
     const theme = await readOrUndefined(this.themeFile())
     if (theme !== undefined) this.texts.set(this.themeFile(), theme)

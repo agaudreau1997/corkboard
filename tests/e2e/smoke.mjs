@@ -1362,6 +1362,7 @@ try {
   check(movedBoard, `${SPARE.title} moved into the other project, folder and cards`)
   check(cardFiles(path.join(second, SPARE.path, 'cards')).length === SPARE.files, `with its ${SPARE.files} cards`)
   await page.locator('.project[data-project] .tree-row', { hasText: SPARE.title }).waitFor()
+  check((await page.locator('.tab[title="side-project:side-project"]').count()) === 1, "the receiving project's main board keeps its tab through the move")
   const secondLogHas = text => {
     try {
       return execFileSync('git', ['log', '--format=%B'], { cwd: second, stdio: 'pipe' }).toString().includes(text)
