@@ -23,6 +23,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { between, freezeListColors, isDivider, listSort, orderList, reorderLists, slugify } from '@shared/cardfile'
+import { imageUrl } from '@shared/images'
 import type { Card, CodeCommit, ListDef, LoadedBoard } from '@shared/types'
 import { useGrabScroll } from '../grabScroll'
 import { cardMenu, listMenu } from '../menus'
@@ -729,6 +730,18 @@ function RenameCard({ board, card, onDone }: { board: LoadedBoard; card: Card; o
   )
 }
 
+/**
+ * The card's cover across the top of its face, no taller than a few lines of cards: a picked image
+ * that is not here (not pulled yet, or gone) leaves the face as it was without one.
+ */
+function CardCover({ boardPath, src }: { boardPath: string; src: string }) {
+  const url = imageUrl(boardPath, src)
+  const [missing, setMissing] = useState(false)
+  useEffect(() => setMissing(false), [url])
+  if (!url || missing) return null
+  return <img className="card-cover" src={url} alt="" draggable={false} onError={() => setMissing(true)} />
+}
+
 export function CardFace({
   board,
   card,
@@ -778,6 +791,7 @@ export function CardFace({
       }}
       onContextMenu={menu}
     >
+      {card.cover && <CardCover boardPath={board.path} src={card.cover} />}
       {renaming && setRenaming ? (
         <RenameCard board={board} card={card} onDone={() => setRenaming(false)} />
       ) : (

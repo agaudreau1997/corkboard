@@ -39,7 +39,7 @@ sessions: [...]       # Claude Code sessions the app started for it; leave as is
 Description.
 \`\`\`
 
-Other keys the app knows: \`due\` (a date), \`complete: true\`, \`archived: true\`, \`jira\` (the Jira issue key the card is tracked as, \`jira: ABC-123\`). Keys it does not know are kept as they are.
+Other keys the app knows: \`due\` (a date), \`complete: true\`, \`archived: true\`, \`jira\` (the Jira issue key the card is tracked as, \`jira: ABC-123\`), \`cover\` (one of its images, as its description names it, shown on its face on the board: \`cover: TASK-12/3f2a9c01d4e5b6a7.png\`). Keys it does not know are kept as they are.
 
 - **Move a card**: change \`list:\` to another list id of its board. Keep \`pos:\`: most lists are \`manual\`, where the old number sorts the card among the others, and a sorted one places the card itself.
 - **New card**: \`cards/<KEY>-<n>.md\` with the next free number on that board, and \`id\`, \`title\`, \`list\`, \`pos\`, \`created\` and \`updated\` set.

@@ -773,6 +773,21 @@ try {
   check(!!(await until(() => execFileSync('git', ['log', '--format=%B', '-8'], { cwd: root }).toString().includes(`Add an image to ${openId}`), 8000)), 'the board repo commits the images')
   check(readdirSync(imagesDir).every(n => !n.endsWith('.tmp')), 'and leaves no temporary file beside them')
 
+  // ---- a cover: one of the description's images, picked in the drawer, on the card's face ----
+  const coverChoices = page.locator('.drawer .covers .cover-choice')
+  check((await coverChoices.count()) === 4, `the drawer offers the description's images as covers, and None (${await coverChoices.count()})`)
+  await page.locator('.drawer').getByRole('button', { name: `Cover ${droppedImage}` }).click()
+  check(!!(await until(() => readFileSync(imageCardFile, 'utf8').includes(`\ncover: ${droppedImage}\n`))), `picking one writes cover: ${droppedImage} into the card file`)
+  const faceCover = page.locator(`.card[data-card="${openId}"] .card-cover`)
+  const coverBox = await until(async () => {
+    const box = await faceCover.evaluate(img => ({ w: img.naturalWidth, h: img.getBoundingClientRect().height, card: img.closest('.card').getBoundingClientRect().width, width: img.getBoundingClientRect().width })).catch(() => null)
+    return box && box.w > 0 ? box : null
+  })
+  check(!!coverBox && coverBox.h <= 140 && Math.abs(coverBox.width - coverBox.card) <= 2, `the card's face shows it across its top, at most 140 px tall (${JSON.stringify(coverBox)})`)
+  await shot('04b-card-cover')
+  await page.locator('.drawer .covers').getByRole('button', { name: 'None' }).click()
+  check(!!(await until(() => !readFileSync(imageCardFile, 'utf8').includes('cover:'))) && (await until(async () => (await faceCover.count()) === 0)), 'None takes the cover off the card and its face')
+
   await page.keyboard.press('Control+f')
   check(await page.locator('.filter').evaluate(el => el === document.activeElement), 'Ctrl+F focuses the filter')
 

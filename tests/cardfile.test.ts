@@ -33,6 +33,7 @@ describe('card files', () => {
       created: '2026-09-20T12:28:50.000Z',
       complete: true,
       links: ['RS-12', 'IDEA-4'],
+      cover: 'RS-886/3f2a9c01d4e5b6a7.png',
       jira: 'SPDI-42',
       sessions: [{ id: 'abc', kind: 'local', started: '2026-10-03T10:00:00.000Z', cards: ['RS-886'] }],
       body: '# Notes\n\n- one\n- two',
@@ -59,6 +60,16 @@ describe('card files', () => {
 
   it('falls back to the file name for the id', () => {
     expect(parseCard('---\ntitle: x\nlist: a\n---\n', 'RS-1').id).toBe('RS-1')
+  })
+
+  it('reads a cover written by hand, writes it after the links, and leaves none out', () => {
+    const text = '---\nid: RS-1\ntitle: x\nlist: todo\npos: 1\nlinks:\n  - RS-2\ncover: RS-1/a b.png\nestimate: 3\n---\n\n![](<RS-1/a b.png>)\n'
+    const card = parseCard(text)
+    expect(card.cover).toBe('RS-1/a b.png')
+    expect(card.extra).toEqual({ estimate: 3 })
+    expect(serializeCard(card)).toBe(text)
+    expect(serializeCard({ ...base, cover: 'RS-886/a.png', jira: 'SPDI-7' })).toContain('\ncover: RS-886/a.png\njira: SPDI-7\n')
+    expect(serializeCard({ ...card, cover: undefined })).not.toContain('cover')
   })
 
   it('reads a jira key written by hand and writes it among the known keys', () => {

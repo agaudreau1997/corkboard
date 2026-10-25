@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Markdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Card, CodeCommit, LoadedBoard, SessionRef } from '@shared/types'
-import { imageUrl, insertAt } from '@shared/images'
+import { cardImages, imageUrl, insertAt } from '@shared/images'
 import { imageFiles, saveImages } from '../images'
 import { discussCards, tackleCards } from '../tackle'
 import { normalizeKey } from '@shared/project'
@@ -272,6 +272,8 @@ function Drawer({ board, card }: { board: LoadedBoard; card: Card }) {
           )}
         </section>
 
+        <CoverPicker board={board} card={card} onPick={cover => save({ cover })} />
+
         <section>
           <h3>Linked cards</h3>
           <div className="links">
@@ -396,6 +398,50 @@ function CardImage({ boardPath, src, alt }: { boardPath: string; src: string; al
     )
   }
   return <img src={url} alt={alt ?? ''} onError={() => setMissing(true)} />
+}
+
+/**
+ * The card's cover, picked from its description's images (and the cover itself, when the
+ * description no longer names it); nothing to pick from, no section.
+ */
+function CoverPicker({ board, card, onPick }: { board: LoadedBoard; card: Card; onPick: (cover: string | undefined) => void }) {
+  const images = cardImages(card.body)
+  if (card.cover && !images.includes(card.cover)) images.push(card.cover)
+  if (!images.length) return null
+  return (
+    <section>
+      <h3>Cover</h3>
+      <div className="covers">
+        <button
+          className={`cover-choice${card.cover ? '' : ' picked'}`}
+          aria-pressed={!card.cover}
+          title="No cover on the card's face"
+          onClick={() => card.cover && onPick(undefined)}
+        >
+          None
+        </button>
+        {images.map(src => (
+          <button
+            key={src}
+            className={`cover-choice${card.cover === src ? ' picked' : ''}`}
+            aria-label={`Cover ${src}`}
+            aria-pressed={card.cover === src}
+            title={src}
+            onClick={() => card.cover !== src && onPick(src)}
+          >
+            <CoverThumb url={imageUrl(board.path, src)} />
+          </button>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+/** A cover to pick, or what stands for one not on this machine (yet). */
+function CoverThumb({ url }: { url?: string }) {
+  const [missing, setMissing] = useState(false)
+  useEffect(() => setMissing(false), [url])
+  return url && !missing ? <img src={url} alt="" onError={() => setMissing(true)} /> : <>not here</>
 }
 
 async function openLinked(id: string, entry?: IndexEntry) {

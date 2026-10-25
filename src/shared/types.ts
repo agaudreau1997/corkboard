@@ -68,6 +68,8 @@ export type Card = {
   labels: string[]
   /** Ids of related cards (any board): the map view's edges. */
   links: string[]
+  /** One of its description's images (`<ID>/<hash>.png`, relative to the card file) shown on its face. */
+  cover?: string
   trello?: string
   /** The Jira issue the card is tracked as (`SPDI-42`): what a work project names in its code repo. */
   jira?: string
