@@ -11,6 +11,7 @@ import type {
   Card,
   CardPatch,
   ClaudeInfo,
+  NewProject,
   NotifyConfig,
   ProjectConfig,
   ProjectSettingsPatch,
@@ -25,7 +26,7 @@ import { autoUpdater } from 'electron-updater'
 import { desktopAvailable, openUrl } from './desktop'
 import { codeCommits, CodeRepoWatch, commitFiles, pullRepo, pushRepo } from './git'
 import { desktopNotice, notify } from './notify'
-import { boardKey, prepareBoardRepo, Project, projectId, splitKey } from './projects'
+import { boardKey, hasBoards, prepareBoardRepo, Project, projectId, splitKey } from './projects'
 import { PtyManager } from './pty'
 import { shellProbe } from './shell'
 import { CLAUDE, openInDesktop, promptFor, resume, stopDesktopWatches, tackle } from './tackle'
@@ -304,7 +305,8 @@ function registerIpc(): void {
     return [...projects.values()].map(p => p.node())
   })
   ipcMain.handle('projects:pickFolder', (_e, title: string) => pickFolder(title))
-  ipcMain.handle('projects:add', async (_e, opts: { boardRoot: string; name?: string; codeRepo?: string }) => {
+  ipcMain.handle('projects:hasBoards', (_e, boardRoot: string) => hasBoards(path.resolve(boardRoot)))
+  ipcMain.handle('projects:add', async (_e, opts: NewProject) => {
     await openProjects()
     const root = path.resolve(opts.boardRoot)
     if ([...projects.values()].some(p => p.root === root)) throw new Error('That board repo is already a project.')
@@ -317,7 +319,9 @@ function registerIpc(): void {
       ...(opts.codeRepo ? { codeRepo: opts.codeRepo } : {}),
     }
     const config = await writeConfig(c => ({ ...c, projects: [...c.projects, pc] }))
-    await openProject(pc, config)
+    const project = await openProject(pc, config)
+    // A folder with no board yet gets its main board with it.
+    if (project && !project.store.tree().length) await project.makeMainBoard(opts.board?.title?.trim() || name, opts.board?.key)
     send('boards:treeChanged')
     return pc.id
   })

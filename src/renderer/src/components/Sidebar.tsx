@@ -115,6 +115,8 @@ function ProjectRow({ project }: { project: ProjectNode }) {
           {listed.map(node => (
             <TreeNode key={node.path} node={node} depth={1} />
           ))}
+          {/* A project added now always has its main board: only a repo emptied by hand, or made
+              by an older build, has none and needs this way in. */}
           {!project.boards.length && (
             <button
               className="link empty-project"

@@ -411,11 +411,32 @@ function Settings({ path }: { path: string }) {
 }
 
 
+/**
+ * Adds a board repo as a project. A folder with no board yet (a new or empty one) gets its main
+ * board with it, so the dialog asks for that board's title and key once it knows the folder has
+ * none; a repo that has boards is added as it is.
+ */
 function AddProject() {
   const [root, setRoot] = useState('')
   const [name, setName] = useState('')
   const [codeRepo, setCodeRepo] = useState('')
   const [busy, setBusy] = useState(false)
+  // Whether the folder typed or picked holds no board yet; undefined until the app has looked.
+  const [empty, setEmpty] = useState<{ root: string; empty: boolean }>()
+  const [title, setTitle] = useState<string>()
+  const [key, setKey] = useState<string>()
+  useEffect(() => {
+    const folder = root.trim()
+    if (!folder) return
+    const timer = setTimeout(() => {
+      void api.projects.hasBoards(folder).then(has => setEmpty({ root: folder, empty: !has }))
+    }, 200)
+    return () => clearTimeout(timer)
+  }, [root])
+  const asksBoard = !!root.trim() && empty?.root === root.trim() && empty.empty
+  const folderName = root.split(/[\\/]/).filter(Boolean).at(-1) ?? ''
+  const boardTitle = title ?? (name.trim() || folderName)
+  const boardKey = key ?? deriveKey(boardTitle)
   const pick = async (title: string, set: (v: string) => void, also?: (v: string) => void) => {
     const folder = await api.projects.pickFolder(title)
     if (folder) {
@@ -427,7 +448,12 @@ function AddProject() {
     if (!root.trim()) return
     setBusy(true)
     try {
-      const id = await actions.addProject({ boardRoot: root.trim(), name: name.trim() || undefined, codeRepo: codeRepo.trim() || undefined })
+      const id = await actions.addProject({
+        boardRoot: root.trim(),
+        name: name.trim() || undefined,
+        codeRepo: codeRepo.trim() || undefined,
+        ...(asksBoard ? { board: { title: boardTitle.trim() || undefined, key: boardKey || undefined } } : {}),
+      })
       actions.setModal(null)
       actions.toast(`Added ${name.trim() || id}`)
     } catch (error) {
@@ -484,6 +510,30 @@ function AddProject() {
           names its own.
         </small>
       </label>
+      {asksBoard && (
+        <section className="field-group" aria-labelledby="main-board-heading">
+          <h3 id="main-board-heading">Main board</h3>
+          <p className="muted small">
+            The folder has no board yet: the project starts with this one, opened by a click on the project. It starts
+            with To do / Doing / Done.
+          </p>
+          <div className="field-grid">
+            <label className="field">
+              <span>Board title</span>
+              <input value={boardTitle} onChange={e => setTitle(e.target.value)} />
+            </label>
+            <label className="field">
+              <span>Card key</span>
+              <input
+                value={boardKey}
+                maxLength={8}
+                onChange={e => setKey(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+              />
+            </label>
+          </div>
+          <small className="muted">Cards are numbered {boardKey || 'KEY'}-1, {boardKey || 'KEY'}-2…</small>
+        </section>
+      )}
       <div className="modal-actions">
         <button type="button" className="ghost" onClick={() => actions.setModal(null)}>
           Cancel

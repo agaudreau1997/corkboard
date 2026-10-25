@@ -1,14 +1,18 @@
-import { describe, expect, it } from 'vitest'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
-  mergeProjectSettings,
   isIcon,
   mainBoardOf,
+  mergeProjectSettings,
   namesKey,
   normalizeKey,
   parseProjectSettings,
   patchSettings,
   projectSettingsText,
 } from '@shared/project'
+import { hasBoards, Project } from '../src/main/projects'
 
 describe('project.json', () => {
   it('reads the work flag and nothing else; broken JSON is undefined', () => {
@@ -95,5 +99,43 @@ describe('Jira keys', () => {
     expect(normalizeKey('')).toBeUndefined()
     expect(normalizeKey('   ')).toBeUndefined()
     expect(normalizeKey(undefined)).toBeUndefined()
+  })
+})
+
+describe('a project made from a folder with no board', () => {
+  let dir: string
+  beforeEach(() => {
+    dir = mkdtempSync(path.join(os.tmpdir(), 'corkboard-project-'))
+  })
+  afterEach(() => rmSync(dir, { recursive: true, force: true }))
+
+  const events = { delta: () => {}, treeChanged: () => {}, committed: () => {}, syncStatus: () => {} }
+
+  it('is told apart from one that has boards, however deep', async () => {
+    expect(await hasBoards(dir)).toBe(false)
+    expect(await hasBoards(path.join(dir, 'missing'))).toBe(false)
+    mkdirSync(path.join(dir, '.git', 'x'), { recursive: true })
+    writeFileSync(path.join(dir, '.git', 'x', 'board.json'), '{}')
+    expect(await hasBoards(dir)).toBe(false)
+    mkdirSync(path.join(dir, 'work', 'game'), { recursive: true })
+    writeFileSync(path.join(dir, 'work', 'game', 'board.json'), '{}')
+    expect(await hasBoards(dir)).toBe(true)
+  })
+
+  it('gets its main board, named in project.json, which it then keeps', async () => {
+    const project = new Project({ id: 'side', name: 'Side', boardRoot: dir }, {}, events, { commitDelayMs: 60_000, syncIntervalMs: 60_000 })
+    await project.store.init()
+    const rel = await project.makeMainBoard('Side project', 'SP')
+    expect(rel).toBe('side-project')
+    const meta = JSON.parse(readFileSync(path.join(dir, rel, 'board.json'), 'utf8'))
+    expect(meta).toMatchObject({ key: 'SP', title: 'Side project', flow: { doing: 'doing', done: 'done' } })
+    expect(meta.lists.map((l: { id: string }) => l.id)).toEqual(['todo', 'doing', 'done'])
+    expect(JSON.parse(readFileSync(path.join(dir, 'project.json'), 'utf8'))).toEqual({ board: rel })
+    expect(project.node().mainBoard).toBe('side:side-project')
+    expect(() => project.keepMainBoard(rel, 'deleted')).toThrow(/main board/)
+    // Another top-level board, first by title, doesn't take its place: project.json names it.
+    const other = await project.store.createBoard('', 'Aardvark')
+    expect(project.mainBoard()).toBe(rel)
+    expect(() => project.keepMainBoard(other, 'deleted')).not.toThrow()
   })
 })

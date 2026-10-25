@@ -27,6 +27,7 @@ const api: CorkboardApi = {
     addGuide: id => invoke('projects:addGuide', id),
     remove: id => invoke('projects:remove', id),
     pickFolder: title => invoke('projects:pickFolder', title),
+    hasBoards: boardRoot => invoke('projects:hasBoards', boardRoot),
   },
   boards: {
     load: path => invoke('boards:load', path),

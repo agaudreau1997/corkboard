@@ -255,6 +255,15 @@ export type TerminalEvent = {
   exitCode?: number
 }
 
+/** What *Add project* asks for: the board repo, and the main board when the repo has none. */
+export type NewProject = {
+  boardRoot: string
+  name?: string
+  codeRepo?: string
+  /** The main board made in a repo with no board yet; its title defaults to the project's name. */
+  board?: { title?: string; key?: string }
+}
+
 /** A project in the side panel: its boards' paths are board keys (`<project id>:<path>`). */
 export type ProjectNode = {
   id: string
