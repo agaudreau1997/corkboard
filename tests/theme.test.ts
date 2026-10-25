@@ -124,6 +124,18 @@ describe('theme tokens', () => {
     expect(luminance(themeTokens({ colors: { accent: '#4a2f60' } })['--accent-ink'])).toBeGreaterThan(0.6)
   })
 
+  it('sinks a card being edited below the cards at rest, under every preset', () => {
+    const css = stylesheetTokens()
+    expect(luminance(css['--card-edit'])).toBeLessThan(luminance(css['--card']))
+    for (const preset of THEME_PRESETS) {
+      const tokens = { ...css, ...themeTokens(preset) }
+      const edit = luminance(tokens['--card-edit'])
+      expect(edit, `${preset.name}: --card-edit under --card`).toBeLessThan(luminance(tokens['--card']))
+      // Lighter than the column on a light theme, darker on a dark one: the field is off the card.
+      expect(tokens['--card-edit'], preset.name).not.toBe(tokens['--column'])
+    }
+  })
+
   it('lets a theme pin exact tokens over what its colours mix', () => {
     const tokens = themeTokens({ colors: { background: '#0e0e12' }, tokens: { '--panel': '#16161d', '--made-up': '#ffffff' } })
     expect(tokens['--panel']).toBe('#16161d')

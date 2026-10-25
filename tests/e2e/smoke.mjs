@@ -448,6 +448,7 @@ try {
   await todo.getByText('+ Add a card').click()
   const adder = await todo.locator('.add-card-form textarea').evaluate(el => getComputedStyle(el).resize)
   check(adder === 'none', `the add-a-card field has no resize grip (${adder})`)
+  const adderFill = await todo.locator('.add-card-form textarea').evaluate(el => getComputedStyle(el).backgroundColor)
   await page.keyboard.type('Drag me to done')
   await page.keyboard.press('Enter')
   await page.keyboard.press('Escape')
@@ -563,6 +564,12 @@ try {
     faceEditing.title[0] === faceBefore.title[0] && faceEditing.title[1] === faceBefore.title[1] && faceEditing.meta === faceBefore.meta,
     `opening a card's title for editing moves nothing (${JSON.stringify(faceBefore)} → ${JSON.stringify(faceEditing)})`,
   )
+  const fills = await page.evaluate(() => {
+    const bg = sel => getComputedStyle(document.querySelector(sel)).backgroundColor
+    return { editing: bg('.card[data-card="SB-1"]'), rest: bg('.card:not([data-card="SB-1"])') }
+  })
+  check(fills.editing !== fills.rest, `a card being renamed has a fill of its own (${fills.editing} vs ${fills.rest})`)
+  check(fills.editing === adderFill, `the add-a-card field has the same fill (${adderFill})`)
   await page.keyboard.type(' and a title long enough to wrap over several lines of the card, to be edited whole')
   const field = await renamed.locator('.rename-card').evaluate(el => {
     const s = getComputedStyle(el)

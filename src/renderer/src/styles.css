@@ -6,6 +6,7 @@
   --column: #20242d;
   --card: #2a2f3a;
   --card-hover: #313744;
+  --card-edit: #191b20;
   --line: #2f3440;
   --line-2: #3a4050;
   --text: #dfe2e8;
@@ -969,6 +970,13 @@ code,
   border-color: var(--blue);
 }
 
+/* The card being renamed, filled as a field so it stands out from the cards at rest (CORK-39 took
+   the field's own box away, so the face doesn't move). */
+.card.renaming,
+.card.renaming:hover {
+  background: var(--card-edit);
+}
+
 .card-meta {
   display: flex;
   flex-wrap: wrap;
@@ -1040,6 +1048,7 @@ button.copy-id:hover {
 /* Grows with the title rather than scrolling, from two lines up. */
 .add-card-form textarea {
   display: block;
+  background: var(--card-edit);
   width: 100%;
   resize: none;
   field-sizing: content;

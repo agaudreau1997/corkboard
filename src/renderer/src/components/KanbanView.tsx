@@ -767,7 +767,7 @@ export function CardFace({
   const talks = finished ? 0 : card.sessions.filter(s => s.purpose === 'discuss').length
   return (
     <div
-      className={`card${selected ? ' selected' : ''}${open ? ' open' : ''}${dragging ? ' dragging' : ''}${card.complete ? ' complete' : ''}`}
+      className={`card${selected ? ' selected' : ''}${open ? ' open' : ''}${dragging ? ' dragging' : ''}${card.complete ? ' complete' : ''}${renaming ? ' renaming' : ''}`}
       data-card={card.id}
       onClick={e => {
         if (e.ctrlKey || e.metaKey || e.shiftKey) actions.toggleSelected(board.path, card.id)
