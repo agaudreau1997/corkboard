@@ -397,12 +397,19 @@ try {
       tab: document.querySelector('.tab.active')?.getAttribute('title') ?? '',
       view: document.querySelector('.segmented .on')?.textContent ?? '',
     }))
+  // On Linux the page sees the buttons and steps itself; on Windows they reach the window as app
+  // commands instead (the page's own listener is off there, or a press would step twice), so the
+  // test sends what each system sends.
   const mouseNav = button =>
-    page.evaluate(b => {
-      const opts = { button: b, bubbles: true, cancelable: true }
-      document.querySelector('.board-pane').dispatchEvent(new MouseEvent('mousedown', opts))
-      return !document.querySelector('.board-pane').dispatchEvent(new MouseEvent('mouseup', opts))
-    }, button)
+    process.platform === 'win32'
+      ? app
+          .evaluate(({ BrowserWindow }, command) => BrowserWindow.getAllWindows()[0].emit('app-command', {}, command), button === 3 ? 'browser-backward' : 'browser-forward')
+          .then(() => true)
+      : page.evaluate(b => {
+          const opts = { button: b, bubbles: true, cancelable: true }
+          document.querySelector('.board-pane').dispatchEvent(new MouseEvent('mousedown', opts))
+          return !document.querySelector('.board-pane').dispatchEvent(new MouseEvent('mouseup', opts))
+        }, button)
   const isAt = async (tab, view) => {
     const at = await until(async () => {
       const w = await where()
