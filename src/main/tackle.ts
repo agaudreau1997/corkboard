@@ -1,5 +1,7 @@
 // The tackle buttons: build the prompt, start `claude` in an embedded terminal, and record the
 // session on each card (so it can be resumed) while moving the cards to the board's doing list.
+// A session in a terminal or a worktree also gets the app's MCP server (mcp.ts), when it runs:
+// its config is a file, passed with `--mcp-config`, and its prompt then says to use the tools.
 
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
@@ -24,13 +26,17 @@ const CLOUD_URL = /https:\/\/claude\.ai\/code\/[A-Za-z0-9_\-/]+/
 
 export type OpenExternal = (url: string) => Promise<void>
 
-/** Starts sessions for `req`'s cards; `boardKey` is the board's key in the window, for its terminals. */
+/**
+ * Starts sessions for `req`'s cards; `boardKey` is the board's key in the window, for its
+ * terminals, and `mcpConfig` the MCP server's config file, when the server runs.
+ */
 export async function tackle(
   req: TackleRequest,
   store: BoardStore,
   ptys: PtyManager,
   open: OpenExternal,
   boardKey?: string,
+  mcpConfig?: string,
 ): Promise<PtyInfo[]> {
   const board = store.board(req.boardPath)
   const cards = req.cardIds
@@ -49,7 +55,10 @@ export async function tackle(
   for (const group of groups) {
     const ids = group.map(c => c.id)
     const cloud = req.mode === 'cloud'
-    const prompt = buildPrompt(store, req, group)
+    // Only a session in a terminal or a worktree can be handed the server: the cloud can't reach
+    // this machine, and a claude:// link carries no MCP config.
+    const mcp = req.mode === 'local' || req.mode === 'local-worktree' ? mcpConfig : undefined
+    const prompt = buildPrompt(store, req, group, !!mcp)
     const name = sessionName(group, req.listTitle ?? req.boardTitle, discuss ? 'discuss' : 'tackle')
     const purpose = discuss ? ({ purpose: 'discuss' } as const) : {}
     const started = new Date().toISOString()
@@ -75,7 +84,7 @@ export async function tackle(
     } else {
       const id = randomUUID()
       const worktree = req.mode === 'local-worktree' ? worktreeName(group, req.listTitle, !!store.settings.work) : undefined
-      command = localCommand({ claude: CLAUDE, boardRoot: store.root, name, sessionId: id, worktree, prompt })
+      command = localCommand({ claude: CLAUDE, boardRoot: store.root, name, sessionId: id, worktree, mcpConfig: mcp, prompt })
       worktreeDir = worktree ? path.join(cwd, '.claude', 'worktrees', worktree) : undefined
       ref = { id, kind: req.mode, started, cwd: worktreeDir ?? cwd, cards: ids, name, ...purpose }
     }
@@ -112,7 +121,7 @@ export function promptFor(req: TackleRequest, store: BoardStore): string {
   return buildPrompt(store, req, cards)
 }
 
-function buildPrompt(store: BoardStore, req: TackleRequest, cards: Card[]): string {
+function buildPrompt(store: BoardStore, req: TackleRequest, cards: Card[], mcp = false): string {
   const build = req.purpose === 'discuss' ? discussPrompt : tacklePrompt
   return build(cards, {
     meta: store.board(req.boardPath).meta,
@@ -126,6 +135,7 @@ function buildPrompt(store: BoardStore, req: TackleRequest, cards: Card[]): stri
     listTitle: req.listTitle,
     boardTitle: req.boardTitle,
     workDir: req.mode === 'desktop' ? sessionDir(store, req.boardPath) : undefined,
+    mcp,
   })
 }
 
@@ -136,9 +146,10 @@ function sessionDir(store: BoardStore, boardPath: string): string {
 }
 
 /**
- * The argv of a local session. `--add-dir` takes a list of folders and swallows every argument up
- * to the next option, so it comes first: placed last it ate the prompt, and Claude started with
- * no prompt at all. The prompt is last, after options that take exactly one value.
+ * The argv of a local session. `--add-dir` and `--mcp-config` take lists and swallow every
+ * argument up to the next option, so they come first: placed last, `--add-dir` ate the prompt,
+ * and Claude started with no prompt at all. The prompt is last, after options that take exactly
+ * one value.
  */
 export function localCommand(opts: {
   claude: string
@@ -146,9 +157,13 @@ export function localCommand(opts: {
   name: string
   sessionId: string
   worktree?: string
+  /** The MCP server's config (a file), when the session gets it. */
+  mcpConfig?: string
   prompt: string
 }): string[] {
-  const command = [opts.claude, '--add-dir', opts.boardRoot, '-n', opts.name, '--session-id', opts.sessionId]
+  const command = [opts.claude, '--add-dir', opts.boardRoot]
+  if (opts.mcpConfig) command.push('--mcp-config', opts.mcpConfig)
+  command.push('-n', opts.name, '--session-id', opts.sessionId)
   if (opts.worktree) command.push('-w', opts.worktree)
   command.push(opts.prompt)
   return command
@@ -156,7 +171,8 @@ export function localCommand(opts: {
 
 /**
  * Opens a recorded session again: a desktop one in the desktop app, the others in a terminal.
- * Answers the terminal it opened, or null when the desktop app took it.
+ * Answers the terminal it opened, or null when the desktop app took it. A local session gets the
+ * MCP server again: its prompt may have told it to use the tools.
  */
 export async function resume(
   store: BoardStore,
@@ -165,6 +181,7 @@ export async function resume(
   ref: SessionRef,
   open: OpenExternal,
   boardKey?: string,
+  mcpConfig?: string,
 ): Promise<PtyInfo | null> {
   if (ref.kind === 'desktop') {
     if (ref.desktopId) await openUrl(continueUrl(ref.desktopId), open)
@@ -181,7 +198,8 @@ export async function resume(
   }
   if (!ref.id) throw new Error('No session id recorded.')
   const worktree = ref.kind === 'local-worktree' ? ref.cwd : undefined
-  return ptys.create({ ...tab, worktree, command: [CLAUDE, '--resume', ref.id] })
+  const mcp = mcpConfig ? ['--mcp-config', mcpConfig] : []
+  return ptys.create({ ...tab, worktree, command: [CLAUDE, ...mcp, '--resume', ref.id] })
 }
 
 /** Opens a terminal session in the Claude desktop app (it imports the CLI session by id). */

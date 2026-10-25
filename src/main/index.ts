@@ -23,6 +23,7 @@ import type {
 import { autoUpdater } from 'electron-updater'
 import { desktopAvailable, openUrl } from './desktop'
 import { codeCommits, commitFiles } from './git'
+import { McpHost, mcpPort, mcpToken } from './mcp'
 import { desktopNotice, notify } from './notify'
 import { boardKey, prepareBoardRepo, Project, projectId, splitKey } from './projects'
 import { PtyManager } from './pty'
@@ -518,17 +519,17 @@ function registerIpc(): void {
   ipcMain.handle('pty:running', (_e, id: string) => ptys.running(id))
 
   const open = (url: string) => shell.openExternal(url)
-  ipcMain.handle('tackle:start', (_e, req: TackleRequest) => {
+  ipcMain.handle('tackle:start', async (_e, req: TackleRequest) => {
     const { project, rel } = projectOf(req.boardPath)
-    return tackle({ ...req, boardPath: rel }, project.store, ptys, open, req.boardPath)
+    return tackle({ ...req, boardPath: rel }, project.store, ptys, open, req.boardPath, await mcpReady)
   })
   ipcMain.handle('tackle:prompt', (_e, req: TackleRequest) => {
     const { project, rel } = projectOf(req.boardPath)
     return promptFor({ ...req, boardPath: rel }, project.store)
   })
-  ipcMain.handle('tackle:resume', (_e, key: string, ref: SessionRef) => {
+  ipcMain.handle('tackle:resume', async (_e, key: string, ref: SessionRef) => {
     const { project, rel } = projectOf(key)
-    return resume(project.store, ptys, rel, ref, open, key)
+    return resume(project.store, ptys, rel, ref, open, key, await mcpReady)
   })
   ipcMain.handle('tackle:openInDesktop', (_e, ref: SessionRef) => openInDesktop(ref, open))
 
@@ -643,9 +644,38 @@ function createWindow(): void {
   else void win.loadFile(path.join(__dirname, '../renderer/index.html'))
 }
 
+// ---- the MCP server --------------------------------------------------------------------------
+
+let mcp: McpHost | undefined
+/** The config file the sessions get, once the server listens; undefined when it could not start. */
+let mcpReady: Promise<string | undefined> = Promise.resolve(undefined)
+
+/**
+ * Starts the MCP server for the sessions the app starts. Without it they still run, told to edit
+ * the card files as before.
+ */
+async function startMcp(): Promise<string | undefined> {
+  try {
+    const userData = app.getPath('userData')
+    const projectsNow = async () => {
+      await openProjects()
+      return [...projects.values()]
+    }
+    const host = new McpHost(projectsNow, await mcpToken(userData), app.getVersion())
+    await host.start(mcpPort(app.isPackaged))
+    mcp = host
+    console.log(`MCP server on ${host.url}`)
+    return await host.writeConfig(userData)
+  } catch (error) {
+    console.error('The MCP server did not start:', (error as Error).message)
+    return undefined
+  }
+}
+
 app.whenReady().then(() => {
   // Windows shows a notification under the app's id, the one the installer registers.
   if (process.platform === 'win32') app.setAppUserModelId('com.corkboard.app')
+  mcpReady = startMcp()
   registerIpc()
   createWindow()
   startUpdates()
@@ -665,6 +695,7 @@ function prepareQuit(): Promise<void> {
       ptys.killAll()
       stopDesktopWatches()
       updates?.stop()
+      void mcp?.stop()
       const pending = [...projects.values()].map(async p => {
         p.store.close()
         p.sync.stop()
