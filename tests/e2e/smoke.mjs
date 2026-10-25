@@ -1478,8 +1478,8 @@ try {
   check((await mainDelete.textContent()).includes('the main board'), `with a hint saying why (${await mainDelete.textContent()})`)
   await page.keyboard.press('Escape')
   const firstProject = await page.locator('.project').first().getAttribute('data-project')
-  const refused = await page.evaluate(key => window.corkboard.boards.remove(key).then(() => 'deleted', e => e.message), `${firstProject}:${MAIN.path}`)
-  check(refused.includes('main board') && existsSync(path.join(root, MAIN.path, 'board.json')), `and the app refuses to delete it (${refused})`)
+  const keptMain = await page.evaluate(key => window.corkboard.boards.remove(key).then(() => 'deleted', e => e.message), `${firstProject}:${MAIN.path}`)
+  check(keptMain.includes('main board') && existsSync(path.join(root, MAIN.path, 'board.json')), `and the app refuses to delete it (${keptMain})`)
   // Another main board, picked in the project settings: project.json names it, the row opens it.
   const pickMain = async title => {
     await openProjectSettings()
