@@ -54,4 +54,4 @@ With a remote, the app pulls (fetch + rebase) at start, every minute, when its w
 
 ## Per-machine code repo
 
-`codeRepo` in `board.json` is shared and may be relative to the board repo; board settings also take a *Code repo on this machine*, kept in the app's own config and never synced, for a repo that lives at another path on the other computer.
+`codeRepo` in `board.json` is shared and may be relative to the board repo; board settings also take a *Path on this machine* under *Code repo*, kept in the app's own config and never synced, for a repo that lives at another path on the other computer. The nearest board that names one wins, this machine's path before the shared one (used only where its folder exists), and failing all, the project's code folder; the board settings say which is in use and why.

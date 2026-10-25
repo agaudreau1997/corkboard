@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Card } from '@shared/types'
-import { actions, useStore, type ViewMode, NONE } from '../state'
+import { actions, projectIdOf, useStore, type ViewMode, NONE } from '../state'
+import { ThemeSwatch } from './ThemeEditor'
 import { KanbanView } from './KanbanView'
 import { MapView } from './MapView'
 import { TableView } from './TableView'
@@ -17,6 +18,7 @@ export function BoardPane({ path }: { path: string }) {
   const board = useStore(s => s.boards[path])
   const view = useStore(s => s.tabs.find(t => t.path === path)?.view ?? 'board')
   const selected = useStore(s => s.selected[path] ?? NONE)
+  const project = useStore(s => s.projects.find(p => p.id === projectIdOf(path)))
   const [filter, setFilter] = useState('')
   const filterInput = useRef<HTMLInputElement>(null)
 
@@ -107,9 +109,26 @@ export function BoardPane({ path }: { path: string }) {
             </button>
           </div>
         )}
-        <button className="ghost" onClick={() => actions.setModal({ kind: 'settings', path })}>
-          Settings
-        </button>
+        {/* Both scopes one click away, each named: the project's carries its swatch. */}
+        <div className="head-settings">
+          {project && (
+            <button
+              className="ghost"
+              title={`${project.name}: its name, code folder, work mode and colours`}
+              onClick={() => actions.setModal({ kind: 'projectSettings', id: project.id })}
+            >
+              <ThemeSwatch theme={project.theme} />
+              Project <span className="head-word">settings</span>
+            </button>
+          )}
+          <button
+            className="ghost"
+            title={`${board.meta.title}: its lists, code repo and prompt notes`}
+            onClick={() => actions.setModal({ kind: 'settings', path })}
+          >
+            Board <span className="head-word">settings</span>
+          </button>
+        </div>
       </header>
       {view === 'board' && <KanbanView board={board} matches={matches} />}
       {view === 'map' && <MapView board={board} matches={matches} />}

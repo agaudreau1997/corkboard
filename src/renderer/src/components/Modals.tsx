@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { slugify } from '@shared/cardfile'
 import { isEmptyTheme } from '@shared/theme'
-import type { BoardMeta, ListDef, ProjectSettings, ProjectTheme } from '@shared/types'
+import type { BoardMeta, CodeRepoFrom, ListDef, ProjectSettings, ProjectTheme } from '@shared/types'
 import { actions, api, findNode, projectIdOf, useStore } from '../state'
 import { ThemeEditor, ThemeSwatch } from './ThemeEditor'
 
@@ -124,6 +124,43 @@ function NewBoard({ parent }: { parent: string }) {
   )
 }
 
+/**
+ * The mark of a setting kept in this machine's app config and never synced, the same in every
+ * dialog, against the rest that the board repo shares with every machine.
+ */
+function MachineOnly() {
+  return (
+    <small className="scope-tag" title="Kept in this app's settings on this computer, never synced">
+      this machine only
+    </small>
+  )
+}
+
+/** The line under a board's or a project's heading: what is shared, and what the mark means. */
+function SharedLead() {
+  return (
+    <p className="muted small">
+      Saved in the board repo for every machine, except what is marked <MachineOnly />.
+    </p>
+  )
+}
+
+/** Why a board's code repo is the one in use, from the setting the store found it in. */
+function codeRepoWhy(from: CodeRepoFrom | undefined): string {
+  switch (from) {
+    case 'local':
+      return "this board's path on this machine"
+    case 'shared':
+      return "this board's shared path"
+    case 'parent-local':
+      return "inherited from a parent board's path on this machine"
+    case 'parent-shared':
+      return "inherited from a parent board's shared path"
+    default:
+      return "the project's code folder"
+  }
+}
+
 function Settings({ path }: { path: string }) {
   const board = useStore(s => s.boards[path])
   const [meta, setMeta] = useState<BoardMeta | undefined>(board?.meta)
@@ -188,49 +225,92 @@ function Settings({ path }: { path: string }) {
   return (
     <div className="settings">
       <h2>
-        Board settings <span className="board-key">{meta.key}</span>
+        Board settings{' '}
+        <span className="modal-scope">
+          · {board.meta.title}
+          {project ? `, in project ${project.name}` : ''}
+        </span>{' '}
+        <span className="board-key">{meta.key}</span>
       </h2>
+      <SharedLead />
+      {project && (
+        <div className="field">
+          <span>Project</span>
+          <div className="theme-pointer">
+            <ThemeSwatch theme={project.theme} />
+            <span className="muted">
+              {project.name}: its colours ({project.theme ? (project.theme.name ?? 'Custom') : 'Default'}) are every
+              board's in it, and its code folder every board's fallback.
+            </span>
+            <button
+              type="button"
+              className="small"
+              onClick={() => actions.setModal({ kind: 'projectSettings', id: project.id })}
+            >
+              Project settings…
+            </button>
+          </div>
+        </div>
+      )}
       <label className="field">
         <span>Title</span>
         <input value={meta.title} onChange={e => setMeta({ ...meta, title: e.target.value })} />
       </label>
-      <label className="field">
-        <span>Code repo</span>
-        <input
-          value={meta.codeRepo ?? ''}
-          placeholder={repoInherited ? `${repoInherited} (inherited)` : '/path/to/the/repo the cards are about'}
-          onChange={e => setMeta({ ...meta, codeRepo: e.target.value })}
-        />
-        <small className="muted">
-          Shared through the repo; may be relative to the board repo (<code>../godot-shooter</code>). Tackled sessions start
-          there, and its commits {project?.work ? "whose message names a card's Jira key" : 'with Card: trailers'} show on
-          the cards.
-        </small>
-      </label>
-      <label className="field">
-        <span>Code repo on this machine</span>
-        <div className="input-row">
+      <section className="field-group" aria-labelledby="code-repo-heading">
+        <h3 id="code-repo-heading">Code repo</h3>
+        <p className="muted small">
+          Where this board's Claude sessions start, and whose commits{' '}
+          {project?.work ? "that name a card's Jira key" : 'with Card: trailers'} show on the cards. Child boards
+          inherit it.
+        </p>
+        <label className="field">
+          <span>Shared path</span>
           <input
-            value={localRepo}
-            placeholder="(use the shared path above)"
-            onChange={e => setLocalRepo(e.target.value)}
+            value={meta.codeRepo ?? ''}
+            placeholder={repoInherited ? `${repoInherited} (inherited)` : '/path/to/the/repo the cards are about'}
+            onChange={e => setMeta({ ...meta, codeRepo: e.target.value })}
           />
-          <button
-            type="button"
-            className="small"
-            onClick={async () => {
-              const picked = await api.config.pickFolder('The code repo on this machine')
-              if (picked) setLocalRepo(picked)
-            }}
-          >
-            Browse…
-          </button>
-        </div>
-        <small className="muted">
-          This computer only, never synced: for a repo that sits at another path on your other machine. Child boards
-          inherit it. Now: <code>{board.codeRepo ?? 'none'}</code>
-        </small>
-      </label>
+          <small className="muted">
+            In <code>board.json</code>, for every machine; may be relative to the board repo (<code>../godot-shooter</code>).
+            Used where that folder exists.
+          </small>
+        </label>
+        <label className="field">
+          <span>
+            Path on this machine <MachineOnly />
+          </span>
+          <div className="input-row">
+            <input
+              value={localRepo}
+              placeholder="(use the shared path above)"
+              onChange={e => setLocalRepo(e.target.value)}
+            />
+            <button
+              type="button"
+              className="small"
+              onClick={async () => {
+                const picked = await api.config.pickFolder('The code repo on this machine')
+                if (picked) setLocalRepo(picked)
+              }}
+            >
+              Browse…
+            </button>
+          </div>
+          <small className="muted">For a repo that sits at another path on your other machine; it wins over the shared one.</small>
+        </label>
+        <p className="code-repo-used small">
+          {board.codeRepo ? (
+            <>
+              Uses <code>{board.codeRepo}</code>: {codeRepoWhy(board.codeRepoFrom)}
+            </>
+          ) : (
+            'Uses no code repo: neither this board, a parent board nor the project names one that exists here'
+          )}
+          {board.meta.codeRepo && board.codeRepoFrom !== 'local' && board.codeRepoFrom !== 'shared'
+            ? " (this board's shared path isn't on this machine)."
+            : '.'}
+        </p>
+      </section>
       <div className="field-grid">
         <label className="field">
           <span>Tackling moves cards to</span>
@@ -261,24 +341,6 @@ function Settings({ path }: { path: string }) {
           </select>
         </label>
       </div>
-      {project && (
-        <div className="field">
-          <span>Colours</span>
-          <div className="theme-pointer">
-            <ThemeSwatch theme={project.theme} />
-            <span className="muted">
-              {project.theme ? (project.theme.name ?? 'Custom') : 'Default'}, the colours of every board in {project.name}
-            </span>
-            <button
-              type="button"
-              className="small"
-              onClick={() => actions.setModal({ kind: 'projectSettings', id: project.id })}
-            >
-              Project colours…
-            </button>
-          </div>
-        </div>
-      )}
       <label className="field">
         <span>Prompt notes</span>
         <textarea
@@ -401,11 +463,15 @@ function AddProject() {
         </div>
       </label>
       <label className="field">
-        <span>Name</span>
+        <span>
+          Name <MachineOnly />
+        </span>
         <input value={name} placeholder="(the folder's name)" onChange={e => setName(e.target.value)} />
       </label>
       <label className="field">
-        <span>Code folder on this machine</span>
+        <span>
+          Code folder on this machine <MachineOnly />
+        </span>
         <div className="input-row">
           <input value={codeRepo} placeholder="/path/to/the/code (optional)" onChange={e => setCodeRepo(e.target.value)} />
           <button type="button" className="small" onClick={() => void pick('The code folder', setCodeRepo)}>
@@ -413,8 +479,8 @@ function AddProject() {
           </button>
         </div>
         <small className="muted">
-          Where its boards' Claude sessions start and their commits are read, unless a board names its own. Kept on
-          this machine only.
+          Every board's fallback: where its boards' Claude sessions start and their commits are read, unless a board
+          names its own.
         </small>
       </label>
       <div className="modal-actions">
@@ -463,19 +529,28 @@ function AppSettings() {
         void save()
       }}
     >
-      <h2>Settings</h2>
+      <h2>Corkboard settings</h2>
+      <p className="muted small">
+        The app's own, for every project: kept on this computer, never synced, so each of these is marked{' '}
+        <MachineOnly />.
+      </p>
       <div className="field">
-        <label className="check">
-          <input type="checkbox" checked={desktop} onChange={e => setDesktop(e.target.checked)} />
-          Desktop notifications
-        </label>
+        <span className="check-row">
+          <label className="check">
+            <input type="checkbox" checked={desktop} onChange={e => setDesktop(e.target.checked)} />
+            Desktop notifications
+          </label>
+          <MachineOnly />
+        </span>
         <small className="muted">
           The system's own notification when Claude finishes a turn while the window is in the background. Clicking it
           brings Corkboard up on that tab.
         </small>
       </div>
       <label className="field">
-        <span>Notification program</span>
+        <span>
+          Notification program <MachineOnly />
+        </span>
         <div className="input-row">
           <input
             value={command}
@@ -556,9 +631,14 @@ function ProjectSettings({ id }: { id: string }) {
         void save()
       }}
     >
-      <h2>Project settings</h2>
+      <h2>
+        Project settings <span className="modal-scope">· {project.name}</span>
+      </h2>
+      <SharedLead />
       <label className="field">
-        <span>Name</span>
+        <span>
+          Name <MachineOnly />
+        </span>
         <input autoFocus value={name} onChange={e => setName(e.target.value)} />
       </label>
       <div className="field">
@@ -566,7 +646,9 @@ function ProjectSettings({ id }: { id: string }) {
         <code className="path">{project.root}</code>
       </div>
       <label className="field">
-        <span>Code folder on this machine</span>
+        <span>
+          Code folder on this machine <MachineOnly />
+        </span>
         <div className="input-row">
           <input value={codeRepo} placeholder="(none)" onChange={e => setCodeRepo(e.target.value)} />
           <button
@@ -581,8 +663,8 @@ function ProjectSettings({ id }: { id: string }) {
           </button>
         </div>
         <small className="muted">
-          Every board of the project uses it unless the board names a code repo of its own that exists here (board
-          settings).
+          Every board's fallback: a board's sessions start here unless it, or a parent board, names a code repo of its
+          own that exists on this machine (Board settings, <em>Code repo</em>).
         </small>
       </label>
       <div className="field">

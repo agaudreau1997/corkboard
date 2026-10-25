@@ -160,6 +160,7 @@ export class BoardStore {
       let at: string | undefined = board.path
       board.codeRepo = undefined
       board.codeRepoLocal = undefined
+      board.codeRepoFrom = undefined
       while (at !== undefined) {
         const local = this.localRepos[at]
         const sharedRaw = this.boards.get(at)?.meta.codeRepo
@@ -167,11 +168,15 @@ export class BoardStore {
         if (local || (shared && existsSync(shared))) {
           board.codeRepo = local || shared
           board.codeRepoLocal = !!local
+          board.codeRepoFrom = `${at === board.path ? '' : 'parent-'}${local ? 'local' : 'shared'}`
           break
         }
         at = parentPath(at)
       }
-      if (!board.codeRepo && this.projectRepo) board.codeRepo = this.projectRepo
+      if (!board.codeRepo && this.projectRepo) {
+        board.codeRepo = this.projectRepo
+        board.codeRepoFrom = 'project'
+      }
     }
   }
 

@@ -256,7 +256,7 @@ try {
 
   // The same window in a project's own colours, picked in its settings.
   await page.locator('.project-row').first().click({ button: 'right' })
-  await page.locator('.ctx-menu').getByRole('menuitem', { name: /Settings/ }).click()
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: /Project settings…/ }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Cork' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Save' }).click()
   await page.getByRole('dialog').waitFor({ state: 'detached' })

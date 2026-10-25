@@ -562,11 +562,53 @@ code,
   padding: 10px 14px;
   border-bottom: 1px solid var(--line);
   flex: none;
+  /*
+   * One line whatever the width: a wrap would change the header's height as the selection bar
+   * comes and goes, and shift the board under the pointer. On a narrow pane the title and the
+   * filter give way first, then the settings buttons drop their second word (below).
+   */
+  container-type: inline-size;
+  min-width: 0;
+}
+
+.head-settings,
+.board-head > .board-key,
+.board-head > .segmented,
+.board-head > .selection-bar {
+  flex: none;
+}
+
+.head-settings {
+  display: flex;
+  gap: 4px;
+}
+
+.head-settings button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
 }
 
 .board-head h2 {
   font-size: 16px;
   margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Hidden from sight only: the buttons keep their full names for screen readers and tests. */
+@container (max-width: 860px) {
+  .head-settings .head-word {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 }
 
 .board-key {
@@ -600,6 +642,8 @@ code,
 
 .filter {
   width: 200px;
+  min-width: 80px;
+  flex: 0 1 auto;
 }
 
 .selection-bar {
@@ -1879,6 +1923,58 @@ button.copy-id:hover {
 .modal h2 {
   margin: 0 0 12px;
   font-size: 17px;
+}
+
+/* What a settings dialog belongs to, after its name: "Board settings · Cork, in project …". */
+.modal-scope {
+  color: var(--text-2);
+  font-weight: 400;
+}
+
+.modal h2 + p.small {
+  margin: -6px 0 12px;
+}
+
+/* A setting kept on this machine only; the same mark in every dialog. */
+.scope-tag {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 5px;
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 400;
+  white-space: nowrap;
+  vertical-align: 1px;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* The fields that together decide one thing (the board's code repo), under one heading. */
+.field-group {
+  margin: 0 0 12px;
+  padding: 10px 12px 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.field-group h3 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.field-group > p.small {
+  margin: 2px 0 10px;
+}
+
+.code-repo-used {
+  margin: -4px 0 10px;
+  overflow-wrap: anywhere;
 }
 
 .modal p {
