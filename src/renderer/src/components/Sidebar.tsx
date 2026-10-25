@@ -28,7 +28,7 @@ export function Sidebar() {
             onClick={() => actions.setModal({ kind: 'appSettings' })}
             title="This machine's settings: desktop notifications and the notification program"
           >
-            Settings…
+            Corkboard settings…
           </button>
         </div>
         <UpdateLine />
@@ -156,7 +156,7 @@ function projectMenu(project: ProjectNode): MenuItem[] {
       onSelect: () => void actions.syncNow(project.id),
     },
     {
-      label: 'Settings…',
+      label: 'Project settings…',
       hint: 'name, code folder, colours',
       onSelect: () => actions.setModal({ kind: 'projectSettings', id: project.id }),
     },
@@ -202,7 +202,7 @@ function boardMenu(node: BoardNode): MenuItem[] {
     },
     'separator',
     { label: 'New board inside…', onSelect: () => actions.setModal({ kind: 'newBoard', parent: node.path }) },
-    { label: 'Settings…', onSelect: () => void openSettings(node.path) },
+    { label: 'Board settings…', onSelect: () => void openSettings(node.path) },
     { label: 'Open a terminal here', hint: 'its code repo', onSelect: () => void actions.newTerminal(node.path) },
     { label: 'Copy key', hint: node.key, onSelect: () => actions.copy(node.key) },
     {

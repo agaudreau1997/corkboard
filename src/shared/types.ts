@@ -105,6 +105,12 @@ export type BoardNode = {
   children: BoardNode[]
 }
 
+/**
+ * Which setting a board's code repo comes from: its own path on this machine or its shared one, a
+ * parent board's (either), or the project's code folder.
+ */
+export type CodeRepoFrom = 'local' | 'shared' | 'parent-local' | 'parent-shared' | 'project'
+
 export type LoadedBoard = {
   path: string
   meta: BoardMeta
@@ -112,6 +118,8 @@ export type LoadedBoard = {
   codeRepo?: string
   /** True when codeRepo is this machine's own setting rather than board.json's. */
   codeRepoLocal?: boolean
+  /** Where codeRepo came from, for the board settings to say why it is the one in use. */
+  codeRepoFrom?: CodeRepoFrom
   cards: Card[]
   map: BoardMap
 }

@@ -68,7 +68,7 @@ The Windows exes are unsigned, so SmartScreen warns on first run (*More info →
 
 1. **Add a project.** The first launch asks for one. Pick an empty folder: it becomes a board repo, with a README and a `CLAUDE.md` that tells Claude sessions the card format. (Or pick a clone of a board repo you already have.) Give the repo a remote and the app syncs it.
 2. **Make a board.** *+ New board* under the project, then add lists and cards. Double-click a card to rename it, click it to open its drawer.
-3. **Point it at your code.** The board's *Settings* takes the code repo its cards are about.
+3. **Point it at your code.** The board's *Board settings* take the code repo its cards are about.
 4. **Tackle a card.** Open it and press *Terminal* (or *Worktree*, *Claude desktop*, *Cloud*). The card moves to *Doing* and a session starts in the terminal panel with the card as its prompt; its commits show on the card, and the session moves the card to *Done* once the work is verified.
 
 ## Documentation
