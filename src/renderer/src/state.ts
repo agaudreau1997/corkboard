@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { listColorAt, sortCards } from '@shared/cardfile'
 import { emptyHistory, step, visit, type Place } from '@shared/navhistory'
+import { pruneSelection } from '@shared/selection'
 import { reordered } from '@shared/sideorder'
 import type { CorkboardApi } from '@shared/api'
 import type {
@@ -343,7 +344,7 @@ export const actions = {
 
   async loadBoard(path: string) {
     const board = await api.boards.load(path)
-    set(s => ({ boards: { ...s.boards, [path]: board } }))
+    set(s => withBoards(s, { ...s.boards, [path]: board }, [path]))
     void actions.loadCommits(path)
   },
 
@@ -427,7 +428,7 @@ export const actions = {
       const board = s.boards[boardPath]
       if (!board) return s
       const cards = sortCards([...board.cards.filter(c => c.id !== card.id), card])
-      return { boards: { ...s.boards, [boardPath]: { ...board, cards } } }
+      return withBoards(s, { ...s.boards, [boardPath]: { ...board, cards } }, [boardPath])
     })
   },
 
@@ -697,12 +698,30 @@ function flushDeltas(): void {
       const cards = [...board.cards.filter(c => !changed.has(c.id) && !removed.has(c.id)), ...delta.cards]
       boards[delta.path] = { ...board, cards, meta: delta.meta ?? board.meta, map: delta.map ?? board.map }
     }
-    for (const path of new Set(deltas.map(d => d.path))) {
+    const paths = new Set(deltas.map(d => d.path))
+    for (const path of paths) {
       if (boards[path]) boards[path] = { ...boards[path], cards: sortCards(boards[path].cards) }
     }
-    return { boards }
+    return withBoards(s, boards, paths)
   })
   for (const path of new Set(deltas.filter(d => d.meta).map(d => d.path))) void actions.loadBoard(path)
+}
+
+/**
+ * The store's boards replaced by `boards`, whose `paths` changed, and those boards' selections
+ * pruned of the cards that left them or were archived. Every change of a board's cards (a load, a
+ * delta from main, a change applied ahead of its write) lands through here, so a card archived or
+ * moved away from anywhere (a menu, the drag tray, a session) leaves the selection with it.
+ */
+function withBoards(s: State, boards: Record<string, LoadedBoard>, paths: Iterable<string>): Pick<State, 'boards' | 'selected'> {
+  let selected = s.selected
+  for (const path of paths) {
+    const current = s.selected[path]
+    if (!current?.length) continue
+    const next = pruneSelection(current, s.boards[path]?.cards, boards[path]?.cards ?? [])
+    if (next !== current) selected = { ...selected, [path]: next }
+  }
+  return { boards, selected }
 }
 
 export function flatten(nodes: BoardNode[]): BoardNode[] {

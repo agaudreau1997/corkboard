@@ -629,8 +629,17 @@ try {
   const two = doneTitles.indexOf('Group two')
   check(one >= 0 && two >= 0 && Math.abs(one - two) === 1, `the selection lands together (${doneTitles.join(', ')})`)
   await sleep(120)
-  await page.locator('.column[data-list="done"] .card', { hasText: 'Group one' }).click({ modifiers: ['Control'] })
+  // A selected card archived from its menu leaves the selection: the bar counts the one left.
+  const archiveSelBar = page.locator('.selection-bar span')
+  check((await archiveSelBar.textContent()) === '2 selected', 'the dropped pair is still selected')
+  await page.locator('.column[data-list="done"] .card', { hasText: 'Group one' }).click({ button: 'right' })
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Archive', exact: true }).click()
+  check(
+    await until(async () => (await archiveSelBar.textContent().catch(() => '')) === '1 selected'),
+    `archiving a selected card takes it out of the selection (${await archiveSelBar.textContent().catch(() => 'no bar')})`,
+  )
   await page.locator('.column[data-list="done"] .card', { hasText: 'Group two' }).click({ modifiers: ['Control'] })
+  check((await page.locator('.selection-bar').count()) === 0, 'and the last one toggles off with Ctrl-click')
 
   // ---- lists from the board: add one, rename it, collapse it ----
   await page.getByRole('button', { name: '+ Add a list' }).click()
