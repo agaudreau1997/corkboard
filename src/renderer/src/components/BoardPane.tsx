@@ -107,9 +107,6 @@ export function BoardPane({ path }: { path: string }) {
             </button>
           </div>
         )}
-        <button className="ghost" title="Open a shell in the board's code repo" onClick={() => void actions.newTerminal(path)}>
-          Terminal
-        </button>
         <button className="ghost" onClick={() => actions.setModal({ kind: 'settings', path })}>
           Settings
         </button>
