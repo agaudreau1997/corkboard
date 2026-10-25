@@ -846,6 +846,28 @@ try {
   await bar.getByRole('button', { name: 'Clear' }).click()
   check((await bar.count()) === 0, 'Clear empties the selection')
 
+  // Shift-click selects a range in the board's order as shown (lists left to right, collapsed
+  // ones and dividers left out), here from the card open in the drawer, into the next list.
+  const rangeCards = await page
+    .locator('.kanban .card[data-card]')
+    .evaluateAll(els => els.map(e => ({ id: e.dataset.card, list: e.closest('.column').dataset.list })))
+  const rangeFrom = rangeCards.findIndex(c => c.id === openId)
+  const rangeTo = rangeCards.findIndex((c, i) => i > rangeFrom && c.list !== rangeCards[rangeFrom].list) + 1
+  const rangeWant = rangeCards.slice(rangeFrom, rangeTo + 1).map(c => c.id)
+  await page.locator(`.kanban .card[data-card="${rangeCards[rangeTo].id}"]`).click({ modifiers: ['Shift'] })
+  const rangeGot = await page.locator('.kanban .card.selected').evaluateAll(els => els.map(e => e.dataset.card))
+  check(
+    rangeWant.length > 2 && rangeGot.length === rangeWant.length && rangeWant.every(id => rangeGot.includes(id)),
+    `Shift-click from the open ${openId} selects the cards up to ${rangeCards[rangeTo].id} as shown (${rangeGot.join(',')})`,
+  )
+  check(await page.evaluate(() => getSelection().toString() === ''), 'and selects no text across them')
+  await page.locator(`.kanban .card[data-card="${rangeWant[1]}"]`).click({ modifiers: ['Control'] })
+  check(
+    (await bar.locator('span').textContent()) === `${rangeWant.length - 1} selected` && (await page.locator(`.card.selected[data-card="${rangeWant[1]}"]`).count()) === 0,
+    'Ctrl-click still toggles one card',
+  )
+  await bar.getByRole('button', { name: 'Clear' }).click()
+
   // Its left edge resizes it; the width is remembered, and a double-click puts it back.
   const drawerWidth = () => page.locator('.drawer').evaluate(el => el.getBoundingClientRect().width)
   const edge = await page.locator('.drawer-resize').boundingBox()
@@ -1762,6 +1784,19 @@ try {
   const viewTh = await page.locator('.table-view th').first().evaluate(th => ({ wrap: getComputedStyle(th).whiteSpace, position: getComputedStyle(th).position }))
   check(viewTh.wrap === 'nowrap' && viewTh.position === 'sticky', `the Table view's headers keep their own rules (${JSON.stringify(viewTh)})`)
   await shot('07-table')
+  // Shift-click selects the rows from the last one Ctrl-clicked, as sorted.
+  if (await page.locator('.drawer').count()) await page.locator('.drawer').getByRole('button', { name: 'Close', exact: true }).click()
+  const tableRows = page.locator('.table-view tbody tr')
+  const tableRangeIds = await tableRows.evaluateAll(rows => rows.slice(1, 5).map(r => r.querySelector('td').textContent))
+  await tableRows.nth(1).click({ modifiers: ['Control'] })
+  await tableRows.nth(4).click({ modifiers: ['Shift'] })
+  const tableRangeGot = await page.locator('.table-view tbody tr.selected').evaluateAll(rows => rows.map(r => r.querySelector('td').textContent))
+  check(
+    tableRangeGot.join(',') === tableRangeIds.join(','),
+    `Shift-click in the table selects the rows from the anchor (${tableRangeGot.join(',')})`,
+  )
+  check(await page.evaluate(() => getSelection().toString() === ''), 'and selects no text across them')
+  await page.locator('.selection-bar').getByRole('button', { name: 'Clear' }).click()
 
   // A change made just before quitting: the quit commits and pushes it (the same work an update's
   // install waits for).

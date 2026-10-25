@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { listColorAt, sortCards } from '@shared/cardfile'
 import { emptyHistory, step, visit, type Place } from '@shared/navhistory'
-import { pruneSelection } from '@shared/selection'
+import { pruneSelection, selectRange as withRange } from '@shared/selection'
 import { reordered } from '@shared/sideorder'
 import type { CorkboardApi } from '@shared/api'
 import type {
@@ -88,6 +88,8 @@ type State = UiPrefs & {
   boards: Record<string, LoadedBoard>
   commits: Record<string, CodeCommit[]>
   selected: Record<string, string[]>
+  /** Per board, the card last Ctrl- or Shift-clicked: where a Shift-click's range starts. */
+  anchor: Record<string, string>
   openCard: { boardPath: string; id: string } | null
   terminals: PtyInfo[]
   exited: Record<string, number>
@@ -122,6 +124,7 @@ export const useStore = create<State>(() => ({
   boards: {},
   commits: {},
   selected: {},
+  anchor: {},
   openCard: null,
   terminals: [],
   exited: {},
@@ -401,17 +404,32 @@ export const actions = {
   toggleSelected(boardPath: string, id: string) {
     set(s => {
       let current = s.selected[boardPath] ?? []
-      const open = s.openCard?.boardPath === boardPath ? s.openCard.id : null
-      if (!current.length && open && open !== id && s.boards[boardPath]?.cards.some(c => c.id === open)) {
-        current = [open]
-      }
+      const open = openOn(s, boardPath)
+      if (!current.length && open && open !== id) current = [open]
       const next = current.includes(id) ? current.filter(x => x !== id) : [...current, id]
-      return { selected: { ...s.selected, [boardPath]: next } }
+      return { selected: { ...s.selected, [boardPath]: next }, anchor: { ...s.anchor, [boardPath]: id } }
+    })
+  },
+
+  /**
+   * A Shift-click on a card: adds every card from the anchor to it, in the view's `order`, to the
+   * board's selection. A selection started this way while a card is open in the drawer runs from
+   * that card, as a Ctrl+click's starts with it.
+   */
+  selectRange(boardPath: string, order: string[], id: string) {
+    set(s => {
+      const current = s.selected[boardPath] ?? []
+      const anchor = (!current.length && openOn(s, boardPath)) || s.anchor[boardPath] || null
+      const next = withRange(current, order, anchor, id)
+      return { selected: { ...s.selected, [boardPath]: next }, anchor: { ...s.anchor, [boardPath]: id } }
     })
   },
 
   clearSelection(boardPath: string) {
-    set(s => ({ selected: { ...s.selected, [boardPath]: [] } }))
+    set(s => {
+      const { [boardPath]: _, ...anchor } = s.anchor
+      return { selected: { ...s.selected, [boardPath]: [] }, anchor }
+    })
   },
 
   openCard(boardPath: string, id: string) {
@@ -722,6 +740,12 @@ function withBoards(s: State, boards: Record<string, LoadedBoard>, paths: Iterab
     if (next !== current) selected = { ...selected, [path]: next }
   }
   return { boards, selected }
+}
+
+/** The card open in the drawer, when it is one of this board's. */
+function openOn(s: State, boardPath: string): string | null {
+  const open = s.openCard?.boardPath === boardPath ? s.openCard.id : null
+  return open && s.boards[boardPath]?.cards.some(c => c.id === open) ? open : null
 }
 
 export function flatten(nodes: BoardNode[]): BoardNode[] {
