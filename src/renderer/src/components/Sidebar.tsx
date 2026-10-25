@@ -4,18 +4,23 @@ import { discussBoard } from '../tackle'
 import { openContextMenu, type MenuItem } from './ContextMenu'
 import { ProjectMark } from './ProjectMark'
 
+/** The menu of the side panel's own space: its header, and below the projects. */
+const panelMenu = (): MenuItem[] => [{ label: 'Add project…', onSelect: () => actions.setModal({ kind: 'addProject' }) }]
+
 export function Sidebar() {
   const projects = useStore(s => s.projects)
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-head">
+      <div className="sidebar-head" onContextMenu={e => openContextMenu(e, panelMenu())}>
         <span className="brand">Corkboard</span>
         <button className="icon-button" title="Add project" onClick={() => actions.setModal({ kind: 'addProject' })}>
           +
         </button>
       </div>
-      <div className="tree" role="tree">
+      {/* A row's own menu stops here (`openContextMenu` stops the event), so this one is the
+          space around and below them. */}
+      <div className="tree" role="tree" onContextMenu={e => openContextMenu(e, panelMenu())}>
         {projects.map(project => (
           <ProjectRow key={project.id} project={project} />
         ))}

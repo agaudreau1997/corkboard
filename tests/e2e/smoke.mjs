@@ -1447,6 +1447,22 @@ try {
   check(!!(await until(async () => (await page.locator('.project-row .theme-swatch').count()) === 1)), 'and the swatch is back')
 
   // ---- projects: add one, move a board into it, delete a board with cards ----
+  // The side panel's own space has a menu: below the projects, and its header. A row keeps its own.
+  const treeBox = await page.locator('.sidebar .tree').boundingBox()
+  await page.mouse.click(treeBox.x + treeBox.width / 2, treeBox.y + treeBox.height - 12, { button: 'right' })
+  const panelAdd = page.locator('.ctx-menu').getByRole('menuitem', { name: 'Add project…' })
+  check((await panelAdd.count()) === 1, 'a right-click below the projects offers Add project…')
+  await panelAdd.click()
+  check(!!(await until(async () => (await page.getByRole('dialog').getByLabel('Board repo folder').count()) === 1)), 'which opens the Add project dialog')
+  await page.keyboard.press('Escape')
+  await until(async () => (await page.getByRole('dialog').count()) === 0)
+  await page.locator('.sidebar-head .brand').click({ button: 'right' })
+  check((await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Add project…' }).count()) === 1, "and so does a right-click on the side panel's header")
+  await page.keyboard.press('Escape')
+  await page.locator('.project-row').first().click({ button: 'right' })
+  const rowMenuItems = await page.locator('.ctx-menu [role="menuitem"]').allTextContents()
+  check(!rowMenuItems.some(t => t.includes('Add project')) && rowMenuItems.some(t => t.includes('New board')), "a project's row keeps its own menu")
+  await page.keyboard.press('Escape')
   const second = path.join(scratch, 'second-board')
   await page.locator('.sidebar-head').getByRole('button', { name: '+' }).click()
   await page.getByRole('dialog').getByLabel('Board repo folder').fill(second)
