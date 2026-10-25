@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm'
 import type { Card, CodeCommit, LoadedBoard, SessionRef } from '@shared/types'
 import { dueDay } from '@shared/due'
 import { cardImages, imageUrl, insertAt } from '@shared/images'
-import { imageFiles, saveImages } from '../images'
+import { imageFiles, saveImage, saveImages } from '../images'
 import { discussCards, tackleCards } from '../tackle'
 import { normalizeKey } from '@shared/project'
 import { actions, api, commitsFor, listColor, localTime, projectIdOf, useStore } from '../state'
@@ -463,9 +463,20 @@ function DescriptionLink({ href, children }: { href?: string; children?: React.R
  * description no longer names it); nothing to pick from, no section.
  */
 function CoverPicker({ board, card, onPick }: { board: LoadedBoard; card: Card; onPick: (cover: string | undefined) => void }) {
+  const fileInput = useRef<HTMLInputElement>(null)
   const images = cardImages(card.body)
   if (card.cover && !images.includes(card.cover)) images.push(card.cover)
-  if (!images.length) return null
+  // An image chosen here is saved beside the card like a pasted one, and becomes the cover without
+  // going into the description: a card can wear a picture its text doesn't need.
+  const addCover = async (file: File) => {
+    try {
+      const { src, scaled } = await saveImage(board.path, card.id, file)
+      onPick(src)
+      if (scaled) actions.toast('Scaled the image down to fit under 1 MB')
+    } catch (error) {
+      actions.toast((error as Error).message, 'error')
+    }
+  }
   return (
     <section>
       <h3>Cover</h3>
@@ -490,6 +501,21 @@ function CoverPicker({ board, card, onPick }: { board: LoadedBoard; card: Card; 
             <CoverThumb url={imageUrl(board.path, src)} />
           </button>
         ))}
+        <button className="cover-choice cover-add" title="Choose an image file as the cover" onClick={() => fileInput.current?.click()}>
+          Add an image…
+        </button>
+        <input
+          ref={fileInput}
+          type="file"
+          accept="image/*"
+          aria-label="Cover image file"
+          hidden
+          onChange={e => {
+            const file = e.target.files?.[0]
+            e.target.value = ''
+            if (file) void addCover(file)
+          }}
+        />
       </div>
     </section>
   )

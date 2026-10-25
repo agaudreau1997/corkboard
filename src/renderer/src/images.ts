@@ -35,6 +35,12 @@ export async function prepareImage(blob: Blob): Promise<{ bytes: Uint8Array; sca
   throw new Error('The image is too big to keep, even scaled down.')
 }
 
+/** Saves one image beside a card; answers its path as a description names it, and whether it was scaled. */
+export async function saveImage(boardPath: string, id: string, file: Blob): Promise<{ src: string; scaled: boolean }> {
+  const prepared = await prepareImage(file)
+  return { src: await api.cards.addImage(boardPath, id, prepared.bytes), scaled: prepared.scaled }
+}
+
 /**
  * Saves images for a card and answers the Markdown that shows them, one per line, and how many
  * were scaled down.
@@ -43,9 +49,9 @@ export async function saveImages(boardPath: string, id: string, files: Blob[]): 
   const lines: string[] = []
   let scaled = 0
   for (const file of files) {
-    const prepared = await prepareImage(file)
-    if (prepared.scaled) scaled++
-    lines.push(imageMarkdown(await api.cards.addImage(boardPath, id, prepared.bytes)))
+    const saved = await saveImage(boardPath, id, file)
+    if (saved.scaled) scaled++
+    lines.push(imageMarkdown(saved.src))
   }
   return { markdown: lines.join('\n'), scaled }
 }

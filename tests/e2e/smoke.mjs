@@ -1039,7 +1039,7 @@ try {
 
   // ---- a cover: one of the description's images, picked in the drawer, on the card's face ----
   const coverChoices = page.locator('.drawer .covers .cover-choice')
-  check((await coverChoices.count()) === 4, `the drawer offers the description's images as covers, and None (${await coverChoices.count()})`)
+  check((await coverChoices.count()) === 5, `the drawer offers the description's images as covers, None, and Add an image (${await coverChoices.count()})`)
   await page.locator('.drawer').getByRole('button', { name: `Cover ${droppedImage}` }).click()
   check(!!(await until(() => readFileSync(imageCardFile, 'utf8').includes(`\ncover: ${droppedImage}\n`))), `picking one writes cover: ${droppedImage} into the card file`)
   const faceCover = page.locator(`.card[data-card="${openId}"] .card-cover`)
@@ -1051,6 +1051,23 @@ try {
   await shot('04b-card-cover')
   await page.locator('.drawer .covers').getByRole('button', { name: 'None' }).click()
   check(!!(await until(() => !readFileSync(imageCardFile, 'utf8').includes('cover:'))) && (await until(async () => (await faceCover.count()) === 0)), 'None takes the cover off the card and its face')
+  // A card with no image in its description still has Cover: Add an image picks a file, saved
+  // beside the card and made its cover, the description left as it was.
+  const plainCoverId = await page.locator('.card', { hasText: 'Fix the airlock' }).first().getAttribute('data-card')
+  const plainCoverFile = path.join(root, MAIN.path, 'cards', `${plainCoverId}.md`)
+  const plainCoverBody = readFileSync(plainCoverFile, 'utf8').split(/^---$/m).slice(2).join('---')
+  await page.locator(`.card[data-card="${plainCoverId}"]`).click()
+  await page.locator('.drawer .card-id', { hasText: plainCoverId }).waitFor()
+  check(!plainCoverBody.includes('![') && (await page.locator('.drawer .covers .cover-choice').count()) === 2, `${plainCoverId}, with no image in its description, offers None and Add an image under Cover`)
+  await page.locator('.drawer input[aria-label="Cover image file"]').setInputFiles(path.join(root, MAIN.path, 'cards', pastedImage))
+  const plainCover = await until(() => readFileSync(plainCoverFile, 'utf8').match(new RegExp(`\\ncover: (${plainCoverId}/[0-9a-f]+\\.\\w+)\\n`))?.[1])
+  check(!!plainCover && existsSync(path.join(root, MAIN.path, 'cards', plainCover ?? '-')), `Add an image saves the file beside ${plainCoverId} and makes it the cover (${plainCover})`)
+  check(!readFileSync(plainCoverFile, 'utf8').includes('!['), 'and leaves the description without it')
+  check(!!(await until(async () => (await page.locator(`.card[data-card="${plainCoverId}"] .card-cover`).count()) === 1)), "the card's face shows it")
+  await page.locator('.drawer .covers').getByRole('button', { name: 'None' }).click()
+  check(!!(await until(() => !readFileSync(plainCoverFile, 'utf8').includes('cover:'))), 'None takes it off again')
+  await page.locator(`.card[data-card="${openId}"]`).click()
+  await page.locator('.drawer .card-id', { hasText: openId }).waitFor()
 
   await page.keyboard.press('Control+f')
   check(await page.locator('.filter').evaluate(el => el === document.activeElement), 'Ctrl+F focuses the filter')

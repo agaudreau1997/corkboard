@@ -34,7 +34,7 @@ Cards are Markdown files (`cards/<ID>.md`: YAML front matter, then the descripti
 
 A link in a card's description opens in the browser; the app's window never leaves the boards for a page, and a link that isn't a web page (a relative path, `file:`) does nothing.
 
-Paste an image (a screenshot from the clipboard) into a card's description while editing it, or drop image files on it, and the app saves it beside the card (`cards/<ID>/`) and puts `![](…)` where the cursor is; dropped on the description while it shows, it goes at the end. One over 1 MB is scaled down to fit first, and the app says so. A card with images offers them under *Cover* in its drawer: the one picked shows across the top of the card on the board (cropped to 140 px tall; the map and the table leave it out), and *None* takes it off.
+Paste an image (a screenshot from the clipboard) into a card's description while editing it, or drop image files on it, and the app saves it beside the card (`cards/<ID>/`) and puts `![](…)` where the cursor is; dropped on the description while it shows, it goes at the end. One over 1 MB is scaled down to fit first, and the app says so. Under *Cover* the drawer offers a card's images: the one picked shows across the top of the card on the board (cropped to 140 px tall; the map and the table leave it out), and *None* takes it off. *Add an image…* there picks an image file and makes it the cover without putting it in the description, saved beside the card and scaled down like a pasted one.
 
 ## Three views of the same cards
 

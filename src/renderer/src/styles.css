@@ -1767,6 +1767,16 @@ button.copy-id:hover {
   border-color: var(--accent);
 }
 
+.cover-add {
+  border-style: dashed;
+  line-height: 1.2;
+}
+
+.cover-add:hover {
+  color: var(--text);
+  border-color: var(--line-2);
+}
+
 /* An image the description names that this machine doesn't have (yet): where it would be. */
 .image-missing {
   display: block;

@@ -35,7 +35,7 @@ moon-base/                  the board repo
   updated: 2026-09-28T02:21:47.658Z
   labels: [audio]
   links: [MB-3, IDEA-40]   # related cards on any board: the map's lines
-  cover: MB-12/3f2a9c01d4e5b6a7.png   # one of its images, on its face on the board
+  cover: MB-12/3f2a9c01d4e5b6a7.png   # an image of its folder (in the description or not), on its face on the board
   jira: SPDI-42         # a work project's Jira key
   sessions: [...]       # the Claude sessions started for it
   ---
