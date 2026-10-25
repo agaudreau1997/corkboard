@@ -12,7 +12,7 @@ import type {
   LoadedBoard,
   NotifyConfig,
   ProjectNode,
-  ProjectSettings,
+  ProjectSettingsPatch,
   ProjectTheme,
   PtyInfo,
   RepoStatus,
@@ -43,8 +43,11 @@ export type CorkboardApi = {
     update(id: string, patch: { name?: string; codeRepo?: string | null }): Promise<void>
     /** Writes the project's `theme.json` (shared through the repo); null removes it. */
     setTheme(id: string, theme: ProjectTheme | null): Promise<void>
-    /** Writes the project's `project.json` (work mode; shared through the repo); nothing set removes it. */
-    setSettings(id: string, settings: ProjectSettings): Promise<void>
+    /**
+     * Changes the project's `project.json` (work mode, icon; shared through the repo): the keys
+     * given, `null` clearing one. Nothing left set removes the file.
+     */
+    setSettings(id: string, patch: ProjectSettingsPatch): Promise<void>
     /** Writes the board repo's CLAUDE.md (the card format) when it has none. */
     addGuide(id: string): Promise<void>
     /** Takes it out of the app; its folder stays. */

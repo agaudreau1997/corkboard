@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Card } from '@shared/types'
 import { actions, projectIdOf, useStore, type ViewMode, NONE } from '../state'
-import { ThemeSwatch } from './ThemeEditor'
+import { ProjectMark } from './ProjectMark'
 import { KanbanView } from './KanbanView'
 import { MapView } from './MapView'
 import { TableView } from './TableView'
@@ -111,7 +111,7 @@ export function BoardPane({ path }: { path: string }) {
             </button>
           </div>
         )}
-        {/* Both scopes one click away, each named: the project's carries its swatch. */}
+        {/* Both scopes one click away, each named: the project's carries its mark. */}
         <div className="head-settings">
           {project && (
             <button
@@ -119,7 +119,7 @@ export function BoardPane({ path }: { path: string }) {
               title={`${project.name}: its name, code folder, work mode and colours`}
               onClick={() => actions.setModal({ kind: 'projectSettings', id: project.id })}
             >
-              <ThemeSwatch theme={project.theme} />
+              <ProjectMark project={project} always />
               Project <span className="head-word">settings</span>
             </button>
           )}

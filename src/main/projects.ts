@@ -98,6 +98,7 @@ export class Project {
       ...(this.store.theme ? { theme: this.store.theme } : {}),
       guide: this.hasGuide(),
       work: !!this.store.settings.work,
+      ...(this.store.settings.icon ? { icon: this.store.settings.icon } : {}),
       boards: rekey(this.store.tree()),
     }
   }

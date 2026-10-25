@@ -7,7 +7,7 @@ import type { ProjectNode, ProjectTheme, PtyInfo, TerminalStatus } from '@shared
 import { actions, api, attachTerminalSink, projectIdOf, useStore } from '../state'
 import { repaint } from '../theme'
 import { openContextMenu, type MenuItem } from './ContextMenu'
-import { ThemeSwatch } from './ThemeEditor'
+import { ProjectMark } from './ProjectMark'
 
 export function TerminalPanel() {
   const terminals = useStore(s => s.terminals)
@@ -114,7 +114,7 @@ function TerminalTab({ info, active }: { info: PtyInfo; active: boolean }) {
           {kind.glyph}
         </i>
       )}
-      {project?.theme && <ThemeSwatch theme={project.theme} />}
+      <ProjectMark project={project} />
       <span className="term-title">{info.title}</span>
       <button
         className="tab-close"

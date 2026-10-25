@@ -2484,3 +2484,41 @@ button.danger-fill:hover {
 .guide-offer button.link.muted {
   color: var(--muted);
 }
+
+/* ---- project icons ------------------------------------------------------------------------- */
+
+/* An image of the project's, in place of its swatch: as tall as a line of the side panel. */
+.project-icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  border-radius: 3px;
+  vertical-align: middle;
+}
+
+.tab-parent .project-icon {
+  margin-right: 5px;
+}
+
+.icon-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.icon-preview {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg-2);
+}
+
+.icon-preview .project-icon {
+  width: 32px;
+  height: 32px;
+}

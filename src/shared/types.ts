@@ -268,6 +268,8 @@ export type ProjectNode = {
   guide: boolean
   /** Work mode (`project.json`): its sessions keep card ids out of the code repo and name Jira keys. */
   work: boolean
+  /** Its icon (`project.json`), a data URI; without one the project shows its colour swatch. */
+  icon?: string
   boards: BoardNode[]
 }
 
@@ -281,7 +283,15 @@ export type ProjectSettings = {
    * tracks the work: every card id stays out of them, and the card's `jira` key is named instead.
    */
   work?: boolean
+  /**
+   * The project's icon, shown wherever the project is named in place of its colour swatch: a
+   * `data:image/...;base64,` URI of an image scaled down to 64 px when it was picked.
+   */
+  icon?: string
 }
+
+/** A change to the settings: a key given replaces it, `null` clears it, one left out stays. */
+export type ProjectSettingsPatch = { [K in keyof ProjectSettings]?: ProjectSettings[K] | null }
 
 export type ThemeColor = 'background' | 'surface' | 'line' | 'text' | 'accent' | 'link' | 'success' | 'danger'
 

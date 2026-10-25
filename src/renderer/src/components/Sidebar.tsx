@@ -2,7 +2,7 @@ import type { BoardNode, ProjectNode, SyncStatus, UpdateStatus } from '@shared/t
 import { actions, api, projectIdOf, useStore } from '../state'
 import { discussBoard } from '../tackle'
 import { openContextMenu, type MenuItem } from './ContextMenu'
-import { ThemeSwatch } from './ThemeEditor'
+import { ProjectMark } from './ProjectMark'
 
 export function Sidebar() {
   const projects = useStore(s => s.projects)
@@ -86,7 +86,7 @@ function ProjectRow({ project }: { project: ProjectNode }) {
         onContextMenu={e => openContextMenu(e, projectMenu(project))}
       >
         <span className="twisty-mark">{folded ? '▸' : '▾'}</span>
-        {project.theme && <ThemeSwatch theme={project.theme} title={`Colours: ${project.theme.name ?? 'custom'}`} />}
+        <ProjectMark project={project} title={project.icon ? undefined : `Colours: ${project.theme?.name ?? 'custom'}`} />
         <span className="project-name">{project.name}</span>
         <span className="dot" aria-label={syncText(project.sync)} />
         <button

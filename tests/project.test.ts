@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   mergeProjectSettings,
+  isIcon,
   namesKey,
   normalizeKey,
   parseProjectSettings,
+  patchSettings,
   projectSettingsText,
 } from '@shared/project'
 
@@ -26,6 +28,29 @@ describe('project.json', () => {
     expect(JSON.parse(projectSettingsText({}, previous)!)).toEqual({ jira: { site: 'https://example.atlassian.net' } })
     expect(JSON.parse(projectSettingsText({ work: true }, '{ "work": false, "x": 1 }')!)).toEqual({ work: true, x: 1 })
     expect(projectSettingsText({ work: true }, 'not json')).toBe('{\n  "work": true\n}\n')
+  })
+
+  it('reads, writes and keeps an icon that is an image data URI', () => {
+    const icon = 'data:image/png;base64,iVBORw0KGgo='
+    expect(isIcon(icon)).toBe(true)
+    expect(isIcon('https://example.com/icon.png')).toBe(false)
+    expect(isIcon('data:text/html;base64,PGI+')).toBe(false)
+    expect(parseProjectSettings(JSON.stringify({ icon }))).toEqual({ icon })
+    expect(parseProjectSettings('{ "icon": "javascript:alert(1)" }')).toEqual({})
+    const text = projectSettingsText({ work: true, icon }, '{ "x": 1 }')!
+    expect(text.indexOf('"work"')).toBeLessThan(text.indexOf('"icon"'))
+    expect(parseProjectSettings(text)).toEqual({ work: true, icon })
+    expect(JSON.parse(text)).toEqual({ work: true, icon, x: 1 })
+    // Cleared, the icon goes and what else the file holds stays.
+    expect(JSON.parse(projectSettingsText({ work: true }, text)!)).toEqual({ work: true, x: 1 })
+  })
+
+  it('patches the settings: a key given replaces, null clears, one left out stays', () => {
+    const icon = 'data:image/png;base64,iVBORw0KGgo='
+    expect(patchSettings({ work: true }, { icon })).toEqual({ work: true, icon })
+    expect(patchSettings({ work: true, icon }, { icon: null })).toEqual({ work: true })
+    expect(patchSettings({ work: true, icon }, { work: false })).toEqual({ icon })
+    expect(patchSettings({ icon }, {})).toEqual({ icon })
   })
 
   it('merges both sides of a conflict, this machine first', () => {

@@ -3,6 +3,7 @@ import { execFile, execFileSync } from 'node:child_process'
 import { appendFileSync, existsSync, readdirSync, readFileSync, promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { patchSettings } from '@shared/project'
 import type {
   AppConfig,
   BoardMap,
@@ -12,7 +13,7 @@ import type {
   ClaudeInfo,
   NotifyConfig,
   ProjectConfig,
-  ProjectSettings,
+  ProjectSettingsPatch,
   ProjectTheme,
   SessionRef,
   SyncStatus,
@@ -347,10 +348,10 @@ function registerIpc(): void {
     if (!project) throw new Error(`No project ${id}`)
     await project.store.saveTheme(theme)
   })
-  ipcMain.handle('projects:setSettings', async (_e, id: string, settings: ProjectSettings) => {
+  ipcMain.handle('projects:setSettings', async (_e, id: string, patch: ProjectSettingsPatch) => {
     const project = projects.get(id)
     if (!project) throw new Error(`No project ${id}`)
-    await project.store.saveSettings(settings)
+    await project.store.saveSettings(patchSettings(project.store.settings, patch))
     commitCache.clear()
   })
   ipcMain.handle('projects:addGuide', async (_e, id: string) => {

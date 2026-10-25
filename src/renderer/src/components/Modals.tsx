@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { slugify } from '@shared/cardfile'
 import { isEmptyTheme } from '@shared/theme'
-import type { BoardMeta, CodeRepoFrom, ListDef, ProjectSettings, ProjectTheme } from '@shared/types'
+import type { BoardMeta, CodeRepoFrom, ListDef, ProjectSettingsPatch, ProjectTheme } from '@shared/types'
 import { actions, api, findNode, projectIdOf, useStore } from '../state'
-import { ThemeEditor, ThemeSwatch } from './ThemeEditor'
+import { iconFromFile, ProjectMark } from './ProjectMark'
+import { ThemeEditor } from './ThemeEditor'
 
 export function Modals() {
   const modal = useStore(s => s.modal)
@@ -237,7 +238,7 @@ function Settings({ path }: { path: string }) {
         <div className="field">
           <span>Project</span>
           <div className="theme-pointer">
-            <ThemeSwatch theme={project.theme} />
+            <ProjectMark project={project} always />
             <span className="muted">
               {project.name}: its colours ({project.theme ? (project.theme.name ?? 'Custom') : 'Default'}) are every
               board's in it, and its code folder every board's fallback.
@@ -606,6 +607,8 @@ function ProjectSettings({ id }: { id: string }) {
   const [theme, setTheme] = useState<ProjectTheme | null>(project?.theme ?? null)
   const [themeEdited, setThemeEdited] = useState(false)
   const [work, setWork] = useState(!!project?.work)
+  const [icon, setIcon] = useState(project?.icon)
+  const iconInput = useRef<HTMLInputElement>(null)
   // The window wears the theme as it is edited, and its own again once the settings close.
   useEffect(() => {
     if (themeEdited) useStore.setState({ themePreview: { projectId: id, theme } })
@@ -615,7 +618,11 @@ function ProjectSettings({ id }: { id: string }) {
   const save = async () => {
     try {
       if (themeEdited) await api.projects.setTheme(id, isEmptyTheme(theme) ? null : theme)
-      if (work !== project.work) await api.projects.setSettings(id, { work } satisfies ProjectSettings)
+      const patch: ProjectSettingsPatch = {
+        ...(work !== project.work ? { work } : {}),
+        ...(icon !== project.icon ? { icon: icon ?? null } : {}),
+      }
+      if (Object.keys(patch).length) await api.projects.setSettings(id, patch)
       await api.projects.update(id, { name, codeRepo: codeRepo.trim() || null })
       await actions.refreshTree()
       for (const key of Object.keys(useStore.getState().boards)) if (key.startsWith(`${id}:`)) await actions.loadBoard(key)
@@ -641,6 +648,43 @@ function ProjectSettings({ id }: { id: string }) {
         </span>
         <input autoFocus value={name} onChange={e => setName(e.target.value)} />
       </label>
+      <div className="field">
+        <span>Icon</span>
+        <div className="icon-picker">
+          <span className="icon-preview">
+            <ProjectMark project={{ icon, theme: theme ?? undefined }} always />
+          </span>
+          <button type="button" className="small" onClick={() => iconInput.current?.click()}>
+            {icon ? 'Change image…' : 'Choose an image…'}
+          </button>
+          <input
+            ref={iconInput}
+            type="file"
+            accept="image/*"
+            aria-label="Icon image"
+            hidden
+            onChange={async e => {
+              const file = e.target.files?.[0]
+              e.target.value = ''
+              if (!file) return
+              try {
+                setIcon(await iconFromFile(file))
+              } catch (error) {
+                actions.toast((error as Error).message, 'error')
+              }
+            }}
+          />
+          {icon && (
+            <button type="button" className="small" onClick={() => setIcon(undefined)}>
+              Clear
+            </button>
+          )}
+        </div>
+        <small className="muted">
+          Shown in place of the colour swatch wherever the project is named. Scaled down to 64 px and kept in{' '}
+          <code>project.json</code>, so every machine shows it.
+        </small>
+      </div>
       <div className="field">
         <span>Board repo</span>
         <code className="path">{project.root}</code>

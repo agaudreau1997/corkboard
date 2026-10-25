@@ -1246,6 +1246,49 @@ try {
   check((await page.locator('.board-head .head-settings .theme-swatch').count()) === 1, 'and carries the project swatch')
   await dialog.getByRole('button', { name: 'Cancel' }).click()
 
+  // ---- a project icon: picked in the settings, scaled down, shown in place of the swatch ----
+  const iconPng = Buffer.from(
+    await page.evaluate(() => {
+      const canvas = document.createElement('canvas')
+      canvas.width = 200
+      canvas.height = 100
+      const context = canvas.getContext('2d')
+      context.fillStyle = '#e0a96d'
+      context.fillRect(0, 0, 200, 100)
+      return canvas.toDataURL('image/png').split(',')[1]
+    }),
+    'base64',
+  )
+  await openProjectSettings()
+  await dialog.locator('input[type=file]').setInputFiles({ name: 'moon.png', mimeType: 'image/png', buffer: iconPng })
+  check(!!(await until(async () => (await dialog.locator('.icon-preview .project-icon').count()) === 1)), 'a picked image shows in the project settings')
+  await dialog.getByRole('button', { name: 'Save' }).click()
+  const projectFile = path.join(root, 'project.json')
+  const savedIcon = await until(() => existsSync(projectFile) && JSON.parse(readFileSync(projectFile, 'utf8')).icon)
+  check(typeof savedIcon === 'string' && savedIcon.startsWith('data:image/png;base64,'), 'Save writes the icon to project.json as a data URI')
+  const iconSize = await page.evaluate(
+    src => new Promise(resolve => {
+      const image = new Image()
+      image.onload = () => resolve([image.naturalWidth, image.naturalHeight])
+      image.onerror = () => resolve([0, 0])
+      image.src = src
+    }),
+    savedIcon || '',
+  )
+  check(iconSize[0] === 64 && iconSize[1] === 32, `scaled down to 64 px, its proportions kept (${iconSize.join('×')})`)
+  check(
+    !!(await until(async () => (await page.locator('.project-row .project-icon').count()) === 1)) &&
+      (await page.locator('.project-row .theme-swatch').count()) === 0,
+    'the side panel shows the icon in place of the swatch',
+  )
+  check((await page.locator('.board-head .head-settings .project-icon').count()) === 1, "and so does the header's Project settings button")
+  check(!!(await until(() => boardLogHas("Set the project's icon"), 12000)), 'the board repo commits the icon')
+  await openProjectSettings()
+  await dialog.getByRole('button', { name: 'Clear', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Save' }).click()
+  check(!!(await until(() => !existsSync(projectFile))), 'clearing the icon takes it out of project.json (and the file, with nothing else in it)')
+  check(!!(await until(async () => (await page.locator('.project-row .theme-swatch').count()) === 1)), 'and the swatch is back')
+
   // ---- projects: add one, move a board into it, delete a board with cards ----
   const second = path.join(scratch, 'second-board')
   await page.locator('.sidebar-head').getByRole('button', { name: '+' }).click()
