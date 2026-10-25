@@ -325,6 +325,38 @@ code,
   visibility: hidden;
 }
 
+/* The ⣿ a project or board row is dragged by, left of its arrow: shown on the row's hover, the
+   only place a drag starts. */
+.drag-handle {
+  flex: none;
+  width: 10px;
+  font-size: 11px;
+  line-height: 1;
+  text-align: center;
+  color: var(--muted);
+  cursor: grab;
+  visibility: hidden;
+  touch-action: none;
+}
+
+.drag-handle:hover {
+  color: var(--text);
+}
+
+.tree-row:hover .drag-handle,
+.project-row:hover .drag-handle,
+.dragging > div > .drag-handle {
+  visibility: visible;
+}
+
+.dragging {
+  opacity: 0.75;
+}
+
+.dragging .drag-handle {
+  cursor: grabbing;
+}
+
 .tree-icon {
   color: var(--muted);
   font-size: 12px;

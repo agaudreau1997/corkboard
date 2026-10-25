@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { listColorAt, sortCards } from '@shared/cardfile'
 import { emptyHistory, step, visit, type Place } from '@shared/navhistory'
+import { reordered } from '@shared/sideorder'
 import type { CorkboardApi } from '@shared/api'
 import type {
   AppConfig,
@@ -294,6 +295,19 @@ export const actions = {
   async setNotify(notify: { desktop: boolean; command: string }) {
     await api.config.setNotify({ desktop: notify.desktop, command: notify.command.trim() || undefined })
     set({ config: await api.config.get() })
+  },
+
+  /**
+   * A sibling list of the side panel dragged into a new order: saved in this machine's config and
+   * shown at once. The keys of boards since gone drop out with it.
+   */
+  async reorder(kind: 'projects' | 'boards', siblings: string[]) {
+    const config = get().config
+    if (!config) return
+    const known = new Set(kind === 'projects' ? get().projects.map(p => p.id) : flatten(get().tree).map(n => n.path))
+    const list = reordered(config.order?.[kind], siblings, known)
+    set({ config: { ...config, order: { ...config.order, [kind]: list } } })
+    await api.config.setOrder({ [kind]: list })
   },
 
   async removeProject(id: string) {

@@ -231,6 +231,17 @@ export type AppConfig = {
   boardRoot?: string
   /** How this machine says a terminal tab changed state (none: desktop notifications only). */
   notify?: NotifyConfig
+  /** This machine's order of the side panel's projects and boards, dragged by their handles. */
+  order?: SidebarOrder
+}
+
+/**
+ * The side panel's order (`src/shared/sideorder.ts`): project ids, and board keys of any project
+ * and depth, each sibling list sorted by it. Absent, projects come as added and boards by title.
+ */
+export type SidebarOrder = {
+  projects?: string[]
+  boards?: string[]
 }
 
 /**

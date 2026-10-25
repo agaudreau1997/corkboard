@@ -230,7 +230,9 @@ async function mcpTool(url, token, name, args) {
 }
 
 const packaged = process.env.CORKBOARD_E2E_EXECUTABLE
-const app = await electron.launch({
+// Launched twice: the second time checks what this machine remembers (the side panel's order and
+// its rail) after a quit.
+const launchApp = () => electron.launch({
   // The app folder, as `npm start` and the launcher run it: Electron then reads package.json (its
   // name and version) and starts its main, out/main/index.js.
   ...(packaged ? { executablePath: path.resolve(packaged), args: [] } : { args: [appDir] }),
@@ -257,6 +259,7 @@ const app = await electron.launch({
     ...gitIdentity,
   },
 })
+const app = await launchApp()
 // The main process's own output (git failures and the like), saved beside the screenshots.
 const mainLog = []
 app.process().stdout?.on('data', d => mainLog.push(String(d)))
@@ -271,6 +274,8 @@ await page.setViewportSize({ width: 1500, height: 940 }).catch(() => {})
 const shot = async name => page.screenshot({ path: path.join(shots, `${name}.png`) })
 
 let quitCard
+/** The side panel's order as the first run left it, for the restart to check. */
+let rememberedOrder
 try {
   // ---- the tree and tabs ----
   await page.getByRole('treeitem').first().waitFor()
@@ -1448,10 +1453,13 @@ try {
 
   // ---- projects: add one, move a board into it, delete a board with cards ----
   // The side panel's own space has a menu: below the projects, and its header. A row keeps its own.
+  await until(async () => (await page.getByRole('dialog').count()) === 0)
   const treeBox = await page.locator('.sidebar .tree').boundingBox()
-  await page.mouse.click(treeBox.x + treeBox.width / 2, treeBox.y + treeBox.height - 12, { button: 'right' })
+  // A locator's click, which waits for the point to reach the tree: the colours' crossfade (a view
+  // transition) covers the window for a moment after the icon was cleared.
+  await page.locator('.sidebar .tree').click({ button: 'right', position: { x: treeBox.width / 2, y: treeBox.height - 12 } })
   const panelAdd = page.locator('.ctx-menu').getByRole('menuitem', { name: 'Add project…' })
-  check((await panelAdd.count()) === 1, 'a right-click below the projects offers Add project…')
+  check(!!(await until(async () => (await panelAdd.count()) === 1)), 'a right-click below the projects offers Add project…')
   await panelAdd.click()
   check(!!(await until(async () => (await page.getByRole('dialog').getByLabel('Board repo folder').count()) === 1)), 'which opens the Add project dialog')
   await page.keyboard.press('Escape')
@@ -1678,6 +1686,41 @@ try {
   await dialog.getByRole('button', { name: 'Save' }).click()
   check(await until(() => existsSync(path.join(workRoot, 'project.json')) && JSON.parse(readFileSync(path.join(workRoot, 'project.json'), 'utf8')).work === true), 'ticking it writes project.json back')
 
+  // ---- the side panel's order: a board among its siblings, a project among the projects ----
+  const savedOrder = () => JSON.parse(readFileSync(path.join(scratch, 'profile', 'config.json'), 'utf8')).order ?? {}
+  // Drags a row by its ⣿ handle to just above another row (the dragged block's middle then lies
+  // above every other one, so it lands first).
+  const dragByHandle = async (from, to) => {
+    await from.hover()
+    const hb = await from.locator('.drag-handle').first().boundingBox()
+    const tb = await to.boundingBox()
+    await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2 - 8, { steps: 3 })
+    await page.mouse.move(tb.x + tb.width / 2, tb.y - 6, { steps: 15 })
+    await page.mouse.up()
+    // dnd-kit swallows clicks for 50 ms after a drop (the one a drop would otherwise make).
+    await sleep(150)
+  }
+  const firstProjectId = await page.locator('.project').first().getAttribute('data-project')
+  const siblingRows = page.locator(`.project[data-project="${firstProjectId}"] > [role="group"] > [role="treeitem"] > .tree-row`)
+  const siblingTitles = () => siblingRows.locator('.tree-title').allTextContents()
+  const titlesBefore = await siblingTitles()
+  const lastBoard = titlesBefore.at(-1)
+  check((await siblingRows.first().locator('.drag-handle').evaluate(el => getComputedStyle(el).visibility)) === 'hidden', 'a row hides its ⣿ handle until hovered')
+  const tabBeforeDrag = await page.locator('.tab.active').getAttribute('title')
+  await dragByHandle(siblingRows.last(), siblingRows.first())
+  check(!!(await until(async () => (await siblingTitles())[0] === lastBoard)), `dragging ${lastBoard} by its handle puts it first among its siblings (${(await siblingTitles()).join(', ')})`)
+  check(!!(await until(() => savedOrder().boards?.length === titlesBefore.length)), `the order is saved in this machine's config (${JSON.stringify(savedOrder().boards)})`)
+  check((await page.locator('.tab.active').getAttribute('title')) === tabBeforeDrag, 'a drag opens nothing')
+  const projectIds = () => page.locator('.project').evaluateAll(els => els.map(el => el.dataset.project))
+  const idsBefore = await projectIds()
+  const lastProject = idsBefore.at(-1)
+  await dragByHandle(page.locator('.project-row').last(), page.locator('.project-row').first())
+  check(!!(await until(async () => (await projectIds())[0] === lastProject)), `dragging the project ${lastProject} puts it first (${(await projectIds()).join(', ')})`)
+  check(!!(await until(() => savedOrder().projects?.[0] === lastProject)), `the project order is saved too (${JSON.stringify(savedOrder().projects)})`)
+  rememberedOrder = { projects: await projectIds(), project: firstProjectId, boards: await siblingTitles() }
+
   // Table view.
   await page.locator(`.tab[title$=":${MAIN.path}"]`).click()
   await page.getByRole('tab', { name: 'Table', exact: true }).click()
@@ -1705,6 +1748,36 @@ try {
 if (quitCard) {
   const pushed = execFileSync('git', ['show', `main:${MAIN.path}/cards/${quitCard}.md`], { cwd: remote }).toString()
   check(pushed.includes('(renamed at quit)'), `quitting committed and pushed ${quitCard}, changed just before`)
+}
+
+// ---- after a restart: what this machine remembers ----
+if (rememberedOrder) {
+  const again = await launchApp()
+  const pageAgain = await again.firstWindow()
+  pageAgain.on('pageerror', e => {
+    console.log('PAGE ERROR (restart)', e.message)
+    failures++
+  })
+  try {
+    await pageAgain.setViewportSize({ width: 1500, height: 940 }).catch(() => {})
+    await pageAgain.locator('.sidebar').waitFor()
+    const idsAgain = () => pageAgain.locator('.project').evaluateAll(els => els.map(el => el.dataset.project))
+    const restartedIds = await until(async () => {
+      const ids = await idsAgain()
+      return ids.length === rememberedOrder.projects.length && ids
+    })
+    check(JSON.stringify(restartedIds) === JSON.stringify(rememberedOrder.projects), `after a restart the projects keep the dragged order (${restartedIds})`)
+    const titlesAgain = await pageAgain
+      .locator(`.project[data-project="${rememberedOrder.project}"] > [role="group"] > [role="treeitem"] > .tree-row .tree-title`)
+      .allTextContents()
+    check(JSON.stringify(titlesAgain) === JSON.stringify(rememberedOrder.boards), `and the boards theirs (${titlesAgain.join(', ')})`)
+  } catch (error) {
+    console.log('FAIL (restart)', error)
+    failures++
+    await pageAgain.screenshot({ path: path.join(shots, '99-restart-failure.png') }).catch(() => {})
+  } finally {
+    await again.close()
+  }
 }
 
 writeFileSync(path.join(shots, 'main-process.log'), mainLog.join(''))

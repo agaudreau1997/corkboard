@@ -1,3 +1,8 @@
+import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import type { CSSProperties, ReactNode } from 'react'
+import { inOrder } from '@shared/sideorder'
 import type { BoardNode, ProjectNode, SyncStatus, UpdateStatus } from '@shared/types'
 import { actions, api, projectIdOf, useStore } from '../state'
 import { discussBoard } from '../tackle'
@@ -8,7 +13,8 @@ import { ProjectMark } from './ProjectMark'
 const panelMenu = (): MenuItem[] => [{ label: 'Add project…', onSelect: () => actions.setModal({ kind: 'addProject' }) }]
 
 export function Sidebar() {
-  const projects = useStore(s => s.projects)
+  const order = useStore(s => s.config?.order?.projects)
+  const projects = inOrder(useStore(s => s.projects), p => p.id, order)
 
   return (
     <aside className="sidebar">
@@ -21,9 +27,11 @@ export function Sidebar() {
       {/* A row's own menu stops here (`openContextMenu` stops the event), so this one is the
           space around and below them. */}
       <div className="tree" role="tree" onContextMenu={e => openContextMenu(e, panelMenu())}>
-        {projects.map(project => (
-          <ProjectRow key={project.id} project={project} />
-        ))}
+        <Reorder ids={projects.map(p => p.id)} onReorder={ids => void actions.reorder('projects', ids)}>
+          {projects.map(project => (
+            <ProjectRow key={project.id} project={project} />
+          ))}
+        </Reorder>
         {!projects.length && <p className="muted pad">No projects yet.</p>}
       </div>
       <footer className="sidebar-foot">
@@ -74,8 +82,11 @@ function ProjectRow({ project }: { project: ProjectNode }) {
   const declined = useStore(s => s.noGuide.includes(project.id))
   const active = useStore(s => !!project.mainBoard && s.activeTab === project.mainBoard)
   const open = useStore(s => s.tabs.some(t => t.path === project.mainBoard))
+  const boardOrder = useStore(s => s.config?.order?.boards)
+  const drag = useReorderable(project.id)
   const main = project.boards.find(b => b.path === project.mainBoard)
-  const listed = [...(main?.children ?? []), ...project.boards.filter(b => b !== main)]
+  // One sibling list, in this machine's order: the main board's children and the other top-level boards.
+  const listed = inOrder([...(main?.children ?? []), ...project.boards.filter(b => b !== main)], b => b.path, boardOrder)
   const offer = !project.guide && !declined
   const tip = [
     main ? `Opens ${main.title} (${main.key}), the main board` : undefined,
@@ -93,13 +104,21 @@ function ProjectRow({ project }: { project: ProjectNode }) {
     }))
 
   return (
-    <div role="treeitem" aria-expanded={!folded} className="project" data-project={project.id}>
+    <div
+      role="treeitem"
+      aria-expanded={!folded}
+      className={`project${drag.dragging ? ' dragging' : ''}`}
+      data-project={project.id}
+      ref={drag.ref}
+      style={drag.style}
+    >
       <div
         className={`project-row sync-${project.sync.state}${active ? ' active' : ''}${open ? ' open' : ''}`}
         title={tip}
         onClick={() => main && void actions.openBoard(main.path)}
         onContextMenu={e => openContextMenu(e, projectMenu(project))}
       >
+        {drag.handle}
         <Twisty open={!folded} hidden={!listed.length && !offer && !!main} onToggle={toggle} />
         <ProjectMark project={project} title={project.icon ? undefined : `Colours: ${project.theme?.name ?? 'custom'}`} />
         <span className="project-name">{project.name}</span>
@@ -117,9 +136,7 @@ function ProjectRow({ project }: { project: ProjectNode }) {
       </div>
       {!folded && (
         <div role="group">
-          {listed.map(node => (
-            <TreeNode key={node.path} node={node} depth={1} />
-          ))}
+          <BoardList nodes={listed} depth={1} />
           {/* A project added now always has its main board: only a repo emptied by hand, or made
               by an older build, has none and needs this way in. */}
           {!project.boards.length && (
@@ -287,11 +304,19 @@ function TreeNode({ node, depth }: { node: BoardNode; depth: number }) {
   const expanded = useStore(s => s.expanded.includes(node.path))
   const active = useStore(s => s.activeTab === node.path)
   const open = useStore(s => s.tabs.some(t => t.path === node.path))
+  const boardOrder = useStore(s => s.config?.order?.boards)
+  const drag = useReorderable(node.path)
   const hasChildren = node.children.length > 0
   const isFolder = node.listCount === 0 && hasChildren
 
   return (
-    <div role="treeitem" aria-expanded={hasChildren ? expanded : undefined}>
+    <div
+      role="treeitem"
+      aria-expanded={hasChildren ? expanded : undefined}
+      className={drag.dragging ? 'dragging' : undefined}
+      ref={drag.ref}
+      style={drag.style}
+    >
       <div
         className={`tree-row${active ? ' active' : ''}${open ? ' open' : ''}`}
         style={{ paddingLeft: 8 + depth * 14 }}
@@ -299,6 +324,7 @@ function TreeNode({ node, depth }: { node: BoardNode; depth: number }) {
         onContextMenu={e => openContextMenu(e, boardMenu(node))}
         title={`${node.path.slice(node.path.indexOf(':') + 1)} (${node.key})`}
       >
+        {drag.handle}
         <Twisty open={expanded} hidden={!hasChildren} onToggle={() => actions.toggleExpanded(node.path)} />
         <span className="tree-icon">{isFolder ? '▤' : '▦'}</span>
         <span className="tree-title">{node.title}</span>
@@ -306,13 +332,71 @@ function TreeNode({ node, depth }: { node: BoardNode; depth: number }) {
       </div>
       {hasChildren && expanded && (
         <div role="group">
-          {node.children.map(child => (
-            <TreeNode key={child.path} node={child} depth={depth + 1} />
-          ))}
+          <BoardList nodes={inOrder(node.children, b => b.path, boardOrder)} depth={depth + 1} />
         </div>
       )}
     </div>
   )
+}
+
+/** Sibling boards, in the order they are given, reordered by their handles. */
+function BoardList({ nodes, depth }: { nodes: BoardNode[]; depth: number }) {
+  return (
+    <Reorder ids={nodes.map(n => n.path)} onReorder={ids => void actions.reorder('boards', ids)}>
+      {nodes.map(node => (
+        <TreeNode key={node.path} node={node} depth={depth} />
+      ))}
+    </Reorder>
+  )
+}
+
+/**
+ * One sibling list of the side panel, reordered by its rows' handles. Each list is a drag context
+ * of its own, so a board only lands among its siblings (moving it elsewhere is *Move to project*)
+ * and a project among the projects.
+ */
+function Reorder({ ids, onReorder, children }: { ids: string[]; onReorder: (ids: string[]) => void; children: ReactNode }) {
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
+  const onDragEnd = ({ active, over }: DragEndEvent) => {
+    const from = ids.indexOf(String(active.id))
+    const to = over ? ids.indexOf(String(over.id)) : -1
+    if (from >= 0 && to >= 0 && from !== to) onReorder(arrayMove(ids, from, to))
+  }
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+      <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+        {children}
+      </SortableContext>
+    </DndContext>
+  )
+}
+
+/**
+ * A row of a `Reorder` list: its node's ref and style (moved up and down only), and its ⣿ handle,
+ * the only place a drag starts, so a click on the row still opens it and the arrow still folds.
+ */
+function useReorderable(id: string) {
+  const { setNodeRef, setActivatorNodeRef, listeners, attributes, transform, transition, isDragging } = useSortable({ id })
+  const style: CSSProperties = {
+    transform: CSS.Translate.toString(transform && { ...transform, x: 0 }),
+    transition,
+    position: 'relative',
+    zIndex: isDragging ? 2 : undefined,
+  }
+  const handle = (
+    <span
+      className="drag-handle"
+      ref={setActivatorNodeRef}
+      {...attributes}
+      {...listeners}
+      aria-label="Drag to reorder"
+      title="Drag to reorder"
+      onClick={e => e.stopPropagation()}
+    >
+      ⣿
+    </span>
+  )
+  return { ref: setNodeRef, style, handle, dragging: isDragging }
 }
 
 /** The arrow that folds a project or a board's children, and nothing else: a click on it stays on it. */
