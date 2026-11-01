@@ -7,6 +7,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, promises as fs, watch, type FSWatcher } from 'node:fs'
 import path from 'node:path'
+import { metaText, patchMeta, uniqueListId } from '@shared/boardmeta'
 import { between, cardNumber, newCard, nextCardId, parseCard, serializeCard, slugify, sortCards, tryParseCard } from '@shared/cardfile'
 import { MAX_IMAGE_BYTES, sniffImage } from '@shared/images'
 import { parseProjectSettings, PROJECT_FILE, projectSettingsText } from '@shared/project'
@@ -295,10 +296,9 @@ export class BoardStore {
 
   async updateMeta(boardPath: string, patch: Partial<BoardMeta>): Promise<BoardMeta> {
     const board = this.board(boardPath)
-    const meta: BoardMeta = { ...board.meta, ...patch, key: board.meta.key }
-    for (const [k, v] of Object.entries(meta)) if (v === undefined || v === '') delete (meta as any)[k]
+    const meta = patchMeta(board.meta, patch)
     board.meta = meta
-    await this.writeText(this.metaFile(boardPath), formatJson(meta))
+    await this.writeText(this.metaFile(boardPath), metaText(meta))
     this.resolveInheritance()
     this.events?.onTreeChanged()
     return meta
@@ -486,8 +486,7 @@ export class BoardStore {
     const to = this.board(toPath)
     const list = from.meta.lists.find(l => l.id === listId)
     if (!list) throw new Error(`No list ${listId} on ${fromPath}`)
-    let id = list.id
-    for (let n = 2; to.meta.lists.some(l => l.id === id); n++) id = `${list.id}-${n}`
+    const id = uniqueListId(list.id, to.meta.lists)
     await this.updateMeta(toPath, { lists: [...to.meta.lists, { ...list, id }] })
     for (const card of sortCards(from.cards.filter(c => c.list === listId))) {
       await this.moveCard(fromPath, card.id, toPath, id, card.pos)

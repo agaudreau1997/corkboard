@@ -6,7 +6,7 @@ It talks to GitHub, not git: it reads and writes the board repo's card files thr
 
 ## What it does today
 
-It signs in with GitHub, browses your board repos (their boards, each board's lists, and the cards in them), makes cards, and changes them: their title and description, their list, complete or not, archived. It finds cards on a board, shows its archived ones and restores them. It shares a card to another app, and copies its id.
+It signs in with GitHub, browses your board repos (their boards, each board's lists, and the cards in them), makes cards, and changes them: their title and description, their list, complete or not, archived. It finds cards on a board, shows its archived ones and restores them, and changes a board's lists and settings. It shares a card to another app, and copies its id.
 
 ## Browsing
 
@@ -39,6 +39,14 @@ An open card has *Edit* (its title and description), *Move to…* (another list 
 If the card changed since you opened it (a desktop pushed meanwhile), the app reads it again: a move, a complete or an archive goes on top of the newer card, and so does an edit of a field nobody else touched. When its title or description was edited there too, the app says so and asks: *Overwrite with mine*, or *Keep theirs*.
 
 Changing a card needs a connection. Unlike a new card, a change isn't kept for later: offline, the app says nothing was saved. Labels, due dates, links, moving a card to another board and reordering a list are for the desktop.
+
+## Lists and board settings
+
+The **⋯** beside a board's tabs, or a long press on a tab, opens that list's menu: *Sort cards by* (the desktop's sorts; *Manual* keeps the order cards were placed in on the desktop), *Rename list*, *Move list left* / *right*, *Archive list* (asked once more: the list is hidden, its cards keep their list), *Add a list* (it opens, ready for cards), and *Board settings*.
+
+*Board settings* holds what of a board's settings applies on a phone: its title; its lists, each with its colour (a tap picks another from the desktop's palette), its name (a tap renames it), *↑* to move it before the one above, and *Archive*, or *Restore* for an archived one; *+ Add a list*; and the flow, the lists *Tackling moves cards to* and *Claude moves finished cards to*. The code repo and prompt notes are for Claude sessions, which start on the desktop: they show, but are changed there.
+
+A list's id is a slug of the title it was made with (`later-maybe`), unique on the board, and never changes when it's renamed, as on the desktop. Colours are written down when a list is added, moved, archived or recoloured, so the others keep theirs. Each change is one commit to `board.json` that says what it did (`Add list Later on cork`, `Archive list Doing on cork`, `Sort Done by Last updated on cork`), the way the desktop's auto-commit now says a board change too. If `board.json` changed since the phone read it (a desktop pushed), the app reads it again and makes the change on the newer file, so an edit there to another list stays. Like a card change, it needs a connection.
 
 ## Sharing a card
 

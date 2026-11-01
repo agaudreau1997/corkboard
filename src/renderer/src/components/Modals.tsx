@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { slugify } from '@shared/cardfile'
+import { newListId } from '@shared/boardmeta'
 import { isEmptyTheme } from '@shared/theme'
 import type { BoardMeta, CodeRepoFrom, DiscussIn, ListDef, ProjectSettingsPatch, ProjectTheme } from '@shared/types'
 import { actions, api, findNode, oneTabPerProject, projectIdOf, useStore } from '../state'
@@ -195,12 +195,7 @@ function Settings({ path }: { path: string }) {
     const known = new Set(board.meta.lists.map(l => l.id))
     const lists: ListDef[] = []
     for (const list of meta.lists) {
-      let id = list.id
-      if (!known.has(id)) {
-        const base = slugify(list.title)
-        id = base
-        for (let n = 2; lists.some(l => l.id === id) || known.has(id); n++) id = `${base}-${n}`
-      }
+      const id = known.has(list.id) ? list.id : newListId(list.title, [...lists, ...board.meta.lists])
       lists.push({ id, title: list.title.trim() || id, ...(list.archived ? { archived: true } : {}) })
     }
     try {

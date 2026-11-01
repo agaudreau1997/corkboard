@@ -533,9 +533,11 @@ describe('git', () => {
     expect(await committer.flush()).toBe('Turn work mode off')
     rmSync(path.join(root, 'project.json'))
     expect(await committer.flush()).toBe("Remove the project's settings")
+    await store.updateMeta(p, { lists: [...store.board(p).meta.lists, { id: 'later', title: 'Later' }] })
+    expect(await committer.flush()).toBe('Add list Later on game')
     const log = await git(root, ['log', '--format=%s'])
     expect(log.trim().split('\n').slice(-3)).toEqual(['Archive G-1', 'Move G-1: todo → done', 'Board: 2 changes'])
-    expect(committed.length).toBe(13)
+    expect(committed.length).toBe(14)
   })
 
   it('waits for a commit in flight, then commits what came after it', async () => {

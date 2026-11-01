@@ -1,17 +1,20 @@
 // A board: its lists as tabs along the top (they read better on a phone than columns scrolled
 // sideways), the open list's cards in the desktop's order, the cards waiting to be sent at its end,
 // and the "+" for a new one. An *Archived* tab at the end holds the archived cards, and the
-// magnifier beside the tabs finds cards over the whole board, archived ones last.
+// magnifier beside the tabs finds cards over the whole board, archived ones last. The ⋯ beside it,
+// or a long press on a tab, opens that list's menu (ListMenu.tsx), and the board's settings.
 
 import { useMemo, useState } from 'react'
 import { isDivider, listColorAt } from '@shared/cardfile'
 import { boardColumns, UNLISTED } from '@shared/selection'
-import type { Card, ListDef } from '@shared/types'
+import type { BoardMeta, Card, ListDef } from '@shared/types'
+import type { BoardChange } from '../repo/boardchange'
 import { archivedCards, findCards, whereCard } from '../repo/find'
 import type { Board } from '../repo/reader'
 import type { Draft } from '../repo/writer'
 import type { RepoState } from './Browse'
 import { FindBar, FindButton } from './Find'
+import { ListMenu } from './ListMenu'
 import { count, formatDue, Header, Pull } from './parts'
 
 /** The tab of the board's archived cards. */
@@ -32,10 +35,19 @@ export function BoardView(props: {
   offline: boolean
   onAdd: () => void
   onDiscard: (key: string) => void
+  /** Signed in, with the board read: its board.json can be changed. */
+  canChangeBoard: boolean
+  /** Writes a change to board.json; answers the meta as written, or nothing when it failed. */
+  onBoardChange: (change: BoardChange) => Promise<BoardMeta | undefined>
+  /** Why the last change to board.json failed. */
+  boardError?: string
+  onSettings: () => void
 }) {
   const { title, state, board, loading, onBack, onList, onCard, onRefresh, drafts, offline, onAdd, onDiscard } = props
   /** The search's text, while the field is open. */
   const [query, setQuery] = useState<string>()
+  /** The tab whose menu is open. */
+  const [menu, setMenu] = useState<string>()
   const columns = useMemo(() => (board ? boardColumns(board, () => true) : undefined), [board])
   const byId = useMemo(() => new Map(board?.cards.map(c => [c.id, c])), [board])
   const lists: (ListDef & { color: string })[] = board
@@ -68,6 +80,11 @@ export function BoardView(props: {
                 className={l.id === current?.id ? 'tab active' : 'tab'}
                 style={{ borderBottomColor: l.id === current?.id ? l.color : 'transparent' }}
                 onClick={() => onList(l.id)}
+                onContextMenu={e => {
+                  // A long press on a phone.
+                  e.preventDefault()
+                  if (board) setMenu(l.id)
+                }}
               >
                 <span className="dot" style={{ background: l.color }} />
                 {l.title}
@@ -75,10 +92,16 @@ export function BoardView(props: {
             ))}
           </nav>
           {board && <FindButton onOpen={() => setQuery('')} />}
+          {board && (
+            <button type="button" className="tabbar-button" aria-label="List menu" onClick={() => setMenu(current?.id ?? '')}>
+              ⋯
+            </button>
+          )}
         </div>
       )}
       <Pull onRefresh={onRefresh}>
         {state.error && <p className="note error">{state.error}</p>}
+        {props.boardError && <p className="note error">{props.boardError}</p>}
         {!board && <p className="note">{loading ? 'Reading the cards…' : 'This board isn’t saved on the phone yet.'}</p>}
         {!!board?.missing && <p className="note">{board.missing} cards aren’t saved on the phone yet.</p>}
         {board && (current || found) && !cards.length && !waiting.length && <p className="note">{found ? 'No card matches.' : 'No cards.'}</p>}
@@ -121,6 +144,21 @@ export function BoardView(props: {
           ))}
         </ul>
       </Pull>
+      {board && menu !== undefined && (
+        <ListMenu
+          meta={board.meta}
+          list={board.meta.lists.find(l => l.id === menu && !l.archived)}
+          count={columns?.[menu]?.filter(id => !isDivider(byId.get(id) ?? { title: '' })).length}
+          canChange={props.canChangeBoard}
+          onClose={() => setMenu(undefined)}
+          onSettings={props.onSettings}
+          onChange={async change => {
+            const meta = await props.onBoardChange(change)
+            // A new list opens, to put cards in.
+            if (meta && change.kind === 'addList') onList(meta.lists.at(-1)!.id)
+          }}
+        />
+      )}
       {current && current.id !== ARCHIVED && !found && (
         <button className="fab" type="button" aria-label={`New card in ${current.title}`} onClick={onAdd}>
           +

@@ -8,6 +8,7 @@
 import { execFile } from 'node:child_process'
 import { existsSync, type FSWatcher, promises as fs, watch } from 'node:fs'
 import path from 'node:path'
+import { describeBoardChange, parseMetaText } from '@shared/boardmeta'
 import { describeCardChange, tryParseCard } from '@shared/cardfile'
 import { cardImageOf } from '@shared/images'
 import { namesKey, parseProjectSettings, PROJECT_FILE } from '@shared/project'
@@ -404,7 +405,14 @@ export class AutoCommitter {
         // every commit (and push) after it.
         lines.push(...describeCardChange(id, before, now))
       } else if (name === 'board.json') {
-        lines.push(`${status === 'A' ? 'Create' : status === 'D' ? 'Delete' : 'Edit'} board ${dir}`)
+        if (status === 'A' || status === 'D' || !hasHead) {
+          lines.push(`${status === 'A' || !hasHead ? 'Create' : 'Delete'} board ${dir}`)
+          continue
+        }
+        // Say what changed: a list added, renamed, archived, sorted; the title; the flow.
+        const before = parseMetaText(await git(this.root, ['show', `HEAD:${file}`]).catch(() => ''))
+        const now = parseMetaText(await fs.readFile(path.join(this.root, file), 'utf8').catch(() => ''))
+        lines.push(...describeBoardChange(dir, before, now))
       } else if (name === 'map.json') {
         lines.push(`Arrange map of ${dir}`)
       } else if (file === THEME_FILE) {
