@@ -3,9 +3,10 @@ import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } 
 import { CSS } from '@dnd-kit/utilities'
 import type { CSSProperties, ReactNode } from 'react'
 import { inOrder } from '@shared/sideorder'
-import type { BoardNode, ProjectNode, SyncStatus, UpdateStatus } from '@shared/types'
+import type { BoardNode, ProjectNode, Renumber, SyncStatus, UpdateStatus } from '@shared/types'
 import { actions, api, projectIdOf, useStore } from '../state'
-import { discussBoard } from '../tackle'
+import { discussPlaces } from '../menus'
+import { discussBoard, untangleCards } from '../tackle'
 import { openContextMenu, type MenuItem } from './ContextMenu'
 import { ProjectMark } from './ProjectMark'
 
@@ -28,6 +29,7 @@ export function Sidebar() {
         <button className="icon-button" title="Add project" onClick={() => actions.setModal({ kind: 'addProject' })}>
           +
         </button>
+        <SettingsButton />
         <FoldButton collapsed={false} />
       </div>
       {/* A row's own menu stops here (`openContextMenu` stops the event), so this one is the
@@ -41,15 +43,6 @@ export function Sidebar() {
         {!projects.length && <p className="muted pad">No projects yet.</p>}
       </div>
       <footer className="sidebar-foot">
-        <div className="foot-line">
-          <button
-            className="link app-settings"
-            onClick={() => actions.setModal({ kind: 'appSettings' })}
-            title="This machine's settings: desktop notifications and the notification program"
-          >
-            Corkboard settings…
-          </button>
-        </div>
         <UpdateLine />
         <ClaudeLine />
       </footer>
@@ -59,9 +52,9 @@ export function Sidebar() {
 }
 
 /**
- * The side panel folded: its button and a mark per project (its icon, else its swatch), which opens
- * the project's main board as its row does. Nothing else: no boards, no footer, no flyout; to see
- * the boards, it unfolds again.
+ * The side panel folded: its button, the settings' gear under it, and a mark per project (its icon,
+ * else its swatch), which opens the project's main board as its row does. Nothing else: no boards,
+ * no footer, no flyout; to see the boards, it unfolds again.
  */
 function Rail({ projects }: { projects: ProjectNode[] }) {
   const activeProject = useStore(s => (s.activeTab ? projectIdOf(s.activeTab) : null))
@@ -69,6 +62,7 @@ function Rail({ projects }: { projects: ProjectNode[] }) {
     <aside className="sidebar rail">
       <div className="sidebar-head" onContextMenu={e => openContextMenu(e, panelMenu())}>
         <FoldButton collapsed />
+        <SettingsButton />
       </div>
       <nav className="rail-marks" onContextMenu={e => openContextMenu(e, panelMenu())}>
         {projects.map(project => (
@@ -86,6 +80,24 @@ function Rail({ projects }: { projects: ProjectNode[] }) {
         ))}
       </nav>
     </aside>
+  )
+}
+
+/** The one way to Corkboard settings, in the header of the panel and of its rail alike. */
+function SettingsButton() {
+  const label = "Corkboard settings: this machine's, for every project"
+  return (
+    <button
+      className="icon-button settings-button"
+      title={label}
+      aria-label={label}
+      onClick={() => actions.setModal({ kind: 'appSettings' })}
+    >
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M6.9 1.5h2.2l.4 1.9 1.3.6 1.7-1 1.5 1.5-1 1.7.6 1.3 1.9.4v2.2l-1.9.4-.6 1.3 1 1.7-1.5 1.5-1.7-1-1.3.6-.4 1.9H6.9l-.4-1.9-1.3-.6-1.7 1-1.5-1.5 1-1.7-.6-1.3-1.9-.4V6.9l1.9-.4.6-1.3-1-1.7 1.5-1.5 1.7 1 1.3-.6z" />
+        <circle cx="8" cy="8" r="2.2" />
+      </svg>
+    </button>
   )
 }
 
@@ -150,6 +162,7 @@ function ProjectRow({ project }: { project: ProjectNode }) {
     project.codeRepo ? `Code folder: ${project.codeRepo}` : 'No code folder set on this machine',
     syncText(project.sync),
     project.sync.message,
+    ...(project.sync.renumbered ?? []).map(renumberText),
     lastCommit ? `Last commit ${time(lastCommit.at)}: ${lastCommit.summary}` : undefined,
   ]
     .filter(Boolean)
@@ -190,6 +203,7 @@ function ProjectRow({ project }: { project: ProjectNode }) {
           ⋯
         </button>
       </div>
+      {!!project.sync.renumbered?.length && <RenumberNotice project={project} />}
       {!folded && (
         <div role="group">
           <BoardList nodes={listed} depth={1} />
@@ -206,6 +220,45 @@ function ProjectRow({ project }: { project: ProjectNode }) {
           {offer && <GuideOffer project={project} />}
         </div>
       )}
+    </div>
+  )
+}
+
+const renumberText = (r: Renumber) => `${r.from}, made here, is now ${r.to}: another machine had made a card under ${r.from} too.`
+
+/**
+ * A sync found a card made here under an id the remote had given another card meanwhile, and
+ * renumbered this one. Said where it can't be missed, whether the project is folded or not, until
+ * read: whatever was written here before the sync may still name the old id.
+ */
+function RenumberNotice({ project }: { project: ProjectNode }) {
+  const renumbered = project.sync.renumbered ?? []
+  // One session per board, in the board's code repo: nearly always the one.
+  const untangle = async () => {
+    const boards = [...new Set(renumbered.map(r => r.board))]
+    for (const board of boards) {
+      const ids = renumbered.filter(r => r.board === board).map(r => r.to)
+      if (!(await untangleCards(`${project.id}:${board}`, ids))) return
+    }
+    actions.dismissRenumbered(project.id)
+  }
+  return (
+    <div className="guide-offer renumber-notice" role="status">
+      {renumbered.map(r => (
+        <div key={`${r.from}-${r.to}`}>{renumberText(r)}</div>
+      ))}
+      <span className="guide-offer-actions">
+        <button
+          className="link"
+          title="A Claude session in a terminal finds what still names the old id (descriptions, links, commits' Card: trailers) and fixes what means the renumbered card"
+          onClick={() => void untangle()}
+        >
+          Untangle references
+        </button>
+        <button className="link muted" onClick={() => actions.dismissRenumbered(project.id)}>
+          Got it
+        </button>
+      </span>
     </div>
   )
 }
@@ -279,8 +332,6 @@ function boardMenu(node: BoardNode): MenuItem[] {
   // The main board stays while it is the main one: the project opens there.
   const main = projects.find(p => p.id === here)?.mainBoard === node.path
   const mainHint = 'the main board: pick another first'
-  const desktop = useStore.getState().desktop
-  const discuss = (mode: 'desktop' | 'local') => () => void discussBoard(node.path, mode)
   return [
     { label: 'Open', onSelect: () => void actions.openBoard(node.path) },
     { label: 'Open map', onSelect: () => void actions.openBoard(node.path, 'map') },
@@ -290,10 +341,7 @@ function boardMenu(node: BoardNode): MenuItem[] {
       label: 'Discuss / triage',
       hint: 'no implementing',
       disabled: !node.cardCount,
-      items: [
-        ...(desktop ? [{ label: 'In Claude desktop', onSelect: discuss('desktop') }] : []),
-        { label: 'In a terminal', onSelect: discuss('local') },
-      ],
+      items: discussPlaces(mode => () => void discussBoard(node.path, mode)),
     },
     'separator',
     { label: 'New board inside…', onSelect: () => actions.setModal({ kind: 'newBoard', parent: node.path }) },

@@ -1,4 +1,4 @@
-import { actions, findNode, useStore } from '../state'
+import { actions, findNode, oneTabPerProject, useStore } from '../state'
 import { ProjectMark } from './ProjectMark'
 
 export function TabBar() {
@@ -6,6 +6,8 @@ export function TabBar() {
   const activeTab = useStore(s => s.activeTab)
   const tree = useStore(s => s.tree)
   const projects = useStore(s => s.projects)
+  // A tab that stands for a project rather than one board names the project even when it is the only one.
+  const named = useStore(oneTabPerProject) || projects.length > 1
 
   return (
     <div className="tabbar" role="tablist">
@@ -23,7 +25,7 @@ export function TabBar() {
             onAuxClick={e => e.button === 1 && actions.closeTab(tab.path)}
             title={tab.path}
           >
-            {projects.length > 1 && (
+            {named && (
               <span className="tab-parent">
                 <ProjectMark project={project} />
                 {project?.name} ›

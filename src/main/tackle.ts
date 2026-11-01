@@ -8,7 +8,7 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { BOARD_GUIDE_FILE } from '@shared/boardguide'
 import { isDivider, slugify } from '@shared/cardfile'
-import { discussPrompt, sessionName, tacklePrompt } from '@shared/prompts'
+import { discussPrompt, type Purpose, sessionName, tacklePrompt, untanglePrompt } from '@shared/prompts'
 import { findCycle, tackleGroups } from '@shared/tackleorder'
 import type { Card, PtyInfo, SessionRef, TackleRequest } from '@shared/types'
 import {
@@ -44,15 +44,20 @@ export async function tackle(
     .map(id => board.cards.find(c => c.id === id))
     .filter((c): c is Card => !!c && !c.archived && !isDivider(c))
   if (!cards.length) throw new Error('No cards to work on (dividers and archived cards are skipped).')
-  const discuss = req.purpose === 'discuss'
-  if (discuss && (req.mode === 'cloud' || req.mode === 'local-worktree')) {
+  const purpose: Purpose = req.purpose ?? 'tackle'
+  const discuss = purpose !== 'tackle'
+  if (purpose === 'discuss' && (req.mode === 'cloud' || req.mode === 'local-worktree')) {
     throw new Error('A discussion runs in Claude desktop or a terminal.')
+  }
+  if (purpose === 'untangle') {
+    if (req.mode !== 'local') throw new Error('An untangle runs in a terminal.')
+    if (!cards.some(c => c.renumbered?.length)) throw new Error('None of these cards was renumbered by a sync.')
   }
   const loop = discuss ? undefined : findCycle(cards)
   if (loop) throw new Error(`These cards wait on each other in a loop: ${[...loop, loop[0]].join(' → ')}. Change one's "after" first.`)
   const cwd = sessionDir(store, req.boardPath)
-  // A discussion of several cards is one conversation: triage needs them side by side. A tackle
-  // keeps the cards an order joins in one session, prerequisites first.
+  // A discussion (or an untangle) of several cards is one conversation: triage needs them side by
+  // side. A tackle keeps the cards an order joins in one session, prerequisites first.
   const groups = discuss ? [cards] : tackleGroups(cards, req.split)
   // A group of a split tackle is named after its own cards: its list's title would give every
   // group the same name, and the same worktree.
@@ -66,8 +71,8 @@ export async function tackle(
     // this machine, and a claude:// link carries no MCP config.
     const mcp = req.mode === 'local' || req.mode === 'local-worktree' ? mcpConfig : undefined
     const prompt = buildPrompt(store, req, group, !!mcp)
-    const name = sessionName(group, groupTitle, discuss ? 'discuss' : 'tackle')
-    const purpose = discuss ? ({ purpose: 'discuss' } as const) : {}
+    const name = sessionName(group, groupTitle, purpose)
+    const recorded = purpose === 'tackle' ? {} : { purpose }
     const started = new Date().toISOString()
     let ref: SessionRef
     let command: string[]
@@ -79,7 +84,7 @@ export async function tackle(
       // reaches the cards by the paths in the prompt. The link can't pick a branch, and a draft
       // sent without one starts with no folder: the prompt has the session move itself.
       const { url, marker } = newSessionUrl(prompt, cwd)
-      await recordSession(store, req.boardPath, group, { kind: 'desktop', started, cwd, cards: ids, name, ...purpose })
+      await recordSession(store, req.boardPath, group, { kind: 'desktop', started, cwd, cards: ids, name, ...recorded })
       await openUrl(url, open)
       watchForDesktopSession(store, req.boardPath, ids, started, marker)
       continue
@@ -93,7 +98,7 @@ export async function tackle(
       const worktree = req.mode === 'local-worktree' ? worktreeName(group, groupTitle && req.listTitle, !!store.settings.work) : undefined
       command = localCommand({ claude: CLAUDE, boardRoot: store.root, name, sessionId: id, worktree, mcpConfig: mcp, prompt })
       worktreeDir = worktree ? path.join(cwd, '.claude', 'worktrees', worktree) : undefined
-      ref = { id, kind: req.mode, started, cwd: worktreeDir ?? cwd, cards: ids, name, ...purpose }
+      ref = { id, kind: req.mode, started, cwd: worktreeDir ?? cwd, cards: ids, name, ...recorded }
     }
 
     const info = ptys.create({ title: name, cwd, command, cardIds: ids, kind: req.mode, worktree: worktreeDir, boardKey })
@@ -125,11 +130,12 @@ export function promptFor(req: TackleRequest, store: BoardStore): string {
     .map(id => board.cards.find(c => c.id === id))
     .filter((c): c is Card => !!c && !c.archived && !isDivider(c))
   if (!cards.length) throw new Error('No cards to write a prompt for (dividers and archived cards are skipped).')
-  return buildPrompt(store, req, req.purpose === 'discuss' ? cards : tackleGroups(cards)[0])
+  return buildPrompt(store, req, req.purpose === 'discuss' || req.purpose === 'untangle' ? cards : tackleGroups(cards)[0])
 }
 
 function buildPrompt(store: BoardStore, req: TackleRequest, cards: Card[], mcp = false): string {
-  const build = req.purpose === 'discuss' ? discussPrompt : tacklePrompt
+  const build = req.purpose === 'discuss' ? discussPrompt : req.purpose === 'untangle' ? untanglePrompt : tacklePrompt
+  const codeRepo = store.board(req.boardPath).codeRepo
   return build(cards, {
     meta: store.board(req.boardPath).meta,
     boardRoot: store.root,
@@ -143,6 +149,8 @@ function buildPrompt(store: BoardStore, req: TackleRequest, cards: Card[], mcp =
     boardTitle: req.boardTitle,
     workDir: req.mode === 'desktop' ? sessionDir(store, req.boardPath) : undefined,
     mcp,
+    findCard: id => store.findCard(id)?.card,
+    codeRepo: codeRepo && existsSync(codeRepo) ? codeRepo : undefined,
   })
 }
 
@@ -267,8 +275,8 @@ export function stopDesktopWatches(): void {
 
 async function recordSession(store: BoardStore, boardPath: string, cards: Card[], ref: SessionRef): Promise<void> {
   const board = store.board(boardPath)
-  // Only a tackle moves its cards to the doing list; a discussion leaves them where they are.
-  const doing = ref.purpose === 'discuss' ? undefined : board.meta.flow?.doing
+  // Only a tackle moves its cards to the doing list; a discussion or an untangle leaves them be.
+  const doing = ref.purpose ? undefined : board.meta.flow?.doing
   for (const card of cards) {
     const fresh = board.cards.find(c => c.id === card.id) ?? card
     const patch: Partial<Card> = { sessions: [...fresh.sessions, ref] }

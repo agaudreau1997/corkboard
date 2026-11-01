@@ -37,11 +37,15 @@ export function TerminalPanel() {
       {open && <ResizeHandle />}
       <div className="terminal-tabs">
         <button
-          className="terminal-toggle"
+          className={`terminal-toggle${open ? ' open' : ''}`}
+          aria-expanded={open}
           onClick={() => useStore.setState(s => ({ terminalOpen: !s.terminalOpen }))}
           title="Toggle terminals (Ctrl+`)"
         >
-          {open ? '▾' : '▴'} Terminals
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M3.5 10 8 5.5 12.5 10" />
+          </svg>
+          Terminals
         </button>
         {attention.length > 0 && (
           <button

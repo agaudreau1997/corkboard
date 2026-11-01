@@ -92,6 +92,20 @@ describe('card files', () => {
     expect(serializeCard(base)).not.toContain('jira')
   })
 
+  it('round-trips a uid and the renumbers, written last of the known keys, as an older build keeps them', () => {
+    const uid = '0f8e2c1a-5b7d-4e3f-9a6b-2c4d8e1f0a3b'
+    const renumbered = [{ from: 'RS-7', at: '2026-11-01T10:00:00.000Z' }]
+    const card = { ...base, sessions: [{ id: 's1', kind: 'local' as const, started: '2026-10-01T00:00:00.000Z' }], uid, renumbered, extra: { mine: 1 } }
+    const text = serializeCard(card)
+    expect(text).toContain(`\nuid: ${uid}\nrenumbered:\n  - from: RS-7\n    at: 2026-11-01T10:00:00.000Z\nmine: 1\n---\n`)
+    expect(parseCard(text)).toEqual(card)
+    expect(serializeCard(parseCard(text))).toBe(text)
+    // A one-line diff when a card gets its uid.
+    const before = serializeCard(base).split('\n')
+    expect(serializeCard({ ...base, uid }).split('\n').filter(l => !before.includes(l))).toEqual([`uid: ${uid}`])
+    expect(serializeCard(base)).not.toMatch(/uid|renumbered/)
+  })
+
   it('keeps a move a one-line diff', () => {
     const before = serializeCard({ ...base, body: 'text' }).split('\n')
     const after = serializeCard({ ...base, body: 'text', list: 'done' }).split('\n')

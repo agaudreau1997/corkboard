@@ -59,7 +59,16 @@ export class Project {
       events.committed(this.id, summary)
       this.sync.schedulePush()
     })
-    this.sync = new BoardSync(this.root, this.committer, status => events.syncStatus(this.id, status), timing.syncIntervalMs)
+    this.sync = new BoardSync(
+      this.root,
+      this.committer,
+      status => {
+        events.syncStatus(this.id, status)
+        // Cards a sync brought in, or a session wrote by hand, get their uids once it is through.
+        if (status.state !== 'syncing' && status.state !== 'conflict') void this.store.backfillUids()
+      },
+      timing.syncIntervalMs,
+    )
   }
 
   async open(): Promise<void> {
@@ -74,6 +83,8 @@ export class Project {
         this.committer.touch()
       },
     })
+    // Before the first sync, so the uids go out in one commit of their own.
+    await this.store.backfillUids()
     this.sync.start()
   }
 

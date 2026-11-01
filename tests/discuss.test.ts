@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { discussPrompt, sessionName } from '@shared/prompts'
+import { discussPrompt, sessionName, untanglePrompt } from '@shared/prompts'
 import type { BoardMeta, Card } from '@shared/types'
 import { BoardStore } from '../src/main/store'
 import { tackle } from '../src/main/tackle'
@@ -206,5 +206,93 @@ describe('starting a discussion', () => {
     await store.createCard(p, { title: 'Turrets', list: 'todo' })
     const { ptys } = fakePtys()
     await expect(tackle({ boardPath: p, cardIds: ['G-1'], mode: 'cloud', purpose: 'discuss' }, store, ptys, async () => {})).rejects.toThrow()
+  })
+})
+
+describe('untangle prompts', () => {
+  // G-2 was made on both machines; this one's is now G-3.
+  const mine = { ...card('G-3', 'Turrets on the walls', 'Mount them high.'), uid: 'uid-b', renumbered: [{ from: 'G-2', at: '2026-11-01T10:00:00.000Z' }] }
+  const theirs = card('G-2', 'Traps in the corridor', 'Spikes, mostly.')
+  const ctx = {
+    meta,
+    boardRoot: '/b',
+    cardFile: (id: string) => `/b/game/cards/${id}.md`,
+    linkTitle: () => undefined,
+    findCard: (id: string) => (id === 'G-2' ? theirs : undefined),
+    codeRepo: '/code',
+    cloud: false,
+    mcp: true,
+  }
+
+  it('names each renumber, both cards in full, and fixes only what means the renumbered card', () => {
+    const prompt = untanglePrompt([mine], ctx)
+    expect(prompt).toContain('A sync of the task board renumbered a card')
+    expect(prompt).toContain('1. G-2 is now G-3 (uid uid-b).')
+    expect(prompt).toContain('The renumbered card, now G-3: Turrets on the walls\n   File: /b/game/cards/G-3.md\n      Mount them high.')
+    expect(prompt).toContain('The card now under G-2, made on the other machine: Traps in the corridor\n      Spikes, mostly.')
+    expect(prompt).toContain('Decide from the context which card each mention means')
+    expect(prompt).toContain('with the corkboard tools')
+    expect(prompt).toContain("Ask me before anything you aren't sure of")
+    expect(prompt).toContain("Don't commit in the board repo")
+    // The code repo: trailers and branches found, unpushed ones proposed, pushed ones named on the card.
+    expect(prompt).toContain('In the code repo /code')
+    expect(prompt).toContain('`Card: G-2`')
+    expect(prompt).toContain('git branch -r --contains')
+    expect(prompt).toContain('change them only once I agree')
+    expect(prompt).toContain("Leave pushed commits as they are: name them (short hash and subject) in the renumbered card's description")
+    // Without the server, the file rules; without a code repo, no commits to look at.
+    expect(untanglePrompt([mine], { ...ctx, mcp: false })).toContain('setting `updated:`')
+    expect(untanglePrompt([mine], { ...ctx, codeRepo: undefined })).toContain('no code repo on this machine')
+  })
+
+  it('in work mode: no card id into the code repo, nothing there to fix', () => {
+    const prompt = untanglePrompt([mine], { ...ctx, work: true })
+    expect(prompt).toContain('This is a work project')
+    expect(prompt).toContain("Don't change the code repo")
+    expect(prompt).toContain('never write a card id of the task board')
+    expect(prompt).toContain('put none')
+    expect(prompt).not.toContain('`Card: G-2`')
+    expect(prompt).not.toContain('git log')
+    expect(prompt).not.toContain('/code')
+    // The board side is the same: the board repo is where the ids live.
+    expect(prompt).toContain('1. G-2 is now G-3')
+    // A personal project's says nothing of Jira.
+    expect(untanglePrompt([mine], ctx)).not.toContain('Jira')
+  })
+
+  it('several renumbers in one session, and a card no longer under the old id', () => {
+    const other = { ...card('G-9', 'Lights'), renumbered: [{ from: 'G-4', at: '2026-11-01T10:00:00.000Z' }] }
+    const prompt = untanglePrompt([mine, other], ctx)
+    expect(prompt).toContain('renumbered 2 cards')
+    expect(prompt).toContain('2. G-4 is now G-9.')
+    expect(prompt).toContain('No card is under G-4 on this machine now')
+    expect(prompt).toContain('`Card: G-2`, `Card: G-4`')
+    expect(sessionName([mine], undefined, 'untangle')).toBe('Untangle G-3 Turrets on the walls')
+  })
+})
+
+describe('starting an untangle', () => {
+  it('runs in a terminal, leaves the card in its list, records the session, and wants a renumbered card', async () => {
+    const store = new BoardStore(root)
+    await store.init()
+    const p = await store.createBoard('', 'Game', 'G')
+    await store.createCard(p, { title: 'Traps', list: 'todo' })
+    const made = await store.createCard(p, { title: 'Turrets', list: 'todo' })
+    const { ptys, runs } = fakePtys()
+    const open = async () => {}
+    await expect(tackle({ boardPath: p, cardIds: [made.id], mode: 'local', purpose: 'untangle' }, store, ptys, open)).rejects.toThrow('renumbered')
+
+    await store.updateCard(p, made.id, { renumbered: [{ from: 'G-1', at: '2026-11-01T10:00:00.000Z' }] })
+    await tackle({ boardPath: p, cardIds: [made.id], mode: 'local', purpose: 'untangle' }, store, ptys, open, undefined, '/profile/mcp.json')
+    expect(runs.at(-1)).toContain('--mcp-config')
+    const prompt = runs.at(-1)!.at(-1)!
+    expect(prompt).toContain('1. G-1 is now G-2')
+    expect(prompt).toContain('The card now under G-1, made on the other machine: Traps')
+    const after = store.board(p).cards.find(c => c.id === made.id)!
+    expect(after.list).toBe('todo')
+    expect(after.sessions).toMatchObject([{ kind: 'local', purpose: 'untangle', name: 'Untangle G-2 Turrets' }])
+    for (const mode of ['desktop', 'cloud', 'local-worktree'] as const) {
+      await expect(tackle({ boardPath: p, cardIds: [made.id], mode, purpose: 'untangle' }, store, ptys, open)).rejects.toThrow('terminal')
+    }
   })
 })

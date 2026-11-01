@@ -492,10 +492,12 @@ function Column({
         {...drag?.listeners}
         className={`column-head${drag ? ' draggable' : ''}`}
         style={{ borderTopColor: color }}
-        title={drag && !renaming ? 'Drag to move the list; double-click the title to rename it' : undefined}
+        title={drag && !renaming ? 'Drag to move the list; double-click to rename it' : undefined}
         onContextMenu={menu}
         onDoubleClick={e => {
-          if (!list.unlisted && (e.target as HTMLElement).closest('.column-title')) setRenaming(true)
+          // Anywhere on the header but its button: the title alone is a line of text in its padding,
+          // a narrow target next to a card, which answers a double-click anywhere on it.
+          if (!list.unlisted && !renaming && !(e.target as HTMLElement).closest('button')) setRenaming(true)
         }}
       >
         {renaming ? (
@@ -792,7 +794,7 @@ export function CardFace({
   const linked = commitsFor(commits, card).length
   // Sessions are worth a badge while the work is open; a finished card keeps them in its drawer.
   const finished = card.complete || (!!board.meta.flow?.done && card.list === board.meta.flow.done)
-  const running = finished ? 0 : card.sessions.filter(s => s.purpose !== 'discuss').length
+  const running = finished ? 0 : card.sessions.filter(s => !s.purpose).length
   const talks = finished ? 0 : card.sessions.filter(s => s.purpose === 'discuss').length
   const late = isOverdue(card.due, finished)
   const waitsOn = finished ? [] : (unmetPrerequisites([card], board.cards, board.meta.flow?.done)[0]?.needs ?? [])

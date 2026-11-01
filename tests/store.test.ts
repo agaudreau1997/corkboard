@@ -97,6 +97,40 @@ describe('BoardStore', () => {
     expect(parseCard(readFileSync(store.cardFile(p, 'G-2'), 'utf8')).list).toBe('done')
   })
 
+  it('gives a new card a uid of its own, and every card without one a uid, updated left alone', async () => {
+    const store = new BoardStore(root)
+    await store.init()
+    const p = await store.createBoard('', 'Game', 'G')
+    const made = await store.createCard(p, { title: 'Made here', list: 'todo' })
+    const copy = await store.duplicateCard(p, made.id)
+    expect(made.uid).toMatch(/^[0-9a-f-]{36}$/)
+    expect(copy.uid).toMatch(/^[0-9a-f-]{36}$/)
+    expect(copy.uid).not.toBe(made.uid)
+
+    // Two cards made by hand or by an older build: no uid.
+    const old = (id: string) => ({ ...parseCard(''), id, title: id, list: 'todo', pos: 1, updated: '2026-10-01T10:00:00.000Z' })
+    writeFileSync(store.cardFile(p, 'G-8'), serializeCard(old('G-8')))
+    writeFileSync(store.cardFile(p, 'G-9'), serializeCard(old('G-9')))
+    const before = readFileSync(store.cardFile(p, 'G-8'), 'utf8')
+    const fresh = new BoardStore(root)
+    await fresh.init()
+    const deltas: BoardDelta[] = []
+    fresh.watch({ onDelta: d => deltas.push(d), onTreeChanged: () => {} })
+    expect(await fresh.backfillUids()).toBe(2)
+    fresh.close()
+
+    const after = readFileSync(store.cardFile(p, 'G-8'), 'utf8')
+    const card = parseCard(after)
+    expect(card.uid).toMatch(/^[0-9a-f-]{36}$/)
+    expect(card.updated).toBe('2026-10-01T10:00:00.000Z')
+    expect(after.split('\n').filter(l => !before.split('\n').includes(l))).toEqual([`uid: ${card.uid}`])
+    expect(fresh.board(p).cards.every(c => c.uid)).toBe(true)
+    expect(deltas.flatMap(d => d.cards.map(c => c.id)).sort()).toEqual(['G-8', 'G-9'])
+    // The cards made here kept theirs; a second pass has nothing to do.
+    expect(parseCard(readFileSync(store.cardFile(p, made.id), 'utf8')).uid).toBe(made.uid)
+    expect(await fresh.backfillUids()).toBe(0)
+  })
+
   it('moves a card and a whole list to another board, ids kept', async () => {
     const store = new BoardStore(root)
     await store.init()

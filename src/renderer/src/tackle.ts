@@ -1,6 +1,6 @@
 import { isDivider, listSort, orderList, sortCards } from '@shared/cardfile'
 import { findCycle, tackleGroups, unmetPrerequisites } from '@shared/tackleorder'
-import type { Card, TackleMode } from '@shared/types'
+import type { AppConfig, Card, TackleMode } from '@shared/types'
 import { actions, api, isWork, useStore } from './state'
 
 /** Starts Claude on cards; a cloud run asks first, since it works from GitHub's copy and is billed. */
@@ -83,6 +83,14 @@ export async function tackleCards(
 }
 
 /**
+ * Where the card drawer's Discuss opens: the app settings' choice, and a terminal while the
+ * Claude desktop app isn't there. A selector, so a component follows both as they change.
+ */
+export function discussMode(s: { desktop: boolean; config?: AppConfig }): 'desktop' | 'local' {
+  return s.desktop && s.config?.discussIn === 'desktop' ? 'desktop' : 'local'
+}
+
+/**
  * Opens a conversation about cards (one card, or a list or board to triage): nothing is implemented
  * unless asked in it, and the cards stay in their lists.
  */
@@ -107,6 +115,20 @@ export async function discussCards(
     if (mode === 'desktop') actions.toast('Opened a discussion in Claude desktop: nothing gets implemented unless you ask.')
   } catch (error) {
     actions.toast((error as Error).message, 'error')
+  }
+}
+
+/**
+ * Starts a terminal session that sorts out what still names renumbered cards' old ids (see
+ * `untanglePrompt`). The board needn't be open: the side panel's notice offers it for any board.
+ */
+export async function untangleCards(boardPath: string, cardIds: string[]): Promise<boolean> {
+  try {
+    await api.tackle.start({ boardPath, cardIds, mode: 'local', split: 'together', purpose: 'untangle' })
+    return true
+  } catch (error) {
+    actions.toast((error as Error).message, 'error')
+    return false
   }
 }
 

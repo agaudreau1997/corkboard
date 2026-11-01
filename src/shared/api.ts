@@ -9,6 +9,7 @@ import type {
   CardPatch,
   ClaudeInfo,
   CodeCommit,
+  DiscussIn,
   LoadedBoard,
   NewProject,
   NotifyConfig,
@@ -34,8 +35,12 @@ export type CorkboardApi = {
     pickFile(title: string): Promise<string | null>
     /** Desktop notifications and the program run when a terminal tab changes state; null: the defaults. */
     setNotify(notify: NotifyConfig | null): Promise<void>
+    /** Where the card drawer's Discuss opens on this machine (terminal: the default, not saved). */
+    setDiscussIn(where: DiscussIn): Promise<void>
     /** Runs a program as the notifications would, with a `test` event; answers the error, or null. */
     tryNotify(command: string): Promise<string | null>
+    /** One board tab per project, or a tab per board (this machine's). */
+    setOneTabPerProject(on: boolean): Promise<void>
     /** Replaces the parts of the side panel's order given (this machine's); an empty list clears one. */
     setOrder(patch: SidebarOrder): Promise<void>
   }
@@ -59,6 +64,8 @@ export type CorkboardApi = {
     setSettings(id: string, patch: ProjectSettingsPatch): Promise<void>
     /** Writes the board repo's CLAUDE.md (the card format) when it has none. */
     addGuide(id: string): Promise<void>
+    /** Takes the cards a sync renumbered off its sync status (the notice was read). */
+    dismissRenumbered(id: string): Promise<void>
     /** Takes it out of the app; its folder stays. */
     remove(id: string): Promise<void>
     pickFolder(title: string): Promise<string | null>

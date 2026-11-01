@@ -13,6 +13,7 @@ import type {
   Card,
   CardPatch,
   ClaudeInfo,
+  DiscussIn,
   NewProject,
   NotifyConfig,
   ProjectConfig,
@@ -156,7 +157,9 @@ async function readSavedConfig(): Promise<AppConfig> {
     projects: list,
     codeRepos,
     ...(saved.notify ? { notify: saved.notify } : {}),
+    ...(saved.discussIn === 'desktop' ? { discussIn: saved.discussIn } : {}),
     ...(saved.order ? { order: saved.order } : {}),
+    ...(saved.oneTabPerProject === false ? { oneTabPerProject: false } : {}),
   }
 }
 
@@ -382,6 +385,9 @@ function registerIpc(): void {
     await project.addGuide()
     send('boards:treeChanged')
   })
+  ipcMain.handle('projects:dismissRenumbered', async (_e, id: string) => {
+    projects.get(id)?.sync.dismissRenumbered()
+  })
   ipcMain.handle('projects:remove', async (_e, id: string) => {
     const project = projects.get(id)
     if (!project) return
@@ -414,6 +420,18 @@ function registerIpc(): void {
     await writeConfig(c => {
       const { notify: _, ...rest } = c
       return Object.keys(next).length ? { ...rest, notify: next } : rest
+    })
+  })
+  ipcMain.handle('config:setOneTabPerProject', async (_e, on: boolean) => {
+    await writeConfig(c => {
+      const { oneTabPerProject: _, ...rest } = c
+      return on ? rest : { ...rest, oneTabPerProject: false }
+    })
+  })
+  ipcMain.handle('config:setDiscussIn', async (_e, where: DiscussIn) => {
+    await writeConfig(c => {
+      const { discussIn: _, ...rest } = c
+      return where === 'desktop' ? { ...rest, discussIn: where } : rest
     })
   })
   ipcMain.handle('config:setOrder', async (_e, patch: SidebarOrder) => {

@@ -383,9 +383,13 @@ try {
   await page.setViewportSize({ width: 1500, height: 940 }).catch(() => {})
   await shot('01-kanban')
 
-  // Second tab, map view.
+  // Another board of the project, map view: one tab per project is on to begin with, so it takes
+  // the project's tab.
   await page.locator('.tree-row', { hasText: IDEAS.title }).click()
-  check((await page.locator('.tab').count()) === 2, 'a second tab opened')
+  check(!!(await until(async () => ((await page.locator('.tab.active').getAttribute('title')) ?? '').endsWith(`:${IDEAS.path}`))), 'another board of the project opens')
+  check((await page.locator('.tab').count()) === 1, "in the project's tab, one tab per project")
+  const tabParent = (await page.locator('.tab.active .tab-parent').first().textContent()) ?? ''
+  check(tabParent.endsWith('›') && tabParent.length > 1 && (await page.locator('.tab.active').textContent()).includes(IDEAS.title), `the tab names the project and the board (${await page.locator('.tab.active').textContent()})`)
   await page.getByRole('tab', { name: 'Map' }).click()
   await page.locator('.map-node').first().waitFor()
   check((await page.locator('.map-node').count()) > 30, `map draws the open idea cards (${await page.locator('.map-node').count()})`)
@@ -420,7 +424,8 @@ try {
   const prevented = await mouseNav(3)
   check(prevented && (await isAt(IDEAS.path, 'Board')), `mouse 4 goes back to the tab's board view, and nothing else sees it (${JSON.stringify(await where())})`)
   await mouseNav(3)
-  check(await isAt(MAIN.path, 'Board'), `mouse 4 again goes back to the tab before (${JSON.stringify(await where())})`)
+  check(await isAt(MAIN.path, 'Board'), `mouse 4 again goes back to the board before (${JSON.stringify(await where())})`)
+  check((await page.locator('.tab').count()) === 1, "in the project's one tab")
   await mouseNav(4)
   await mouseNav(4)
   check(await isAt(IDEAS.path, 'Map'), `mouse 5 goes forward again (${JSON.stringify(await where())})`)
@@ -429,6 +434,33 @@ try {
   await mouseNav(4)
   check(await isAt(IDEAS.path, 'Table'), `a view chosen after going back drops the way forward (${JSON.stringify(await where())})`)
   await page.getByRole('tab', { name: 'Map', exact: true }).click()
+  await page.locator('.map-node').first().waitFor()
+
+  // ---- one tab per project: a Corkboard setting, on by default ----
+  const oneTabSaved = () => JSON.parse(readFileSync(path.join(scratch, 'profile', 'config.json'), 'utf8')).oneTabPerProject
+  const setOneTab = async on => {
+    await page.locator('.sidebar-head').getByRole('button', { name: /Corkboard settings/ }).click()
+    const box = page.getByRole('dialog').getByRole('checkbox', { name: 'One tab per project' })
+    const was = await box.isChecked()
+    await box.setChecked(on)
+    await page.getByRole('dialog').getByRole('button', { name: 'Save' }).click()
+    await until(async () => (await page.getByRole('dialog').count()) === 0)
+    return was
+  }
+  check((await setOneTab(false)) === true, 'One tab per project is on to begin with')
+  check(oneTabSaved() === false, "turned off, it is kept in this machine's config")
+  check((await page.locator('.tab').count()) === 1, 'turning it off leaves the tabs as they are')
+  await projectRow.click()
+  check(!!(await until(async () => (await page.locator('.tab').count()) === 2)), 'and a board opened afterwards gets a tab of its own')
+  await setOneTab(true)
+  check(oneTabSaved() === undefined, 'turned on again, the config is back to its default')
+  const foldedTabs = await page.locator('.tab').evaluateAll(els => els.map(el => el.getAttribute('title')))
+  check(foldedTabs.length === 1 && foldedTabs[0].endsWith(`:${MAIN.path}`), `the project's tabs fold into one, on the board in front (${foldedTabs})`)
+  // A tab per board for the rest of the test, the idea board back in its map view.
+  await setOneTab(false)
+  await page.locator('.tree-row', { hasText: IDEAS.title }).click()
+  check(!!(await until(async () => (await page.locator('.tab').count()) === 2)), 'with the setting off, the idea board has its tab again')
+  check(await isAt(IDEAS.path, 'Map'), `in the view it was last shown in (${JSON.stringify(await where())})`)
   await page.locator('.map-node').first().waitFor()
 
   // Link two ideas by dragging handle to node.
@@ -705,6 +737,18 @@ try {
   await page.keyboard.press('Control+a')
   await page.keyboard.type('Known bugs\n')
   check(await until(() => readFileSync(path.join(root, 'scratch-board/board.json'), 'utf8').includes('"Known bugs"')), 'double-clicking a list title renames it')
+  // The whole header answers, not only the line of the title: its padding above and the space
+  // around the count too. Its ⋯ button keeps its own click.
+  const head = await page.locator('.column[data-list="bugs"] .column-head').boundingBox()
+  const count = await page.locator('.column[data-list="bugs"] .column-count').boundingBox()
+  for (const [x, y, where] of [[head.x + head.width / 2, head.y + 4, 'above the title'], [count.x - 4, count.y + count.height / 2, 'beside the count']]) {
+    await page.mouse.dblclick(x, y)
+    check(
+      await page.locator('.column[data-list="bugs"] .rename-list').evaluate(el => el === document.activeElement).catch(() => false),
+      `double-clicking a list's header ${where} renames it too`,
+    )
+    await page.keyboard.press('Escape')
+  }
   const renamed = page.locator('.card[data-card="SB-1"]')
   const faceBefore = await renamed.evaluate(el => {
     const r = el.querySelector('.card-title').getBoundingClientRect()
@@ -1195,8 +1239,12 @@ try {
   const todoCard = page.locator('.column[data-list="todo"] .card').first()
   const talkId = await todoCard.getAttribute('data-card')
   const callsBeforeTalk = sessionCalls().length
+  const drawerTalkTip = await page.locator('.drawer').getByRole('button', { name: 'Discuss', exact: true }).getAttribute('title')
+  check(!!drawerTalkTip?.includes('in a terminal'), "the drawer's Discuss opens in a terminal by default, desktop app or not")
   await todoCard.click({ button: 'right' })
   await page.locator('.ctx-menu').getByRole('menuitem', { name: /^Discuss/ }).hover()
+  const talkPlaces = await page.locator('.ctx-menu').last().getByRole('menuitem').allTextContents()
+  check(talkPlaces.join(' / ') === 'In a terminal / In Claude desktop', `the card menu's Discuss offers both, the default first (${talkPlaces.join(' / ')})`)
   await page.locator('.ctx-menu').getByRole('menuitem', { name: 'In a terminal' }).click()
   const talk = await until(() => sessionCalls().slice(callsBeforeTalk)[0], 15000)
   const talkPrompt = talk?.split('\0').at(-2) ?? ''
@@ -1396,10 +1444,66 @@ try {
   check(pulled, "the other machine's rename showed up after a sync")
   await shot('11-synced')
 
+  // Both machines make a card under the same new id before either syncs: both cards survive, this
+  // machine's under the next number, and the side panel says so until read.
+  const mainCards = path.join(root, MAIN.path, 'cards')
+  const clashNumber = Math.max(...cardFiles(mainCards).map(n => Number(/-(\d+)\.md$/.exec(n)?.[1] ?? 0))) + 1
+  const clashId = `${MAIN.key}-${clashNumber}`
+  const madeCard = (title, created) =>
+    `---\nid: ${clashId}\ntitle: ${title}\nlist: todo\npos: 1\ncreated: ${created}\nupdated: ${created}\n---\n`
+  // Written and committed here at once, as the app would, before it has a chance to push it.
+  writeFileSync(path.join(mainCards, `${clashId}.md`), madeCard('Made on this machine', '2026-10-02T10:00:00.000Z'))
+  execFileSync('git', ['add', '-A'], { cwd: root })
+  execFileSync('git', ['commit', '-qm', `Add ${clashId}`], { cwd: root, env: { ...process.env, ...gitIdentity } })
+  execFileSync('git', ['pull', '-q', '--rebase'], { cwd: otherMachine })
+  writeFileSync(path.join(otherMachine, MAIN.path, 'cards', `${clashId}.md`), madeCard('Made on the other machine', '2026-10-02T11:00:00.000Z'))
+  execFileSync('git', ['add', '-A'], { cwd: otherMachine })
+  execFileSync('git', ['commit', '-qm', `Add ${clashId} elsewhere`], { cwd: otherMachine })
+  execFileSync('git', ['push', '-q'], { cwd: otherMachine })
+  await syncNow()
+  const renumbered = `${MAIN.key}-${clashNumber + 1}`
+  const notice = page.locator('.renumber-notice')
+  check(!!(await until(async () => (await notice.count()) === 1, 15000)), 'a card made on both machines under one id: the side panel says one was renumbered')
+  check(
+    (await notice.textContent()).includes(`${clashId}, made here, is now ${renumbered}`),
+    `naming the old id and the new (${(await notice.textContent()).trim()})`,
+  )
+  const bothCards = await until(
+    async () =>
+      (await page.locator(`.card[data-card="${clashId}"]`, { hasText: 'Made on the other machine' }).count()) === 1 &&
+      (await page.locator(`.card[data-card="${renumbered}"]`, { hasText: 'Made on this machine' }).count()) === 1,
+    10000,
+  )
+  const onBoard = async id => (await page.locator(`.card[data-card="${id}"]`).allTextContents()).join(' | ') || 'none'
+  check(
+    !!bothCards,
+    `both cards are on the board: the other machine's under the id, this one's renumbered (${clashId}: ${await onBoard(clashId)}; ${renumbered}: ${await onBoard(renumbered)})`,
+  )
+  await shot('11-renumbered')
+  // Untangle references: a terminal session with both cards in its prompt, the notice read.
+  const callsBeforeUntangle = sessionCalls().length
+  await notice.getByRole('button', { name: 'Untangle references' }).click()
+  const untangle = await until(() => sessionCalls().slice(callsBeforeUntangle)[0], 15000)
+  const untanglePrompt = untangle?.split('\0').at(-2) ?? ''
+  check(
+    untanglePrompt.includes(`1. ${clashId} is now ${renumbered}`) && untanglePrompt.includes('Made on the other machine') && untanglePrompt.includes(`Card: ${clashId}`),
+    'Untangle references starts a session naming the old id, the new one, both cards and the trailers to look for',
+  )
+  check(!!(await until(async () => (await notice.count()) === 0)), 'and takes the notice away')
+  const untangled = readFileSync(path.join(mainCards, `${renumbered}.md`), 'utf8')
+  check(untangled.includes('purpose: untangle') && untangled.includes('list: todo'), 'the untangle is recorded on the card, which stays in its list')
+  await page.locator(`.card[data-card="${renumbered}"]`).click({ button: 'right' })
+  check((await page.locator('.ctx-menu').getByRole('menuitem', { name: /Untangle references/ }).count()) === 1, "the renumbered card's menu offers it too")
+  await page.keyboard.press('Escape')
+  await page.locator(`.card[data-card="${clashId}"]`).click({ button: 'right' })
+  check((await page.locator('.ctx-menu').getByRole('menuitem', { name: /Untangle references/ }).count()) === 0, 'and no other card')
+  await page.keyboard.press('Escape')
+
   // ---- the notification program: set in the app's settings, tried from there ----
-  await page.locator('.sidebar-foot').getByRole('button', { name: 'Corkboard settings…' }).click()
+  check((await page.locator('.sidebar-foot').getByRole('button', { name: /Corkboard settings/ }).count()) === 0, "the side panel's foot has no settings link: the gear is the one way in")
+  await page.locator('.sidebar-head').getByRole('button', { name: "Corkboard settings: this machine's, for every project" }).click()
   const settings = page.getByRole('dialog')
-  check((await settings.getByRole('heading', { level: 2 }).textContent()) === 'Corkboard settings', "the side panel's foot opens the app's settings, named so")
+  check((await settings.getByRole('heading', { level: 2 }).textContent()) === 'Corkboard settings', "the gear in the side panel's header opens the app's settings, named so")
   check(await settings.getByRole('checkbox', { name: 'Desktop notifications' }).isChecked(), 'desktop notifications are on to begin with')
   await settings.getByRole('button', { name: 'Browse…' }).click()
   check(!!(await until(async () => (await settings.locator('input:not([type=checkbox])').inputValue()) === fakeNotify)), 'Browse… fills in the notification program')
@@ -1407,10 +1511,30 @@ try {
   check(!!(await until(async () => (await settings.locator('.notify-try.success').count()) === 1, 10000)), 'Try it runs it and says so')
   check(notifications().some(l => l.startsWith('test shell')), 'and the program got the test event')
   await shot('11-settings-notify')
+  const discussSetting = settings.getByRole('combobox', { name: /Discuss opens in/ })
+  check((await discussSetting.inputValue()) === 'terminal', 'Discuss opens in a terminal to begin with')
+  await discussSetting.selectOption('desktop')
   await settings.getByRole('button', { name: 'Save' }).click()
   await until(async () => (await page.getByRole('dialog').count()) === 0)
-  const savedNotify = JSON.parse(readFileSync(path.join(scratch, 'profile', 'config.json'), 'utf8')).notify
+  const savedConfig = JSON.parse(readFileSync(path.join(scratch, 'profile', 'config.json'), 'utf8'))
+  const savedNotify = savedConfig.notify
   check(savedNotify?.command === fakeNotify && savedNotify.desktop === undefined, 'Save keeps it in the app config, desktop notifications left on')
+  check(savedConfig.discussIn === 'desktop', 'and where Discuss opens')
+
+  // With Claude desktop picked, the drawer's Discuss opens there, and the menus offer it first.
+  const deskTalkCard = page.locator('.column[data-list="todo"] .card').first()
+  const deskTalkId = await deskTalkCard.getAttribute('data-card')
+  await deskTalkCard.click()
+  const deskTalkButton = page.locator('.drawer').getByRole('button', { name: 'Discuss', exact: true })
+  check(!!(await deskTalkButton.getAttribute('title'))?.includes('in Claude desktop'), "the drawer's Discuss now says Claude desktop")
+  await deskTalkButton.click()
+  const deskTalk = await until(() => openedUrls().find(u => u.startsWith('claude://code/new?') && new URL(u).searchParams.get('q').startsWith(`Let's discuss card ${deskTalkId}`)))
+  check(!!deskTalk, `and opens a desktop session about ${deskTalkId}`)
+  await deskTalkCard.click({ button: 'right' })
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: /^Discuss/ }).hover()
+  const deskPlaces = await page.locator('.ctx-menu').last().getByRole('menuitem').allTextContents()
+  check(deskPlaces[0] === 'In Claude desktop', `the card menu's Discuss lists Claude desktop first now (${deskPlaces.join(' / ')})`)
+  await page.keyboard.press('Escape')
 
   // A plain shell in the panel.
   await page.locator('.terminal-tabs').getByTitle('New shell').click()
@@ -1532,6 +1656,7 @@ try {
   check(readFileSync(cardFileOf(COMMITTED), 'utf8').includes('sessions:') && (await page.locator(`.card[data-card="${COMMITTED}"] .badge.session`).count()) === 0, 'a card in Done keeps its sessions but shows no session badge')
   await page.locator('.filter').fill('')
   check((await page.locator('.column[data-list="todo"] .badge.session').count()) > 0, 'an open card with sessions shows the badge')
+
 
   // ---- project colours: a theme picked in the settings, shown at once, saved to theme.json ----
   const rootToken = name => page.evaluate(n => document.documentElement.style.getPropertyValue(n), name)
@@ -1921,6 +2046,12 @@ try {
   await page.locator('.rail-mark[data-project="side-project"]').click()
   check(!!(await until(async () => (await page.locator('.tab.active').getAttribute('title')) === 'side-project:side-project')), "a click on a project's mark opens its main board")
   check((await page.locator('.rail-mark.active').getAttribute('data-project')) === 'side-project', 'and the mark shows its project is in front')
+  const railButtons = await page.locator('.rail .sidebar-head button').evaluateAll(els => els.map(el => el.getAttribute('aria-label')))
+  check(JSON.stringify(railButtons) === JSON.stringify(['Expand the side panel', "Corkboard settings: this machine's, for every project"]), `the rail's head has the gear under its button (${railButtons.join(', ')})`)
+  await page.locator('.rail .sidebar-head').getByRole('button', { name: /Corkboard settings/ }).click()
+  check((await page.getByRole('dialog').getByRole('heading', { level: 2 }).textContent()) === 'Corkboard settings', 'and the gear opens the settings with the panel folded')
+  await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click()
+  await until(async () => (await page.getByRole('dialog').count()) === 0)
   await page.locator('.sidebar-head').getByRole('button', { name: 'Expand the side panel' }).click()
   check(!!(await until(async () => (await page.locator('.project-row').count()) === projectNames.length)), 'its button unfolds the side panel again')
   check((await page.locator('.sidebar-foot').count()) === 1 && (await page.locator('.sidebar .resize-x').count()) === 1, 'with its footer and resize handle')

@@ -16,7 +16,9 @@ const api: CorkboardApi = {
     pickFolder: title => invoke('config:pickFolder', title),
     pickFile: title => invoke('config:pickFile', title),
     setNotify: notify => invoke('config:setNotify', notify),
+    setDiscussIn: where => invoke('config:setDiscussIn', where),
     tryNotify: command => invoke('config:tryNotify', command),
+    setOneTabPerProject: on => invoke('config:setOneTabPerProject', on),
     setOrder: patch => invoke('config:setOrder', patch),
   },
   projects: {
@@ -26,6 +28,7 @@ const api: CorkboardApi = {
     setTheme: (id, theme) => invoke('projects:setTheme', id, theme),
     setSettings: (id, patch) => invoke('projects:setSettings', id, patch),
     addGuide: id => invoke('projects:addGuide', id),
+    dismissRenumbered: id => invoke('projects:dismissRenumbered', id),
     remove: id => invoke('projects:remove', id),
     pickFolder: title => invoke('projects:pickFolder', title),
     hasBoards: boardRoot => invoke('projects:hasBoards', boardRoot),

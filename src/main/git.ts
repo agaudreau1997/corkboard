@@ -14,7 +14,7 @@ import { namesKey, parseProjectSettings, PROJECT_FILE } from '@shared/project'
 import { THEME_FILE } from '@shared/theme'
 import type { CodeCommit, RepoStatus } from '@shared/types'
 
-export function git(cwd: string, args: string[], timeoutMs = 0): Promise<string> {
+export function git(cwd: string, args: string[], timeoutMs = 0, env: Record<string, string> = {}): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(
       'git',
@@ -25,7 +25,7 @@ export function git(cwd: string, args: string[], timeoutMs = 0): Promise<string>
         timeout: timeoutMs,
         // Never wait on a prompt or an editor: a credential the helper lacks or a rebase that
         // wants a message fails instead of hanging the app.
-        env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_EDITOR: 'true', GIT_SEQUENCE_EDITOR: 'true' },
+        env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_EDITOR: 'true', GIT_SEQUENCE_EDITOR: 'true', ...env },
       },
       (error, stdout, stderr) => {
         if (error) reject(new Error(stderr.trim() || error.message))
@@ -408,7 +408,7 @@ export class AutoCommitter {
         else if (now.sessions.length > before.sessions.length) {
           const last = now.sessions.at(-1)
           const kind = last?.kind === 'cloud' ? ' in Claude Cloud' : ''
-          lines.push(`${last?.purpose === 'discuss' ? 'Discuss' : 'Tackle'} ${id}${kind}`)
+          lines.push(`${last?.purpose === 'discuss' ? 'Discuss' : last?.purpose === 'untangle' ? 'Untangle' : 'Tackle'} ${id}${kind}`)
         } else if (now.sessions.length < before.sessions.length) {
           const gone = before.sessions.length - now.sessions.length
           lines.push(`Forget ${gone} session${gone === 1 ? '' : 's'} on ${id}`)

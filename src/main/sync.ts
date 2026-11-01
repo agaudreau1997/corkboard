@@ -11,7 +11,9 @@
 // machine's, the project.json keeps this machine's flags and every key either side has, and a
 // card's image keeps this machine's file (images are named by a hash of their bytes, so two
 // machines adding the same picture never conflict; only two pictures given one name by hand do).
-// Anything else aborts the rebase and reports it.
+// Anything else aborts the rebase and reports it. Before the rebase, a card this machine made under
+// an id the remote has used for another card meanwhile takes a new number (see renumber.ts), so
+// both cards survive; the status names it until the window dismisses it.
 
 import { existsSync, promises as fs } from 'node:fs'
 import path from 'node:path'
@@ -19,8 +21,9 @@ import { tryParseCard } from '@shared/cardfile'
 import { cardImageOf } from '@shared/images'
 import { mergeProjectSettings, PROJECT_FILE } from '@shared/project'
 import { THEME_FILE } from '@shared/theme'
-import type { BoardMap, BoardMeta, SyncStatus } from '@shared/types'
+import type { BoardMap, BoardMeta, Renumber, SyncStatus } from '@shared/types'
 import { type AutoCommitter, git, isRepo } from './git'
+import { renumberClashes } from './renumber'
 
 const NETWORK_TIMEOUT_MS = 30_000
 
@@ -31,6 +34,8 @@ export class BoardSync {
   private running?: Promise<SyncStatus>
   private again = false
   private stopped = false
+  /** The cards renumbered since the window last dismissed them, carried on every status. */
+  private renumbered: Renumber[] = []
 
   constructor(
     private root: string,
@@ -86,7 +91,15 @@ export class BoardSync {
     return this.running
   }
 
+  /** Forgets the renumbers the status names (the window showed them). */
+  dismissRenumbered(): void {
+    this.renumbered = []
+    const { renumbered: _gone, ...status } = this.status
+    this.set(status)
+  }
+
   private set(status: SyncStatus): SyncStatus {
+    if (this.renumbered.length) status = { ...status, renumbered: this.renumbered }
     this.status = status
     this.onStatus(status)
     return status
@@ -174,6 +187,12 @@ export class BoardSync {
    */
   private async rebase(upstream: string): Promise<true | 'busy' | string> {
     if (!(await this.commitPending())) return 'busy'
+    try {
+      this.renumbered.push(...(await renumberClashes(this.root, upstream)))
+    } catch (error) {
+      if (!(await this.clean())) return 'busy'
+      return `Could not renumber a card both machines made: ${firstLine(error)}`
+    }
     try {
       await git(this.root, ['rebase', upstream])
       return true

@@ -471,13 +471,16 @@ code,
 
 
 
-/* The side panel folded to a rail: its button, then a mark per project. */
+/* The side panel folded to a rail: its button and the gear under it, then a mark per project. */
 .rail .sidebar-head {
+  flex-direction: column;
   justify-content: center;
+  gap: 4px;
   padding: 10px 0 8px;
 }
 
-.fold-button svg {
+.fold-button svg,
+.settings-button svg {
   width: 15px;
   height: 15px;
   fill: none;
@@ -688,9 +691,9 @@ code,
   z-index: 4;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 16px;
   max-width: calc(100% - 28px);
-  padding: 3px 4px 3px 10px;
+  padding: 6px 8px 6px 14px;
   background: var(--panel);
   border: 1px solid var(--line-2);
   border-radius: var(--radius);
@@ -700,7 +703,30 @@ code,
   white-space: nowrap;
 }
 
+/* The left column: the counts over what is changed. */
+.repo-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The right column: Pull and Push over the branch, which may be long and is cut, not wrapped. */
+.repo-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.repo-buttons {
+  display: flex;
+  gap: 2px;
+}
+
 .repo-branch {
+  max-width: 100%;
   font-family: var(--mono);
   color: var(--text);
   overflow: hidden;
@@ -709,8 +735,9 @@ code,
 
 .repo-counts {
   display: inline-flex;
-  gap: 6px;
+  gap: 8px;
   font-family: var(--mono);
+  font-size: 14px;
 }
 
 .repo-counts.diverged {
@@ -726,13 +753,28 @@ code,
 }
 
 .repo-panel button {
-  padding: 2px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 48px;
+  padding: 4px 8px 3px;
   font-size: 12px;
+}
+
+.repo-panel button svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* The map's minimap sits in the same corner: it moves up over the panel. */
 .board-pane.has-repo .react-flow__panel.bottom.right {
-  margin-bottom: 52px;
+  margin-bottom: 90px;
 }
 
 .board-head {
@@ -1095,9 +1137,13 @@ code,
   flex: none;
 }
 
+/* The scrollbar's gutter is kept whether the list scrolls or not, so a list that starts scrolling
+   (a terminal opened under it) doesn't narrow its cards and reflow their text. The gutter stands in
+   for most of the right padding; the 2px left keeps a selected card's ring clear of the clip. */
 .column-body {
   overflow-y: auto;
-  padding: 2px 8px 8px;
+  scrollbar-gutter: stable;
+  padding: 2px 2px 8px 8px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -2035,12 +2081,42 @@ button.copy-id:hover {
 }
 
 .terminal-toggle {
+  display: inline-flex;
   flex: none;
+  align-items: center;
+  gap: 5px;
   background: none;
   border: none;
   color: var(--text-2);
   font-weight: 600;
   white-space: nowrap;
+}
+
+/* A chevron drawn like the side panel's twisty: up while the panel is closed, turned down when it
+   opens, so it points the way a click moves the panel. */
+.terminal-toggle svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.12s ease;
+}
+
+.terminal-toggle:hover svg {
+  stroke: currentColor;
+}
+
+.terminal-toggle.open svg {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .terminal-toggle svg {
+    transition: none;
+  }
 }
 
 .terminal-tab {

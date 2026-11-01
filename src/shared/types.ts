@@ -49,8 +49,11 @@ export type SessionRef = {
   name?: string
   /** The Claude desktop app's own id for the session (`local_…`), once found in its index. */
   desktopId?: string
-  /** A discussion (talk the card through, no implementing) rather than a tackle. */
-  purpose?: 'discuss'
+  /**
+   * A discussion (talk the card through, no implementing) or an untangle (fix what still names a
+   * renumbered card's old id) rather than a tackle.
+   */
+  purpose?: 'discuss' | 'untangle'
 }
 
 export type Card = {
@@ -76,11 +79,22 @@ export type Card = {
   /** The Jira issue the card is tracked as (`SPDI-42`): what a work project names in its code repo. */
   jira?: string
   sessions: SessionRef[]
+  /**
+   * Its own random identifier, set when it is made and never changed: unlike the id, which a sync
+   * may renumber, it tells two cards made under one id on two machines apart. A card made by hand
+   * or by an older build gets one when the app next sees it.
+   */
+  uid?: string
+  /** The ids it had before a sync renumbered it, oldest first. */
+  renumbered?: Renumbered[]
   /** Markdown body: the description. */
   body: string
   /** Front-matter keys this app does not know, kept verbatim on write. */
   extra: Record<string, unknown>
 }
+
+/** One renumber of a card: the id it had, and when it lost it. */
+export type Renumbered = { from: string; at: string }
 
 export type MapNodePos = { x: number; y: number }
 
@@ -183,8 +197,11 @@ export type TackleRequest = {
   listTitle?: string
   /** Title of the board, when the cards are a whole board. */
   boardTitle?: string
-  /** Talk the cards through (no implementing, the cards stay put) instead of working on them. */
-  purpose?: 'tackle' | 'discuss'
+  /**
+   * Talk the cards through (no implementing, the cards stay put), or untangle renumbered cards'
+   * old ids, instead of working on them.
+   */
+  purpose?: 'tackle' | 'discuss' | 'untangle'
 }
 
 /**
@@ -233,9 +250,21 @@ export type AppConfig = {
   boardRoot?: string
   /** How this machine says a terminal tab changed state (none: desktop notifications only). */
   notify?: NotifyConfig
+  /**
+   * Where the card drawer's Discuss opens on this machine. Absent means a terminal, so only
+   * `desktop` is ever saved; without the desktop app it falls back to a terminal.
+   */
+  discussIn?: DiscussIn
   /** This machine's order of the side panel's projects and boards, dragged by their handles. */
   order?: SidebarOrder
+  /**
+   * One board tab per project, showing whichever of its boards was opened last. Absent means on,
+   * so a config written before it gets it; only `false` is written.
+   */
+  oneTabPerProject?: boolean
 }
+
+export type DiscussIn = 'terminal' | 'desktop'
 
 /**
  * The side panel's order (`src/shared/sideorder.ts`): project ids, and board keys of any project
@@ -347,7 +376,12 @@ export type SyncStatus = {
   /** Commits the last sync brought in and sent out. */
   pulled?: number
   pushed?: number
+  /** Cards this machine had made under an id the other side had used too, renumbered by a sync. */
+  renumbered?: Renumber[]
 }
+
+/** A card a sync renumbered: its board (a path in the repo), its old and new id, its uid. */
+export type Renumber = { board: string; from: string; to: string; uid?: string; at: string }
 
 export type ClaudeInfo = { version?: string; path?: string; error?: string }
 

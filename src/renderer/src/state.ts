@@ -3,6 +3,7 @@ import { listColorAt, sortCards } from '@shared/cardfile'
 import { emptyHistory, step, visit, type Place } from '@shared/navhistory'
 import { pruneSelection, selectRange as withRange } from '@shared/selection'
 import { reordered } from '@shared/sideorder'
+import { foldTabs, hasPlace, showBoard } from '@shared/tabs'
 import type { CorkboardApi } from '@shared/api'
 import type {
   AppConfig,
@@ -11,6 +12,7 @@ import type {
   Card,
   ClaudeInfo,
   CodeCommit,
+  DiscussIn,
   ListDef,
   ListSort,
   LoadedBoard,
@@ -32,6 +34,10 @@ export type Tab = { path: string; view: ViewMode }
 type UiPrefs = {
   tabs: Tab[]
   activeTab: string | null
+  /** The view each board was last shown in, for when it comes back into a tab. */
+  views: Record<string, ViewMode>
+  /** Board keys, the most recently active first: which board a project's tabs fold onto. */
+  recent: string[]
   sidebarWidth: number
   /** The side panel folded to its rail of project marks. */
   sidebarCollapsed: boolean
@@ -53,6 +59,8 @@ function loadPrefs(): UiPrefs {
   const fallback: UiPrefs = {
     tabs: [],
     activeTab: null,
+    views: {},
+    recent: [],
     sidebarWidth: 260,
     sidebarCollapsed: false,
     terminalHeight: 300,
@@ -151,6 +159,8 @@ useStore.subscribe(state => {
   const prefs: UiPrefs = {
     tabs: state.tabs,
     activeTab: state.activeTab,
+    views: state.views,
+    recent: state.recent,
     sidebarWidth: state.sidebarWidth,
     sidebarCollapsed: state.sidebarCollapsed,
     terminalHeight: state.terminalHeight,
@@ -172,6 +182,28 @@ useStore.subscribe(state => {
   const shown = state.terminalOpen ? state.activeTerminal : null
   if (shown && state.attention.includes(shown)) set({ attention: state.attention.filter(t => t !== shown) })
 })
+
+// The board in front and its view are remembered: its view for when it next comes into a tab, and
+// that it was in front for when a project's tabs fold into one. `recent` keeps the latest 50.
+const RECENT_LIMIT = 50
+
+useStore.subscribe(state => {
+  const tab = state.tabs.find(t => t.path === state.activeTab)
+  if (!tab || (state.views[tab.path] === tab.view && state.recent[0] === tab.path)) return
+  set({
+    views: { ...state.views, [tab.path]: tab.view },
+    recent: [tab.path, ...state.recent.filter(p => p !== tab.path)].slice(0, RECENT_LIMIT),
+  })
+})
+
+/** One board tab per project (Corkboard settings): on unless this machine's config turns it off. */
+export const oneTabPerProject = (state: Pick<State, 'config'>) => state.config?.oneTabPerProject !== false
+
+/** The tabs and the tab in front once `path` is shown (`showBoard`), in `view` when given. */
+function shown(s: State, path: string, view?: ViewMode): Pick<State, 'tabs' | 'activeTab'> {
+  const tabs = showBoard(s.tabs, path, { view, views: s.views, perProject: oneTabPerProject(s), fallback: 'board' })
+  return { tabs, activeTab: path }
+}
 
 // ---- back and forward through the tabs ----------------------------------------------------------
 
@@ -284,8 +316,8 @@ export const actions = {
     const tabs = get().tabs.filter(t => known.has(t.path))
     let activeTab = get().activeTab
     if (!activeTab || !known.has(activeTab)) activeTab = tabs[0]?.path ?? null
-    set({ tabs, activeTab })
-    for (const tab of tabs) await actions.loadBoard(tab.path)
+    set({ tabs: oneTabPerProject(get()) ? foldTabs(tabs, activeTab, get().recent) : tabs, activeTab })
+    for (const tab of get().tabs) await actions.loadBoard(tab.path)
   },
 
   /** Adds a project and opens its main board (made with it when the repo had none). */
@@ -303,6 +335,22 @@ export const actions = {
   async setNotify(notify: { desktop: boolean; command: string }) {
     await api.config.setNotify({ desktop: notify.desktop, command: notify.command.trim() || undefined })
     set({ config: await api.config.get() })
+  },
+
+  /** Where the card drawer's Discuss opens (app settings). */
+  async setDiscussIn(where: DiscussIn) {
+    await api.config.setDiscussIn(where)
+    set({ config: await api.config.get() })
+  },
+
+  /**
+   * One board tab per project (app settings). Turned on, the tabs open fold into one per project,
+   * each on its most recently active board; turned off, they stay as they are.
+   */
+  async setOneTabPerProject(on: boolean) {
+    await api.config.setOneTabPerProject(on)
+    set({ config: await api.config.get() })
+    if (on) set(s => ({ tabs: foldTabs(s.tabs, s.activeTab, s.recent) }))
   },
 
   /**
@@ -356,13 +404,9 @@ export const actions = {
     set(s => ({ commits: { ...s.commits, [path]: commits } }))
   },
 
+  /** Shows a board: in its tab, else in its project's (one tab per project), else in a new one. */
   async openBoard(path: string, view?: ViewMode) {
-    set(s => ({
-      tabs: s.tabs.some(t => t.path === path)
-        ? s.tabs.map(t => (t.path === path && view ? { ...t, view } : t))
-        : [...s.tabs, { path, view: view ?? 'board' }],
-      activeTab: path,
-    }))
+    set(s => shown(s, path, view))
     if (!get().boards[path]) await actions.loadBoard(path)
     else void actions.loadCommits(path)
   },
@@ -381,14 +425,20 @@ export const actions = {
     set(s => ({ tabs: s.tabs.map(t => (t.path === path ? { ...t, view } : t)) }))
   },
 
-  /** Back (-1) or forward (1) to the tab and view shown before, passing over closed tabs. */
+  /**
+   * Back (-1) or forward (1) to the board and view shown before, passing over closed tabs. With one
+   * tab per project, a board shown before in its project's tab comes back into it.
+   */
   navigate(dir: -1 | 1) {
     const s = get()
-    const moved = step(history, dir, placeOf(s), path => s.tabs.some(t => t.path === path))
+    const known = new Set(flatten(s.tree).map(n => n.path))
+    const open = (path: string) => known.has(path) && hasPlace(s.tabs, path, oneTabPerProject(s))
+    const moved = step(history, dir, placeOf(s), open)
     if (!moved) return
     history = moved.history
     const { path, view } = moved.place
-    set({ activeTab: path, tabs: s.tabs.map(t => (t.path === path ? { ...t, view: view as ViewMode } : t)) })
+    set(shown(s, path, view as ViewMode))
+    if (!s.boards[path]) void actions.loadBoard(path)
   },
 
   toggleExpanded(path: string) {
@@ -551,6 +601,10 @@ export const actions = {
       // Electron prefixes a handler's error with where it came from: only git's own words are shown.
       actions.toast((error as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), 'error')
     }
+  },
+
+  dismissRenumbered(projectId: string) {
+    void api.projects.dismissRenumbered(projectId)
   },
 
   async addGuide(projectId: string) {

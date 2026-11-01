@@ -36,6 +36,7 @@ labels: [ui]
 links: [TASK-3, IDEA-40]   # related cards on any board (the map's edges)
 after: [TASK-9]       # cards of this board to be done before it: a tackle of several works them first
 sessions: [...]       # Claude Code sessions the app started for it; leave as is
+uid: 0f8e2c1a-5b7d-4e3f-9a6b-2c4d8e1f0a3b   # its own identifier; never change it
 ---
 Description.
 \`\`\`
@@ -43,7 +44,8 @@ Description.
 Other keys the app knows: \`due\` (a date), \`complete: true\`, \`archived: true\`, \`jira\` (the Jira issue key the card is tracked as, \`jira: ABC-123\`), \`cover\` (an image of its \`cards/<ID>/\` folder, named as a description would name it, shown on its face on the board; it needn't be in the description: \`cover: TASK-12/3f2a9c01d4e5b6a7.png\`). Keys it does not know are kept as they are.
 
 - **Move a card**: change \`list:\` to another list id of its board. Keep \`pos:\`: most lists are \`manual\`, where the old number sorts the card among the others, and a sorted one places the card itself.
-- **New card**: \`cards/<KEY>-<n>.md\` with the next free number on that board, and \`id\`, \`title\`, \`list\`, \`pos\`, \`created\` and \`updated\` set.
+- **New card**: \`cards/<KEY>-<n>.md\` with the next free number on that board, and \`id\`, \`title\`, \`list\`, \`pos\`, \`created\` and \`updated\` set. Leave \`uid\` out: the app gives the card one.
+- **\`uid\`** is how the app tells two cards made under one id on two machines apart: never change or copy it. A sync that finds such a pair gives this machine's card a new number and records the old id under \`renumbered\`; leave that as it is too.
 - **Archive** a card with \`archived: true\`; never delete card files.
 - **Move a card to another board** by moving its file (and its \`cards/<ID>/\` folder of images, when it has one) into that board's \`cards/\` folder and setting \`list:\` to one of that board's lists. It keeps its id, so its commits and links still find it.
 - A card titled \`---\` (any run of dashes) is a divider inside its list, not work.
