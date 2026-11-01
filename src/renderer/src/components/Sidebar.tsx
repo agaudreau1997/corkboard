@@ -5,6 +5,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import { inOrder } from '@shared/sideorder'
 import type { BoardNode, ProjectNode, Renumber, SyncStatus, UpdateStatus } from '@shared/types'
 import { actions, api, projectIdOf, useStore } from '../state'
+import { discussPlaces } from '../menus'
 import { discussBoard, untangleCards } from '../tackle'
 import { openContextMenu, type MenuItem } from './ContextMenu'
 import { ProjectMark } from './ProjectMark'
@@ -331,8 +332,6 @@ function boardMenu(node: BoardNode): MenuItem[] {
   // The main board stays while it is the main one: the project opens there.
   const main = projects.find(p => p.id === here)?.mainBoard === node.path
   const mainHint = 'the main board: pick another first'
-  const desktop = useStore.getState().desktop
-  const discuss = (mode: 'desktop' | 'local') => () => void discussBoard(node.path, mode)
   return [
     { label: 'Open', onSelect: () => void actions.openBoard(node.path) },
     { label: 'Open map', onSelect: () => void actions.openBoard(node.path, 'map') },
@@ -342,10 +341,7 @@ function boardMenu(node: BoardNode): MenuItem[] {
       label: 'Discuss / triage',
       hint: 'no implementing',
       disabled: !node.cardCount,
-      items: [
-        ...(desktop ? [{ label: 'In Claude desktop', onSelect: discuss('desktop') }] : []),
-        { label: 'In a terminal', onSelect: discuss('local') },
-      ],
+      items: discussPlaces(mode => () => void discussBoard(node.path, mode)),
     },
     'separator',
     { label: 'New board inside…', onSelect: () => actions.setModal({ kind: 'newBoard', parent: node.path }) },

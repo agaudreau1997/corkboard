@@ -1239,8 +1239,12 @@ try {
   const todoCard = page.locator('.column[data-list="todo"] .card').first()
   const talkId = await todoCard.getAttribute('data-card')
   const callsBeforeTalk = sessionCalls().length
+  const drawerTalkTip = await page.locator('.drawer').getByRole('button', { name: 'Discuss', exact: true }).getAttribute('title')
+  check(!!drawerTalkTip?.includes('in a terminal'), "the drawer's Discuss opens in a terminal by default, desktop app or not")
   await todoCard.click({ button: 'right' })
   await page.locator('.ctx-menu').getByRole('menuitem', { name: /^Discuss/ }).hover()
+  const talkPlaces = await page.locator('.ctx-menu').last().getByRole('menuitem').allTextContents()
+  check(talkPlaces.join(' / ') === 'In a terminal / In Claude desktop', `the card menu's Discuss offers both, the default first (${talkPlaces.join(' / ')})`)
   await page.locator('.ctx-menu').getByRole('menuitem', { name: 'In a terminal' }).click()
   const talk = await until(() => sessionCalls().slice(callsBeforeTalk)[0], 15000)
   const talkPrompt = talk?.split('\0').at(-2) ?? ''
@@ -1507,10 +1511,30 @@ try {
   check(!!(await until(async () => (await settings.locator('.notify-try.success').count()) === 1, 10000)), 'Try it runs it and says so')
   check(notifications().some(l => l.startsWith('test shell')), 'and the program got the test event')
   await shot('11-settings-notify')
+  const discussSetting = settings.getByRole('combobox', { name: /Discuss opens in/ })
+  check((await discussSetting.inputValue()) === 'terminal', 'Discuss opens in a terminal to begin with')
+  await discussSetting.selectOption('desktop')
   await settings.getByRole('button', { name: 'Save' }).click()
   await until(async () => (await page.getByRole('dialog').count()) === 0)
-  const savedNotify = JSON.parse(readFileSync(path.join(scratch, 'profile', 'config.json'), 'utf8')).notify
+  const savedConfig = JSON.parse(readFileSync(path.join(scratch, 'profile', 'config.json'), 'utf8'))
+  const savedNotify = savedConfig.notify
   check(savedNotify?.command === fakeNotify && savedNotify.desktop === undefined, 'Save keeps it in the app config, desktop notifications left on')
+  check(savedConfig.discussIn === 'desktop', 'and where Discuss opens')
+
+  // With Claude desktop picked, the drawer's Discuss opens there, and the menus offer it first.
+  const deskTalkCard = page.locator('.column[data-list="todo"] .card').first()
+  const deskTalkId = await deskTalkCard.getAttribute('data-card')
+  await deskTalkCard.click()
+  const deskTalkButton = page.locator('.drawer').getByRole('button', { name: 'Discuss', exact: true })
+  check(!!(await deskTalkButton.getAttribute('title'))?.includes('in Claude desktop'), "the drawer's Discuss now says Claude desktop")
+  await deskTalkButton.click()
+  const deskTalk = await until(() => openedUrls().find(u => u.startsWith('claude://code/new?') && new URL(u).searchParams.get('q').startsWith(`Let's discuss card ${deskTalkId}`)))
+  check(!!deskTalk, `and opens a desktop session about ${deskTalkId}`)
+  await deskTalkCard.click({ button: 'right' })
+  await page.locator('.ctx-menu').getByRole('menuitem', { name: /^Discuss/ }).hover()
+  const deskPlaces = await page.locator('.ctx-menu').last().getByRole('menuitem').allTextContents()
+  check(deskPlaces[0] === 'In Claude desktop', `the card menu's Discuss lists Claude desktop first now (${deskPlaces.join(' / ')})`)
+  await page.keyboard.press('Escape')
 
   // A plain shell in the panel.
   await page.locator('.terminal-tabs').getByTitle('New shell').click()

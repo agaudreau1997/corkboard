@@ -250,6 +250,11 @@ export type AppConfig = {
   boardRoot?: string
   /** How this machine says a terminal tab changed state (none: desktop notifications only). */
   notify?: NotifyConfig
+  /**
+   * Where the card drawer's Discuss opens on this machine. Absent means a terminal, so only
+   * `desktop` is ever saved; without the desktop app it falls back to a terminal.
+   */
+  discussIn?: DiscussIn
   /** This machine's order of the side panel's projects and boards, dragged by their handles. */
   order?: SidebarOrder
   /**
@@ -258,6 +263,8 @@ export type AppConfig = {
    */
   oneTabPerProject?: boolean
 }
+
+export type DiscussIn = 'terminal' | 'desktop'
 
 /**
  * The side panel's order (`src/shared/sideorder.ts`): project ids, and board keys of any project

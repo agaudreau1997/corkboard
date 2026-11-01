@@ -5,7 +5,7 @@ import type { Card, CodeCommit, LoadedBoard, SessionRef } from '@shared/types'
 import { dueDay } from '@shared/due'
 import { cardImages, imageUrl, insertAt } from '@shared/images'
 import { imageFiles, saveImage, saveImages } from '../images'
-import { discussCards, tackleCards } from '../tackle'
+import { discussCards, discussMode, tackleCards } from '../tackle'
 import { normalizeKey } from '@shared/project'
 import { isDivider } from '@shared/cardfile'
 import { findCycle } from '@shared/tackleorder'
@@ -60,6 +60,7 @@ function ResizeHandle() {
 function Drawer({ board, card }: { board: LoadedBoard; card: Card }) {
   const allCommits = useStore(s => s.commits[board.path])
   const desktop = useStore(s => s.desktop)
+  const discussIn = useStore(discussMode)
   const width = useStore(s => s.drawerWidth)
   const commits = useMemo(() => commitsFor(allCommits, card), [allCommits, card.id, card.jira])
   const work = useStore(s => !!s.projects.find(p => p.id === projectIdOf(board.path))?.work)
@@ -261,8 +262,8 @@ function Drawer({ board, card }: { board: LoadedBoard; card: Card }) {
           <span className="spacer" />
           <button
             className="ghost"
-            title={`Talk the card through ${desktop ? 'in Claude desktop' : 'in a terminal'}: questions, scope, details for the card; nothing is implemented unless you ask`}
-            onClick={() => void discussCards(board.path, [card.id], desktop ? 'desktop' : 'local')}
+            title={`Talk the card through ${discussIn === 'desktop' ? 'in Claude desktop' : 'in a terminal'}: questions, scope, details for the card; nothing is implemented unless you ask`}
+            onClick={() => void discussCards(board.path, [card.id], discussIn)}
           >
             Discuss
           </button>

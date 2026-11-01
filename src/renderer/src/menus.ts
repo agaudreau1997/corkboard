@@ -3,7 +3,7 @@
 import { between, isDivider, LIST_SORTS, listSort, orderList, reorderLists, sortCards } from '@shared/cardfile'
 import type { BoardNode, Card, ListDef, LoadedBoard, TackleMode } from '@shared/types'
 import type { MenuItem } from './components/ContextMenu'
-import { discussCards, tackleCards, untangleCards } from './tackle'
+import { discussCards, discussMode, tackleCards, untangleCards } from './tackle'
 import { actions, api, findNode, flatten, isWork, projectIdOf, useStore } from './state'
 
 /** Every other board as "Parent / Child" (behind its project's name when there are several). */
@@ -182,12 +182,16 @@ async function copyPrompt(board: LoadedBoard, id: string, purpose: 'tackle' | 'd
 
 /** Where cards can be talked through: one card, or a list or selection to triage together. */
 export function discussItems(board: LoadedBoard, ids: string[], listTitle?: string): MenuItem[] {
-  const go = (mode: 'desktop' | 'local') => () => void discussCards(board.path, ids, mode, { listTitle })
-  const desktop = useStore.getState().desktop
-  return [
-    ...(desktop ? [{ label: 'In Claude desktop', onSelect: go('desktop') }] : []),
-    { label: 'In a terminal', onSelect: go('local') },
-  ]
+  return discussPlaces(mode => () => void discussCards(board.path, ids, mode, { listTitle }))
+}
+
+/** Both places a discussion can open, the one the app settings pick first (the drawer's). */
+export function discussPlaces(go: (mode: 'desktop' | 'local') => () => void): MenuItem[] {
+  const state = useStore.getState()
+  const terminal: MenuItem = { label: 'In a terminal', onSelect: go('local') }
+  if (!state.desktop) return [terminal]
+  const desktop: MenuItem = { label: 'In Claude desktop', onSelect: go('desktop') }
+  return discussMode(state) === 'desktop' ? [desktop, terminal] : [terminal, desktop]
 }
 
 /** Where one card can be tackled. */

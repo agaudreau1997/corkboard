@@ -12,6 +12,7 @@ import type {
   Card,
   ClaudeInfo,
   CodeCommit,
+  DiscussIn,
   ListDef,
   ListSort,
   LoadedBoard,
@@ -333,6 +334,12 @@ export const actions = {
   /** Desktop notifications, and the program run when a terminal tab changes state (app settings). */
   async setNotify(notify: { desktop: boolean; command: string }) {
     await api.config.setNotify({ desktop: notify.desktop, command: notify.command.trim() || undefined })
+    set({ config: await api.config.get() })
+  },
+
+  /** Where the card drawer's Discuss opens (app settings). */
+  async setDiscussIn(where: DiscussIn) {
+    await api.config.setDiscussIn(where)
     set({ config: await api.config.get() })
   },
 

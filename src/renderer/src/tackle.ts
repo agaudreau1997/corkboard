@@ -1,6 +1,6 @@
 import { isDivider, listSort, orderList, sortCards } from '@shared/cardfile'
 import { findCycle, tackleGroups, unmetPrerequisites } from '@shared/tackleorder'
-import type { Card, TackleMode } from '@shared/types'
+import type { AppConfig, Card, TackleMode } from '@shared/types'
 import { actions, api, isWork, useStore } from './state'
 
 /** Starts Claude on cards; a cloud run asks first, since it works from GitHub's copy and is billed. */
@@ -80,6 +80,14 @@ export async function tackleCards(
   } catch (error) {
     actions.toast((error as Error).message, 'error')
   }
+}
+
+/**
+ * Where the card drawer's Discuss opens: the app settings' choice, and a terminal while the
+ * Claude desktop app isn't there. A selector, so a component follows both as they change.
+ */
+export function discussMode(s: { desktop: boolean; config?: AppConfig }): 'desktop' | 'local' {
+  return s.desktop && s.config?.discussIn === 'desktop' ? 'desktop' : 'local'
 }
 
 /**

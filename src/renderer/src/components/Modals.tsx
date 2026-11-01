@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { slugify } from '@shared/cardfile'
 import { isEmptyTheme } from '@shared/theme'
-import type { BoardMeta, CodeRepoFrom, ListDef, ProjectSettingsPatch, ProjectTheme } from '@shared/types'
+import type { BoardMeta, CodeRepoFrom, DiscussIn, ListDef, ProjectSettingsPatch, ProjectTheme } from '@shared/types'
 import { actions, api, findNode, oneTabPerProject, projectIdOf, useStore } from '../state'
 import { iconFromFile, ProjectMark } from './ProjectMark'
 import { ThemeEditor } from './ThemeEditor'
@@ -547,7 +547,8 @@ function AddProject() {
 }
 
 /**
- * This machine's settings (app config, never synced): one board tab per project, desktop
+ * This machine's settings (app config, never synced): where the drawer's Discuss opens, one board
+ * tab per project, desktop
  * notifications, and the program run when a terminal tab changes state. *Try it* runs what is typed, saved or not, so a script can be
  * fixed before it is kept.
  */
@@ -557,6 +558,8 @@ function AppSettings() {
   const [oneTab, setOneTab] = useState(savedOneTab)
   const [desktop, setDesktop] = useState(saved?.desktop !== false)
   const [command, setCommand] = useState(saved?.command ?? '')
+  const [discussIn, setDiscussIn] = useState<DiscussIn>(useStore.getState().config?.discussIn ?? 'terminal')
+  const desktopApp = useStore(s => s.desktop)
   const [tried, setTried] = useState<{ command: string; error: string | null } | null>(null)
   const [busy, setBusy] = useState(false)
   const tryIt = async () => {
@@ -571,6 +574,7 @@ function AppSettings() {
     try {
       await actions.setNotify({ desktop, command })
       if (oneTab !== savedOneTab) await actions.setOneTabPerProject(oneTab)
+      await actions.setDiscussIn(discussIn)
       actions.setModal(null)
     } catch (error) {
       actions.toast((error as Error).message, 'error')
@@ -588,6 +592,22 @@ function AppSettings() {
         The app's own, for every project: kept on this computer, never synced, so each of these is marked{' '}
         <MachineOnly />.
       </p>
+      <label className="field">
+        <span>
+          Discuss opens in <MachineOnly />
+        </span>
+        <select value={discussIn} onChange={e => setDiscussIn(e.target.value as DiscussIn)}>
+          <option value="terminal">Terminal</option>
+          <option value="desktop">Claude desktop</option>
+        </select>
+        <small className="muted">
+          Where the card drawer's <em>Discuss</em> starts its conversation; the right-click menus offer both, this one
+          first.{' '}
+          {desktopApp
+            ? 'Claude desktop falls back to a terminal on a machine without it.'
+            : "The Claude desktop app isn't found on this machine, so Discuss opens in a terminal whichever is picked."}
+        </small>
+      </label>
       <div className="field">
         <span className="check-row">
           <label className="check">
