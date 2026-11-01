@@ -196,7 +196,6 @@ const shot = async (name, clip) => {
   await page.screenshot({ path: path.join(shots, `${name}.png`), ...(clip ? { clip } : {}) })
   console.log(`${name}.png`)
 }
-const tab = boardPath => page.locator(`.tab[title$=":${boardPath}"]`).first()
 const openCard = async id => {
   await page.locator(`.card[data-card="${id}"]`).first().click()
   await page.locator('.drawer .card-id', { hasText: id }).waitFor()
@@ -219,8 +218,10 @@ try {
   await sleep(600)
   await shot('map')
 
-  // The card drawer: its links, its commits and its sessions.
-  await tab(MAIN.path).click()
+  // The card drawer: its links, its commits and its sessions. Back by the project's row, since the map took
+  // over the project's one tab.
+  await page.locator('.project-row').first().click()
+  await page.locator('.column').first().waitFor()
   await openCard(SHOWN.headlights)
   await page.locator('.drawer .commits li').nth(1).waitFor()
   await shot('drawer')
