@@ -3,7 +3,7 @@
 // one-line diff and a hand edit by a person or a Claude session round-trips unchanged.
 
 import YAML from 'yaml'
-import type { BoardMeta, Card, ListDef, ListSort, SessionRef } from './types'
+import type { BoardMeta, Card, ListDef, ListSort, Renumbered, SessionRef } from './types'
 
 const KNOWN = [
   'id',
@@ -22,6 +22,8 @@ const KNOWN = [
   'jira',
   'trello',
   'sessions',
+  'uid',
+  'renumbered',
 ] as const
 
 const FENCE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/
@@ -52,6 +54,8 @@ export function parseCard(text: string, fallbackId = ''): Card {
     jira: asString(front.jira),
     trello: asString(front.trello),
     sessions: Array.isArray(front.sessions) ? (front.sessions as SessionRef[]) : [],
+    uid: asString(front.uid),
+    renumbered: asRenumbers(front.renumbered),
     body: body.replace(/^\r?\n/, '').replace(/\s+$/, ''),
     extra,
   }
@@ -85,6 +89,10 @@ export function serializeCard(card: Card): string {
   if (card.jira) front.jira = card.jira
   if (card.trello) front.trello = card.trello
   if (card.sessions.length) front.sessions = card.sessions
+  // Last of the known keys: an older build keeps them as unknown keys, which it writes after
+  // `sessions`, so a card it saves comes back unchanged.
+  if (card.uid) front.uid = card.uid
+  if (card.renumbered?.length) front.renumbered = card.renumbered
   for (const [key, value] of Object.entries(card.extra)) front[key] = value
   const yaml = YAML.stringify(front, { lineWidth: 0, flowCollectionPadding: false })
   const body = card.body.trim() ? `\n${card.body.replace(/\s+$/, '')}\n` : ''
@@ -94,6 +102,14 @@ export function serializeCard(card: Card): string {
 function asString(value: unknown): string | undefined {
   if (value === undefined || value === null || value === '') return undefined
   return value instanceof Date ? value.toISOString() : String(value)
+}
+
+function asRenumbers(value: unknown): Renumbered[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const out = value
+    .filter((r): r is Record<string, unknown> => !!r && typeof r === 'object' && 'from' in r)
+    .map(r => ({ from: String(r.from), at: asString(r.at) ?? '' }))
+  return out.length ? out : undefined
 }
 
 function asStringArray(value: unknown): string[] {

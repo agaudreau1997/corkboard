@@ -382,6 +382,9 @@ function registerIpc(): void {
     await project.addGuide()
     send('boards:treeChanged')
   })
+  ipcMain.handle('projects:dismissRenumbered', async (_e, id: string) => {
+    projects.get(id)?.sync.dismissRenumbered()
+  })
   ipcMain.handle('projects:remove', async (_e, id: string) => {
     const project = projects.get(id)
     if (!project) return

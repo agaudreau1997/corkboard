@@ -76,11 +76,22 @@ export type Card = {
   /** The Jira issue the card is tracked as (`SPDI-42`): what a work project names in its code repo. */
   jira?: string
   sessions: SessionRef[]
+  /**
+   * Its own random identifier, set when it is made and never changed: unlike the id, which a sync
+   * may renumber, it tells two cards made under one id on two machines apart. A card made by hand
+   * or by an older build gets one when the app next sees it.
+   */
+  uid?: string
+  /** The ids it had before a sync renumbered it, oldest first. */
+  renumbered?: Renumbered[]
   /** Markdown body: the description. */
   body: string
   /** Front-matter keys this app does not know, kept verbatim on write. */
   extra: Record<string, unknown>
 }
+
+/** One renumber of a card: the id it had, and when it lost it. */
+export type Renumbered = { from: string; at: string }
 
 export type MapNodePos = { x: number; y: number }
 
@@ -347,7 +358,12 @@ export type SyncStatus = {
   /** Commits the last sync brought in and sent out. */
   pulled?: number
   pushed?: number
+  /** Cards this machine had made under an id the other side had used too, renumbered by a sync. */
+  renumbered?: Renumber[]
 }
+
+/** A card a sync renumbered: its board (a path in the repo), its old and new id, its uid. */
+export type Renumber = { board: string; from: string; to: string; uid?: string; at: string }
 
 export type ClaudeInfo = { version?: string; path?: string; error?: string }
 

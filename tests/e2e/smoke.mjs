@@ -1396,6 +1396,39 @@ try {
   check(pulled, "the other machine's rename showed up after a sync")
   await shot('11-synced')
 
+  // Both machines make a card under the same new id before either syncs: both cards survive, this
+  // machine's under the next number, and the side panel says so until read.
+  const mainCards = path.join(root, MAIN.path, 'cards')
+  const clashNumber = Math.max(...cardFiles(mainCards).map(n => Number(/-(\d+)\.md$/.exec(n)?.[1] ?? 0))) + 1
+  const clashId = `${MAIN.key}-${clashNumber}`
+  const madeCard = (title, created) =>
+    `---\nid: ${clashId}\ntitle: ${title}\nlist: todo\npos: 1\ncreated: ${created}\nupdated: ${created}\n---\n`
+  // Written and committed here at once, as the app would, before it has a chance to push it.
+  writeFileSync(path.join(mainCards, `${clashId}.md`), madeCard('Made on this machine', '2026-10-02T10:00:00.000Z'))
+  execFileSync('git', ['add', '-A'], { cwd: root })
+  execFileSync('git', ['commit', '-qm', `Add ${clashId}`], { cwd: root, env: { ...process.env, ...gitIdentity } })
+  execFileSync('git', ['pull', '-q', '--rebase'], { cwd: otherMachine })
+  writeFileSync(path.join(otherMachine, MAIN.path, 'cards', `${clashId}.md`), madeCard('Made on the other machine', '2026-10-02T11:00:00.000Z'))
+  execFileSync('git', ['add', '-A'], { cwd: otherMachine })
+  execFileSync('git', ['commit', '-qm', `Add ${clashId} elsewhere`], { cwd: otherMachine })
+  execFileSync('git', ['push', '-q'], { cwd: otherMachine })
+  await syncNow()
+  const renumbered = `${MAIN.key}-${clashNumber + 1}`
+  const notice = page.locator('.renumber-notice')
+  check(!!(await until(async () => (await notice.count()) === 1, 15000)), 'a card made on both machines under one id: the side panel says one was renumbered')
+  check(
+    (await notice.textContent()).includes(`${clashId}, made here, is now ${renumbered}`),
+    `naming the old id and the new (${(await notice.textContent()).trim()})`,
+  )
+  check(
+    !!(await until(async () => (await page.locator(`.card[data-card="${clashId}"]`, { hasText: 'Made on the other machine' }).count()) === 1)) &&
+      (await page.locator(`.card[data-card="${renumbered}"]`, { hasText: 'Made on this machine' }).count()) === 1,
+    "both cards are on the board: the other machine's under the id, this one's renumbered",
+  )
+  await shot('11-renumbered')
+  await notice.getByRole('button', { name: 'Got it' }).click()
+  check(!!(await until(async () => (await notice.count()) === 0)), 'Got it takes the notice away')
+
   // ---- the notification program: set in the app's settings, tried from there ----
   await page.locator('.sidebar-foot').getByRole('button', { name: 'Corkboard settings…' }).click()
   const settings = page.getByRole('dialog')

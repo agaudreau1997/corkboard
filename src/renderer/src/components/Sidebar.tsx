@@ -3,7 +3,7 @@ import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } 
 import { CSS } from '@dnd-kit/utilities'
 import type { CSSProperties, ReactNode } from 'react'
 import { inOrder } from '@shared/sideorder'
-import type { BoardNode, ProjectNode, SyncStatus, UpdateStatus } from '@shared/types'
+import type { BoardNode, ProjectNode, Renumber, SyncStatus, UpdateStatus } from '@shared/types'
 import { actions, api, projectIdOf, useStore } from '../state'
 import { discussBoard } from '../tackle'
 import { openContextMenu, type MenuItem } from './ContextMenu'
@@ -150,6 +150,7 @@ function ProjectRow({ project }: { project: ProjectNode }) {
     project.codeRepo ? `Code folder: ${project.codeRepo}` : 'No code folder set on this machine',
     syncText(project.sync),
     project.sync.message,
+    ...(project.sync.renumbered ?? []).map(renumberText),
     lastCommit ? `Last commit ${time(lastCommit.at)}: ${lastCommit.summary}` : undefined,
   ]
     .filter(Boolean)
@@ -190,6 +191,7 @@ function ProjectRow({ project }: { project: ProjectNode }) {
           ⋯
         </button>
       </div>
+      {!!project.sync.renumbered?.length && <RenumberNotice project={project} />}
       {!folded && (
         <div role="group">
           <BoardList nodes={listed} depth={1} />
@@ -206,6 +208,29 @@ function ProjectRow({ project }: { project: ProjectNode }) {
           {offer && <GuideOffer project={project} />}
         </div>
       )}
+    </div>
+  )
+}
+
+const renumberText = (r: Renumber) => `${r.from}, made here, is now ${r.to}: another machine had made a card under ${r.from} too.`
+
+/**
+ * A sync found a card made here under an id the remote had given another card meanwhile, and
+ * renumbered this one. Said where it can't be missed, whether the project is folded or not, until
+ * read: whatever was written here before the sync may still name the old id.
+ */
+function RenumberNotice({ project }: { project: ProjectNode }) {
+  const renumbered = project.sync.renumbered ?? []
+  return (
+    <div className="guide-offer renumber-notice" role="status">
+      {renumbered.map(r => (
+        <div key={`${r.from}-${r.to}`}>{renumberText(r)}</div>
+      ))}
+      <span className="guide-offer-actions">
+        <button className="link muted" onClick={() => actions.dismissRenumbered(project.id)}>
+          Got it
+        </button>
+      </span>
     </div>
   )
 }

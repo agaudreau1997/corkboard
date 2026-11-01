@@ -553,6 +553,10 @@ export const actions = {
     }
   },
 
+  dismissRenumbered(projectId: string) {
+    void api.projects.dismissRenumbered(projectId)
+  },
+
   async addGuide(projectId: string) {
     try {
       await api.projects.addGuide(projectId)

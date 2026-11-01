@@ -59,6 +59,8 @@ export type CorkboardApi = {
     setSettings(id: string, patch: ProjectSettingsPatch): Promise<void>
     /** Writes the board repo's CLAUDE.md (the card format) when it has none. */
     addGuide(id: string): Promise<void>
+    /** Takes the cards a sync renumbered off its sync status (the notice was read). */
+    dismissRenumbered(id: string): Promise<void>
     /** Takes it out of the app; its folder stays. */
     remove(id: string): Promise<void>
     pickFolder(title: string): Promise<string | null>

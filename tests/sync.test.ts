@@ -1,7 +1,7 @@
 // Two clones of one bare remote stand in for two machines.
 
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -126,6 +126,119 @@ describe('BoardSync', () => {
     expect(await a.sync.sync()).toMatchObject({ state: 'synced', pushed: 0 })
     expect(await flushed!).toMatchObject({ state: 'synced', pushed: 1 })
     expect(run(path.join(dir, 'remote.git'), 'show', 'main:game/cards/G-1.md')).toContain('Written at quit')
+  })
+
+  it('keeps both cards when both machines made one under the same id, renumbering this one', async () => {
+    const a = machine(clone('a'))
+    const b = machine(clone('b'))
+    const made = (m: typeof a, uid: string, title: string, updated: string) =>
+      writeFileSync(m.file('game/cards/G-2.md'), serializeCard({ ...card('G-2', 'todo', updated, title), uid, created: updated }))
+    made(a, 'uid-a', 'Made on A', '2026-10-02T10:00:00.000Z')
+    await a.sync.sync()
+
+    // B, offline, made its own G-2 (with an image), linked G-1 to it, placed it on the map, and
+    // later edited it again: three commits that all name it.
+    made(b, 'uid-b', 'Made on B', '2026-10-02T11:00:00.000Z')
+    mkdirSync(b.file('game/cards/G-2'))
+    writeFileSync(b.file('game/cards/G-2/0123456789abcdef.png'), 'png')
+    run(b.root, 'add', '-A')
+    run(b.root, 'commit', '-q', '-m', 'Add G-2: Made on B')
+    writeFileSync(b.file('game/cards/G-1.md'), serializeCard({ ...card('G-1', 'todo', '2026-10-02T11:30:00.000Z'), links: ['G-2'], after: ['G-2'] }))
+    writeFileSync(b.file('game/map.json'), JSON.stringify({ nodes: { 'G-1': { x: 0, y: 0 }, 'G-2': { x: 7, y: 7 } } }, null, 2) + '\n')
+    run(b.root, 'commit', '-q', '-am', 'Link G-1 to G-2')
+    writeFileSync(
+      b.file('game/cards/G-2.md'),
+      serializeCard({
+        ...card('G-2', 'done', '2026-10-02T12:00:00.000Z', 'Made on B'),
+        uid: 'uid-b',
+        created: '2026-10-02T11:00:00.000Z',
+        body: '![](G-2/0123456789abcdef.png)',
+        cover: 'G-2/0123456789abcdef.png',
+      }),
+    )
+    const status = await b.sync.sync()
+    expect(status.state).toBe('synced')
+    expect(status.renumbered).toEqual([{ board: 'game', from: 'G-2', to: 'G-3', uid: 'uid-b', at: expect.any(String) }])
+
+    const kept = parseCard(readFileSync(b.file('game/cards/G-2.md'), 'utf8'))
+    expect(kept).toMatchObject({ title: 'Made on A', uid: 'uid-a' })
+    const moved = parseCard(readFileSync(b.file('game/cards/G-3.md'), 'utf8'))
+    expect(moved).toMatchObject({
+      id: 'G-3',
+      title: 'Made on B',
+      uid: 'uid-b',
+      list: 'done',
+      body: '![](G-3/0123456789abcdef.png)',
+      cover: 'G-3/0123456789abcdef.png',
+    })
+    expect(moved.renumbered).toEqual([{ from: 'G-2', at: status.renumbered![0].at }])
+    expect(moved.updated).toBe(status.renumbered![0].at)
+    expect(readFileSync(b.file('game/cards/G-3/0123456789abcdef.png'), 'utf8')).toBe('png')
+    expect(existsSync(b.file('game/cards/G-2'))).toBe(false)
+    expect(parseCard(readFileSync(b.file('game/cards/G-1.md'), 'utf8'))).toMatchObject({ links: ['G-3'], after: ['G-3'] })
+    expect(JSON.parse(readFileSync(b.file('game/map.json'), 'utf8')).nodes['G-3']).toEqual({ x: 7, y: 7 })
+    expect(run(b.root, 'status', '--porcelain')).toBe('')
+    // B's commits never had its card under the id A's has.
+    expect(run(b.root, 'log', '--format=%s', '-1')).toBe('Renumber G-2 as G-3\n')
+    expect(run(b.root, 'log', '--format=', '--name-only', 'origin/main~4..origin/main')).not.toContain('G-2.md')
+
+    // The status names it until the window dismisses it.
+    expect((await b.sync.sync()).renumbered).toHaveLength(1)
+    b.sync.dismissRenumbered()
+    expect(b.sync.status.renumbered).toBeUndefined()
+
+    await a.sync.sync()
+    expect(parseCard(readFileSync(a.file('game/cards/G-2.md'), 'utf8')).title).toBe('Made on A')
+    expect(parseCard(readFileSync(a.file('game/cards/G-3.md'), 'utf8')).title).toBe('Made on B')
+  })
+
+  it('tells two cards made under one id without uids apart by when they were made', async () => {
+    const a = machine(clone('a'))
+    const b = machine(clone('b'))
+    const made = (m: typeof a, title: string, created: string) =>
+      writeFileSync(m.file('game/cards/G-2.md'), serializeCard({ ...card('G-2', 'todo', created, title), created }))
+    made(a, 'Made on A', '2026-10-02T10:00:00.000Z')
+    await a.sync.sync()
+    made(b, 'Made on B', '2026-10-02T11:00:00.000Z')
+    const status = await b.sync.sync()
+    expect(status).toMatchObject({ state: 'synced', renumbered: [{ from: 'G-2', to: 'G-3' }] })
+    expect(parseCard(readFileSync(b.file('game/cards/G-2.md'), 'utf8')).title).toBe('Made on A')
+    expect(parseCard(readFileSync(b.file('game/cards/G-3.md'), 'utf8')).title).toBe('Made on B')
+  })
+
+  it('keeps one card, the newer, when both sides added the same card', async () => {
+    const a = machine(clone('a'))
+    const b = machine(clone('b'))
+    // One uid on both sides: a card copied in by hand on each, say.
+    const same = (m: typeof a, updated: string, title: string) =>
+      writeFileSync(m.file('game/cards/G-2.md'), serializeCard({ ...card('G-2', 'todo', updated, title), uid: 'one' }))
+    same(a, '2026-10-02T10:00:00.000Z', 'Older')
+    await a.sync.sync()
+    same(b, '2026-10-02T11:00:00.000Z', 'Newer')
+    const status = await b.sync.sync()
+    expect(status.state).toBe('synced')
+    expect(status.renumbered).toBeUndefined()
+    expect(parseCard(readFileSync(b.file('game/cards/G-2.md'), 'utf8')).title).toBe('Newer')
+    expect(existsSync(b.file('game/cards/G-3.md'))).toBe(false)
+  })
+
+  it('keeps one card when both machines gave it a uid before syncing', async () => {
+    const a = machine(clone('a'))
+    const b = machine(clone('b'))
+    const withUid = (m: typeof a, uid: string) => {
+      const text = readFileSync(m.file('game/cards/G-1.md'), 'utf8')
+      writeFileSync(m.file('game/cards/G-1.md'), serializeCard({ ...parseCard(text), uid }))
+    }
+    withUid(a, 'uid-a')
+    await a.sync.sync()
+    withUid(b, 'uid-b')
+    const status = await b.sync.sync()
+    expect(status.state).toBe('synced')
+    expect(status.renumbered).toBeUndefined()
+    expect(run(b.root, 'ls-files', 'game/cards')).toBe('game/cards/G-1.md\n')
+    await a.sync.sync()
+    const uid = (m: typeof a) => parseCard(readFileSync(m.file('game/cards/G-1.md'), 'utf8')).uid
+    expect(uid(a)).toBe(uid(b))
   })
 
   it('waits rather than rebase over a change it could not commit', async () => {

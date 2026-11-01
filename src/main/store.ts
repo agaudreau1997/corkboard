@@ -4,7 +4,7 @@
 // folder beside its file (`cards/<ID>/`, see src/shared/images.ts): the store writes them, moves
 // them with the card and leaves them out of the card scan and the watch.
 
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, promises as fs, watch, type FSWatcher } from 'node:fs'
 import path from 'node:path'
 import { between, cardNumber, parseCard, serializeCard, slugify, sortCards, tryParseCard } from '@shared/cardfile'
@@ -393,11 +393,41 @@ export class BoardStore {
       links: fields.links ?? [],
       after: [],
       sessions: [],
+      uid: randomUUID(),
       body: fields.body ?? '',
       extra: {},
     }
     await this.writeCard(boardPath, card)
     return card
+  }
+
+  /**
+   * Gives every card without a `uid` one: cards made by hand, by an older build, or before cards
+   * had uids. Each is read from its file as it is now (what a sync just pulled may not have reached
+   * the watch yet), and `updated` is left as it is: a uid is no change to the card, and a stamp
+   * would make it win every sync conflict it met. Answers how many it gave.
+   */
+  async backfillUids(): Promise<number> {
+    let given = 0
+    for (const board of this.boards.values()) {
+      const cards: Card[] = []
+      for (const known of board.cards.filter(c => !c.uid)) {
+        const file = this.cardFile(board.path, known.id)
+        const text = await readOrUndefined(file)
+        const card = text === undefined ? undefined : tryParseCard(text, known.id)
+        // Gone, saved half-way, or given one meanwhile: the watch brings it in.
+        if (!card || card.uid || card.id !== known.id) continue
+        card.uid = randomUUID()
+        await this.writeText(file, serializeCard(card))
+        cards.push(card)
+      }
+      if (!cards.length) continue
+      const ids = new Set(cards.map(c => c.id))
+      board.cards = sortCards([...board.cards.filter(c => !ids.has(c.id)), ...cards])
+      this.events?.onDelta({ path: board.path, cards, removed: [] })
+      given += cards.length
+    }
+    return given
   }
 
   async updateCard(boardPath: string, id: string, patch: CardPatch): Promise<Card> {
