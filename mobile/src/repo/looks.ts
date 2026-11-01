@@ -1,8 +1,8 @@
 // How a board repo looks: its colours (`theme.json`) and its settings (`project.json`: its icon and
-// its main board), both at the repo's root. The open repo's are read with its tree; the repo list
+// its main board), both at the repo's root. The open repo's are read with its tree; the side panel
 // needs every repo's, so it asks GitHub for all their two files' shas in one GraphQL query and
 // reads only the files whose sha changed. Each repo's look is kept parsed, with the shas it was
-// read from, apart from the blob cache: the list draws at once, offline too, and a repo's look
+// read from, apart from the blob cache: the panel draws at once, offline too, and a repo's look
 // outlives the snapshots the blob cache is trimmed to.
 
 import { parseProjectSettings, PROJECT_FILE } from '@shared/project'

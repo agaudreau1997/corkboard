@@ -1,5 +1,6 @@
-/* The header's buttons, drawn from the shared icon set (src/shared/icons.ts): back on the left,
-   refresh on the right, each a 40 px target. While refreshing, the spinner takes the icon's place. */
+/* The header's buttons, drawn from the shared icon set (src/shared/icons.ts): the side panel's
+   menu or back on the left, refresh on the right, each a 40 px target. While refreshing, the
+   spinner takes the icon's place. */
 
 .header .back,
 .header .refresh {
@@ -34,4 +35,48 @@
 
 .header .refresh .spinner {
   margin: 0;
+}
+
+/* A board's list follows a finger moving across it, and the list it brings in slides in from that
+   side (Pull in parts.tsx). Across, the page leaves the moves to the script; down, it scrolls. */
+
+.page.swipes {
+  overflow-x: hidden;
+  touch-action: pan-y;
+}
+
+.swipe-content {
+  min-height: 100%;
+  transition: transform 180ms ease;
+}
+
+.swipe-content.enter-next {
+  animation: enter-next 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.swipe-content.enter-previous {
+  animation: enter-previous 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes enter-next {
+  from {
+    opacity: 0.4;
+    transform: translateX(40%);
+  }
+}
+
+@keyframes enter-previous {
+  from {
+    opacity: 0.4;
+    transform: translateX(-40%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .swipe-content,
+  .swipe-content.enter-next,
+  .swipe-content.enter-previous {
+    animation: none;
+    transition: none;
+  }
 }

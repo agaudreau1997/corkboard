@@ -44,6 +44,10 @@ export const ICONS = {
   search: { shapes: [{ circle: [7, 7, 4.3] }, { d: 'M10.3 10.3 14 14' }] },
   /** A circle closing clockwise on its arrowhead. */
   refresh: { shapes: [{ d: 'M13.09 9.8A5.4 5.4 0 1 1 11.82 4.18L14.6 6.8M14.6 3.2v3.6H11' }] },
+  /** The companion's side panel, at the left of a board's header. */
+  menu: { shapes: [{ d: 'M2.5 4h11M2.5 8h11M2.5 12h11' }] },
+  /** Closes the companion's card drawer. */
+  close: { shapes: [{ d: 'M4 4 12 12M12 4 4 12' }] },
   /** A menu of more actions. */
   more: { filled: true, shapes: [{ circle: [3.5, 8, 1.3] }, { circle: [8, 8, 1.3] }, { circle: [12.5, 8, 1.3] }] },
 } as const satisfies Record<string, IconDef>

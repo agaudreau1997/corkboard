@@ -1,4 +1,4 @@
-// How a repo is marked where it is named (its row in the repo list, the board header): its icon
+// How a repo is marked where it is named (its row in the side panel, the board header): its icon
 // when `project.json` has one, else its colour swatch, drawn by the desktop's rule (`swatchColors`)
 // so a project looks the same on both. A repo whose look isn't known yet keeps the mark's room.
 

@@ -1,15 +1,20 @@
-import { useState } from 'react'
-import { Header } from './parts'
+// Writing a new card, in the drawer over the list it goes to: its title, and a description if you
+// like. It waits in the outbox until it's sent (Browse.tsx).
 
-export /** Writing a new card: its title, and a description if you like. */
-function NewCard({ listTitle, onCancel, onSave }: { listTitle: string; onCancel: () => void; onSave: (title: string, body: string) => void }) {
+import { useState } from 'react'
+import { DrawerTop } from './Drawer'
+
+/** Writing a new card: its title, and a description if you like. */
+export function NewCard({ listTitle, onCancel, onSave }: { listTitle: string; onCancel: () => void; onSave: (title: string, body: string) => void }) {
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
   return (
     <>
-      <Header title="New card" sub={listTitle ? `In ${listTitle}` : undefined} onBack={onCancel} />
+      <DrawerTop onClose={onCancel} title={<h2>New card</h2>}>
+        {listTitle && <span className="where">In {listTitle}</span>}
+      </DrawerTop>
       <form
-        className="page new-card"
+        className="drawer-body new-card"
         onSubmit={e => {
           e.preventDefault()
           if (title.trim()) onSave(title.trim(), body)

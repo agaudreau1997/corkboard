@@ -1,6 +1,8 @@
-// A card: read it, and change it (title and description, list, complete, archived, and its details:
-// due date, labels, Do after), with the question when it was edited elsewhere meanwhile; restore it
-// from the archive; open its linked cards; share it, and copy its id with a tap.
+// A card, in the drawer over its board: read it, and change it (title and description, list,
+// complete, archived, and its details: due date, labels, Do after), with the question when it was
+// edited elsewhere meanwhile; restore it from the archive; open its linked cards; share it, and
+// copy its id with a tap. Its top (id, list, title) stays put while the rest scrolls, as on the
+// desktop's drawer.
 
 import { useState } from 'react'
 import Markdown from 'react-markdown'
@@ -11,7 +13,8 @@ import { Conflict, type CardChange } from '../repo/editor'
 import type { Linked } from '../repo/linked'
 import { CardDetails } from './CardDetails'
 import { CardShare, CopyId } from './CardShare'
-import { formatDue, Header, markdownParts } from './parts'
+import { DrawerTop } from './Drawer'
+import { formatDue, markdownParts } from './parts'
 
 type ChangeCard = (change: CardChange, overwrite?: boolean) => Promise<void>
 
@@ -27,11 +30,11 @@ export function CardView(props: {
   canChange: boolean
   /** A work project: what's shared names the card's Jira key, never its id. */
   work: boolean
-  onBack: () => void
+  onClose: () => void
   onChange: ChangeCard
   onOpen: (linked: Linked) => void
 }) {
-  const { card, id, lists, cards, doneList, linked, canChange, work, onBack, onChange, onOpen } = props
+  const { card, id, lists, cards, doneList, linked, canChange, work, onClose, onChange, onOpen } = props
   const [editing, setEditing] = useState(false)
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
@@ -60,7 +63,9 @@ export function CardView(props: {
   if (!card) {
     return (
       <>
-        <Header title={id} onBack={onBack} />
+        <DrawerTop onClose={onClose}>
+          <span className="card-id">{id}</span>
+        </DrawerTop>
         <p className="note">This card isn’t on the board any more.</p>
       </>
     )
@@ -69,9 +74,12 @@ export function CardView(props: {
   if (editing) {
     return (
       <>
-        <Header title={`Edit ${id}`} onBack={() => setEditing(false)} busy={busy} />
+        <DrawerTop onClose={() => setEditing(false)} busy={busy}>
+          <span className="card-id">{id}</span>
+          <span className="where">Editing</span>
+        </DrawerTop>
         <form
-          className="page new-card"
+          className="drawer-body new-card"
           onSubmit={e => {
             e.preventDefault()
             const change: CardChange = {}
@@ -96,15 +104,18 @@ export function CardView(props: {
   const listTitle = lists.find(l => l.id === card.list)?.title
   return (
     <>
-      <Header title={id} sub={listTitle} onBack={onBack} busy={busy} />
-      <div className="page card-page">
-        <h2>{card.title}</h2>
-        <p className="card-meta">
-          <CopyId id={card.id} />
-          {card.jira && <CopyId id={card.jira} />}
-          {card.archived && <span className="chip">Archived</span>}
-          {card.complete && <span className="chip done">Done</span>}
-        </p>
+      <DrawerTop onClose={onClose} busy={busy} title={<h2>{card.title}</h2>}>
+        <CopyId id={card.id} />
+        {card.jira && <CopyId id={card.jira} />}
+        {listTitle && <span className="where">{listTitle}</span>}
+      </DrawerTop>
+      <div className="drawer-body card-page">
+        {(card.archived || card.complete) && (
+          <p className="card-meta">
+            {card.archived && <span className="chip">Archived</span>}
+            {card.complete && <span className="chip done">Done</span>}
+          </p>
+        )}
         {canChange ? (
           <div className="actions">
             <button

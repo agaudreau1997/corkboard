@@ -7,7 +7,8 @@ import { Session } from './github/session'
 import { secureTokenStore } from './github/storage'
 import { RepoCache } from './repo/cache'
 import { Outbox } from './repo/outbox'
-import { Browse, lastPlace } from './screens/Browse'
+import { lastPlace } from './place'
+import { Browse } from './screens/Browse'
 import { SignIn } from './screens/SignIn'
 
 const session = new Session(secureTokenStore(), GITHUB_APP.clientId)

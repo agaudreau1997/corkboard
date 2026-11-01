@@ -2,7 +2,7 @@
 // refreshes. Files are kept by blob sha (a sha names its content, so a kept file is never stale)
 // and a repo's snapshot is its tree as last read. Board files aren't secrets: the WebView's
 // localStorage is enough, and is a few hundred kilobytes for a board repo. Each repo's look (its
-// colours and settings, `looks.ts`) is kept parsed beside them, for the repo list.
+// colours and settings, `looks.ts`) is kept parsed beside them, for the side panel.
 
 import type { BoardFiles, FileRef } from './layout'
 import type { Look } from './looks'

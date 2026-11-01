@@ -1,5 +1,5 @@
 // A repo's look (its `theme.json` colours and `project.json` icon): read with the tree when the
-// repo is browsed, for every repo at once for the repo list, kept by sha so an unchanged file is
+// repo is browsed, for every repo at once for the side panel, kept by sha so an unchanged file is
 // never read again; and the colours the phone paints with them, system bars included.
 
 import { describe, expect, it } from 'vitest'

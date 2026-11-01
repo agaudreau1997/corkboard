@@ -1,13 +1,16 @@
 // A board: its lists as tabs along the top (they read better on a phone than columns scrolled
 // sideways), the open list's cards in the desktop's order, the cards waiting to be sent at its end,
-// and the "+" for a new one. An *Archived* tab at the end holds the archived cards, and the
+// and the "+" for a new one. A swipe across the list goes to the next or previous tab, in the tabs'
+// order, *Ideas* and *Archived* included, and the tab shown scrolls into view; search results
+// don't swipe. The hamburger at the left of the header opens the side panel. An *Archived* tab at the end holds the archived cards, and the
 // magnifier beside the tabs finds cards over the whole board, archived ones last. The ⋯ beside it,
 // or a long press on a tab, opens that list's menu (ListMenu.tsx), and the board's settings.
 
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { isDivider, listColorAt } from '@shared/cardfile'
 import { boardColumns, UNLISTED } from '@shared/selection'
 import type { BoardMeta, Card, ListDef } from '@shared/types'
+import { stepTo } from '../gestures'
 import { Icon } from '../Icon'
 import type { BoardChange } from '../repo/boardchange'
 import { archivedCards, findCards, whereCard } from '../repo/find'
@@ -17,7 +20,7 @@ import type { RepoState } from './Browse'
 import { CardFace } from './CardFace'
 import { FindBar, FindButton } from './Find'
 import { ListMenu } from './ListMenu'
-import { count, Header, Pull } from './parts'
+import { count, Header, Pull, type Swipe } from './parts'
 import './BoardView.css'
 
 /** The tab of the board's archived cards. */
@@ -27,13 +30,12 @@ export function BoardView(props: {
   title: string
   /** The repo's icon or swatch, in the header. */
   mark?: ReactNode
-  /** Opens the board switcher, from the header's title; none when the repo has one board. */
-  onSwitch?: () => void
+  /** Opens the side panel. */
+  onMenu: () => void
   state: RepoState
   board?: Board
   loading: boolean
   list?: string
-  onBack: () => void
   onList: (list: string) => void
   onCard: (id: string) => void
   onRefresh: () => Promise<void>
@@ -50,7 +52,7 @@ export function BoardView(props: {
   boardError?: string
   onSettings: () => void
 }) {
-  const { title, state, board, loading, onBack, onList, onCard, onRefresh, drafts, offline, onAdd, onDiscard } = props
+  const { title, state, board, loading, onMenu, onList, onCard, onRefresh, drafts, offline, onAdd, onDiscard } = props
   /** The search's text, while the field is open. */
   const [query, setQuery] = useState<string>()
   /** The tab whose menu is open. */
@@ -70,6 +72,24 @@ export function BoardView(props: {
   // Results and the archive come from every list: each says where it is.
   const where = board && (found || current?.id === ARCHIVED) ? (card: Card) => whereCard(board, card) : undefined
   const waiting = found ? [] : drafts.filter(d => (d.list ?? UNLISTED) === current?.id)
+  const index = current ? lists.indexOf(current) : -1
+  const swipe: Swipe | undefined =
+    found || !current
+      ? undefined
+      : {
+          key: current.id,
+          canGo: step => stepTo(index, lists.length, step) !== undefined,
+          go: step => {
+            const to = stepTo(index, lists.length, step)
+            if (to !== undefined) onList(lists[to].id)
+          },
+        }
+  // The tab shown stays in view, however it was reached.
+  const tabs = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const tab = tabs.current?.querySelector<HTMLElement>('.tab.active')
+    tab?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+  }, [current?.id, query])
   const sub = found ? `${found.length} found` : current ? count(cards.filter(c => !isDivider(c)).length) : undefined
 
   return (
@@ -77,9 +97,8 @@ export function BoardView(props: {
       <Header
         title={title}
         mark={props.mark}
-        onTitle={props.onSwitch}
         sub={sub}
-        onBack={onBack}
+        onMenu={onMenu}
         busy={state.busy || loading}
         onRefresh={() => void onRefresh()}
       />
@@ -87,7 +106,7 @@ export function BoardView(props: {
         <FindBar query={query} onQuery={setQuery} onClose={() => setQuery(undefined)} />
       ) : (
         <div className="tabbar">
-          <nav className="tabs">
+          <nav className="tabs" ref={tabs}>
             {lists.map(l => (
               <button
                 key={l.id}
@@ -113,7 +132,7 @@ export function BoardView(props: {
           )}
         </div>
       )}
-      <Pull onRefresh={onRefresh}>
+      <Pull onRefresh={onRefresh} swipe={swipe}>
         {state.error && <p className="note error">{state.error}</p>}
         {props.boardError && <p className="note error">{props.boardError}</p>}
         {!board && <p className="note">{loading ? 'Reading the cards…' : 'This board isn’t saved on the phone yet.'}</p>}
