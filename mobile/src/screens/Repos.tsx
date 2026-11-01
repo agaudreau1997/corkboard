@@ -1,5 +1,6 @@
-// The first screen: the board repos the GitHub App can reach, or the step to install it when it
-// reaches none.
+// The first screen: the board repos the GitHub App can reach, each with its icon or colour swatch,
+// or the step to install it when it reaches none. It stays in the app's own colours. The repos'
+// looks are drawn from what was last read, then read again behind it (only the files that changed).
 
 import { useCallback, useEffect, useState } from 'react'
 import { App as CapApp } from '@capacitor/app'
@@ -7,11 +8,20 @@ import { Browser } from '@capacitor/browser'
 import { installUrl } from '../github/config'
 import { reach, type Reach } from '../github/installations'
 import { SignedOut, type Session } from '../github/session'
+import type { RepoCache } from '../repo/cache'
+import { readLooks, type Look } from '../repo/looks'
 import { Header, Pull } from './parts'
+import { ProjectMark } from './ProjectMark'
 
 const REACH = 'corkboard:reach'
 
-export function Repos({ api, onPick, onSignOut }: { api: Session['api'] | undefined; onPick: (repo: string) => void; onSignOut: () => Promise<void> }) {
+export function Repos(props: {
+  api: Session['api'] | undefined
+  cache: RepoCache
+  onPick: (repo: string) => void
+  onSignOut: () => Promise<void>
+}) {
+  const { api, cache, onPick, onSignOut } = props
   const [known, setKnown] = useState<Reach | undefined>(() => {
     try {
       return JSON.parse(localStorage.getItem(REACH) ?? 'null') ?? undefined
@@ -20,6 +30,7 @@ export function Repos({ api, onPick, onSignOut }: { api: Session['api'] | undefi
     }
   })
   const [error, setError] = useState<string>()
+  const [looks, setLooks] = useState<Map<string, Look>>(new Map())
 
   const look = useCallback(async () => {
     if (!api) return
@@ -28,10 +39,12 @@ export function Repos({ api, onPick, onSignOut }: { api: Session['api'] | undefi
       localStorage.setItem(REACH, JSON.stringify(got))
       setKnown(got)
       setError(undefined)
+      // The colours and icons only dress the list: a failure leaves what was last read.
+      setLooks(await readLooks(api, cache, got.repos).catch(() => new Map()))
     } catch (e) {
       if (!(e instanceof SignedOut)) setError((e as Error).message)
     }
-  }, [api])
+  }, [api, cache])
 
   useEffect(() => {
     void look()
@@ -66,9 +79,12 @@ export function Repos({ api, onPick, onSignOut }: { api: Session['api'] | undefi
         <ul className="rows">
           {known?.repos.map(r => (
             <li key={r}>
-              <button type="button" onClick={() => onPick(r)}>
-                <span className="row-title">{r.split('/')[1]}</span>
-                <span className="row-sub">{r.split('/')[0]}</span>
+              <button type="button" className="repo-row" onClick={() => onPick(r)}>
+                <ProjectMark look={looks.get(r) ?? cache.look(r)} />
+                <span className="repo-names">
+                  <span className="row-title">{r.split('/')[1]}</span>
+                  <span className="row-sub">{r.split('/')[0]}</span>
+                </span>
               </button>
             </li>
           ))}

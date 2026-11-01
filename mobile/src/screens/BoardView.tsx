@@ -2,7 +2,7 @@
 // sideways), the open list's cards in the desktop's order, the cards waiting to be sent at its end,
 // and the "+" for a new one.
 
-import { useMemo } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import { isDivider, listColorAt } from '@shared/cardfile'
 import { boardColumns, UNLISTED } from '@shared/selection'
 import type { Card, ListDef } from '@shared/types'
@@ -13,6 +13,8 @@ import { count, formatDue, Header, Pull } from './parts'
 
 export function BoardView(props: {
   title: string
+  /** The repo's icon or swatch, in the header. */
+  mark?: ReactNode
   state: RepoState
   board?: Board
   loading: boolean
@@ -40,7 +42,13 @@ export function BoardView(props: {
 
   return (
     <>
-      <Header title={title} sub={current ? count(cards.filter(c => !isDivider(c)).length) : undefined} onBack={onBack} busy={state.busy || loading} />
+      <Header
+        title={title}
+        mark={props.mark}
+        sub={current ? count(cards.filter(c => !isDivider(c)).length) : undefined}
+        onBack={onBack}
+        busy={state.busy || loading}
+      />
       <nav className="tabs">
         {lists.map(l => (
           <button

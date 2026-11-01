@@ -5,7 +5,15 @@ import { useRef, useState, type ReactNode } from 'react'
 import { type Components } from 'react-markdown'
 import { Browser } from '@capacitor/browser'
 
-export function Header({ title, sub, onBack, busy }: { title: string; sub?: string; onBack?: () => void; busy?: boolean }) {
+export function Header(props: {
+  title: string
+  sub?: string
+  onBack?: () => void
+  busy?: boolean
+  /** Before the title: the repo's icon or swatch. */
+  mark?: ReactNode
+}) {
+  const { title, sub, onBack, busy, mark } = props
   return (
     <header className="header">
       {onBack && (
@@ -13,6 +21,7 @@ export function Header({ title, sub, onBack, busy }: { title: string; sub?: stri
           ‹
         </button>
       )}
+      {mark}
       <div className="titles">
         <h1>{title}</h1>
         {sub && <p>{sub}</p>}

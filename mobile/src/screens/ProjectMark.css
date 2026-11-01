@@ -1,0 +1,40 @@
+/* A repo's mark: its icon, or its swatch drawn as the desktop draws it, larger for a finger. */
+
+.mark {
+  display: inline-flex;
+  flex: none;
+  width: 26px;
+  height: 24px;
+}
+
+.mark-icon {
+  object-fit: contain;
+  border-radius: 5px;
+}
+
+.mark-swatch {
+  width: auto;
+  height: 20px;
+  align-self: center;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  border-radius: 5px;
+}
+
+.mark-swatch i {
+  width: 8px;
+}
+
+/* A repo's row in the list: its mark beside its name and owner. */
+.rows button.repo-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+
+.repo-row .repo-names {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}

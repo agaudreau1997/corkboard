@@ -1,8 +1,9 @@
 // Reading a board repo through GitHub, not git: the default branch's tree in one call, then the
 // files it names that the cache doesn't hold yet, in GraphQL batches. A refresh is the tree again
 // and only the files whose sha changed. Boards' `board.json` files are read with the tree (there
-// are few); a board's cards when it is opened. Offline, or signed out, everything comes from the
-// cache, and a board shows the cards the cache holds.
+// are few), and so are the repo's colours and settings at its root (`looks.ts`); a board's cards
+// when it is opened. Offline, or signed out, everything comes from the cache, and a board shows
+// the cards the cache holds.
 
 import { tryParseCard } from '@shared/cardfile'
 import type { BoardMeta, Card } from '@shared/types'
@@ -10,6 +11,7 @@ import { answerJson as json } from '../github/answer'
 import { readBlobs } from './blobs'
 import type { RepoCache, Snapshot } from './cache'
 import { findBoards, parseMeta, type TreeEntry } from './layout'
+import { lookAt, rootShas, unread } from './looks'
 
 type Api = (path: string, init?: RequestInit) => Promise<Response>
 
@@ -31,7 +33,11 @@ export async function refresh(api: Api, cache: RepoCache, repo: string, now = ne
     `${repo}'s files`,
   )
   const boards = findBoards(tree.tree)
-  await fetchMissing(api, cache, repo, boards.map(b => b.meta.sha))
+  // The look's changed files come in the same read as the boards' metas.
+  const shas = rootShas(tree.tree)
+  const kept = cache.look(repo)
+  const texts = await fetchMissing(api, cache, repo, [...boards.map(b => b.meta.sha), ...unread(shas, kept)])
+  cache.putLook(repo, lookAt(shas, kept, sha => texts.get(sha) ?? cache.blob(sha)))
   const snapshot: Snapshot = {
     repo,
     branch: info.default_branch,
@@ -72,7 +78,10 @@ export function boardMetas(cache: RepoCache, snapshot: Snapshot): { path: string
   })
 }
 
-async function fetchMissing(api: Api, cache: RepoCache, repo: string, shas: string[]): Promise<void> {
+/** Reads the files the cache lacks and keeps them; answers what it read. */
+async function fetchMissing(api: Api, cache: RepoCache, repo: string, shas: string[]): Promise<Map<string, string>> {
   const missing = [...new Set(shas)].filter(sha => cache.blob(sha) === undefined)
-  if (missing.length) cache.putBlobs(await readBlobs(api, repo, missing))
+  const read = missing.length ? await readBlobs(api, repo, missing) : new Map<string, string>()
+  cache.putBlobs(read)
+  return read
 }

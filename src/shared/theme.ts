@@ -266,6 +266,31 @@ export function themeTokens(theme: ProjectTheme | null | undefined): Record<stri
   return out
 }
 
+/** The stylesheet token each base colour shows as, to show an unset one's mixed value. */
+const TOKEN_OF: Record<ThemeColor, string> = {
+  background: '--bg',
+  surface: '--card',
+  line: '--line',
+  text: '--text',
+  accent: '--accent',
+  link: '--blue',
+  success: '--green',
+  danger: '--red',
+}
+
+/** A colour as a theme paints it: its own, mixed from the others, or the app's. */
+export function shownColor(theme: ProjectTheme | null | undefined, key: ThemeColor): string {
+  return themeTokens(theme)[TOKEN_OF[key]] ?? DEFAULT_COLORS[key]
+}
+
+/**
+ * A theme in small, as its swatch draws it wherever a project is named, on the desktop and the
+ * phone alike: its background, its cards and its accent, as the theme paints them.
+ */
+export function swatchColors(theme: ProjectTheme | null | undefined): string[] {
+  return (['background', 'surface', 'accent'] as const).map(key => shownColor(theme, key))
+}
+
 /** The colour a base shows as under a theme: its own, else the app's. */
 export function themeColor(theme: ProjectTheme | null | undefined, key: ThemeColor): string {
   return normalizeHex(theme?.colors[key]) ?? DEFAULT_COLORS[key]

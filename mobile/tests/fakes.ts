@@ -1,6 +1,6 @@
 // Stand-ins for the tests: localStorage in memory, and a GitHub holding one repo, `me/board`, that
-// answers the calls the companion makes (the repo, its tree, GraphQL blob reads, and Contents API
-// writes) the way the real one does.
+// answers the calls the companion makes (the repo, its tree, GraphQL blob and root file sha reads,
+// and Contents API writes) the way the real one does.
 
 import { serializeCard } from '@shared/cardfile'
 import type { Card } from '@shared/types'
@@ -52,6 +52,7 @@ export function github(files: Record<string, string>) {
   }
   for (const [path, text] of Object.entries(files)) put(path, text)
   const asked: string[][] = []
+  const looked: string[] = []
   const writes: Write[] = []
   const hooks: { beforeWrite?: (path: string) => void; afterWrite?: () => void } = {}
   let offline = false
@@ -61,7 +62,21 @@ export function github(files: Record<string, string>) {
     if (path === '/repos/me/board') return Response.json({ default_branch: 'main' })
     if (path === '/repos/me/board/git/trees/main?recursive=1') return Response.json({ sha: sha(), truncated: false, tree })
     if (path === '/graphql') {
-      const query = JSON.parse(String(init?.body)).query as string
+      const { query, variables } = JSON.parse(String(init?.body)) as { query: string; variables: Record<string, string> }
+      // A file's sha by `HEAD:<path>`, per repo: only `me/board` is here.
+      if (query.includes('expression:')) {
+        looked.push(query)
+        const data: Record<string, unknown> = {}
+        for (const [, alias, i] of query.matchAll(/(r(\d+)): repository/g)) {
+          const oid = (file: string) => {
+            const entry = tree.find(e => e.path === file)
+            return entry ? { oid: entry.sha } : null
+          }
+          const here = variables[`o${i}`] === 'me' && variables[`n${i}`] === 'board'
+          data[alias] = here ? { theme: oid('theme.json'), project: oid('project.json') } : null
+        }
+        return Response.json({ data })
+      }
       const wanted = [...query.matchAll(/(b\d+): object\(oid: "([0-9a-f]{40})"\)/g)]
       asked.push(wanted.map(m => m[2]))
       const repository = Object.fromEntries(wanted.map(([, alias, s]) => [alias, { text: blobs.get(s), isBinary: false }]))
@@ -91,6 +106,7 @@ export function github(files: Record<string, string>) {
     api,
     put,
     asked,
+    looked,
     writes,
     hooks,
     goOffline: (value = true) => {

@@ -7,6 +7,7 @@ import {
   luminance,
   normalizeHex,
   parseTheme,
+  swatchColors,
   THEME_PRESETS,
   themeText,
   themeTokens,
@@ -148,5 +149,15 @@ describe('theme tokens', () => {
       expect(preset.name).toBeTruthy()
       expect(parseTheme(themeText(preset))).toEqual(preset)
     }
+  })
+})
+
+describe('a theme’s swatch', () => {
+  it('shows its background, cards and accent as the theme paints them, the app’s where unset', () => {
+    expect(swatchColors(null)).toEqual([DEFAULT_COLORS.background, DEFAULT_COLORS.surface, DEFAULT_COLORS.accent])
+    // An unset card colour shows what the background and text mix to, as the cards do.
+    const [, cards, accent] = swatchColors({ colors: { background: '#ffffff', text: '#000000' } })
+    expect(cards).toBe(themeTokens({ colors: { background: '#ffffff', text: '#000000' } })['--card'])
+    expect(accent).toBe(DEFAULT_COLORS.accent)
   })
 })

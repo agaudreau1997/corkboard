@@ -1,7 +1,8 @@
 // Browsing: your board repos, a repo's boards, a board's lists, and a card; and a "+" to jot a card
 // down on the open list. This file holds where you are and the data the screens draw: where you
 // were is remembered, so the app reopens there, drawn from the cache at once and refreshed behind
-// it. Android's back button goes up a level. Signed out, the cache is all there is, and a bar
+// it. A repo's screens are painted in its colours (`theme.json`), the repo list in the app's own.
+// Android's back button goes up a level. Signed out, the cache is all there is, and a bar
 // offers to sign in again. A new card waits in the outbox until it's sent.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
@@ -14,10 +15,12 @@ import { boardTree } from '../repo/layout'
 import type { Outbox } from '../repo/outbox'
 import { boardMetas, openBoard, refresh, type Board } from '../repo/reader'
 import type { Draft } from '../repo/writer'
+import { paint } from '../theme'
 import { Boards } from './Boards'
 import { BoardView } from './BoardView'
 import { CardView } from './CardView'
 import { NewCard } from './NewCard'
+import { ProjectMark } from './ProjectMark'
 import { Repos } from './Repos'
 
 export type Place = { repo?: string; board?: string; list?: string; card?: string; adding?: boolean }
@@ -73,6 +76,16 @@ export function Browse({ session, cache, outbox, signedOut, onSignIn, onSignOut 
   const board = useBoard(api, cache, repo.snapshot, place.board)
   const sending = useOutbox(api, cache, outbox, repo.refresh)
 
+  // The open repo's look, kept by its last refresh (so read again whenever the snapshot changes).
+  const look = place.repo && cache.look(place.repo)
+  const theme = (look && look.theme) || undefined
+  const themeKey = JSON.stringify(theme ?? null)
+  useEffect(() => {
+    paint(theme)
+    // Back to the app's own colours when browsing ends (signed out to the sign-in screen).
+    return () => paint()
+  }, [themeKey])
+
   const bar = signedOut && (
     <div className="bar">
       <span>{signedOut} Showing what was last read.</span>
@@ -84,7 +97,7 @@ export function Browse({ session, cache, outbox, signedOut, onSignIn, onSignOut 
 
   let screen: ReactNode
   if (!place.repo) {
-    screen = <Repos api={api} onPick={r => go({ repo: r })} onSignOut={onSignOut} />
+    screen = <Repos api={api} cache={cache} onPick={r => go({ repo: r })} onSignOut={onSignOut} />
   } else if (!place.board) {
     screen = (
       <Boards
@@ -120,6 +133,7 @@ export function Browse({ session, cache, outbox, signedOut, onSignIn, onSignOut 
     screen = (
       <BoardView
         title={board.board?.meta.title ?? place.board}
+        mark={<ProjectMark look={look || undefined} />}
         state={repo}
         board={board.board}
         loading={board.loading}

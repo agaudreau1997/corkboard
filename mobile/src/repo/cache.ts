@@ -1,9 +1,11 @@
 // The last read of each board repo, kept on the phone so the app opens instantly and offline, then
 // refreshes. Files are kept by blob sha (a sha names its content, so a kept file is never stale)
 // and a repo's snapshot is its tree as last read. Board files aren't secrets: the WebView's
-// localStorage is enough, and is a few hundred kilobytes for a board repo.
+// localStorage is enough, and is a few hundred kilobytes for a board repo. Each repo's look (its
+// colours and settings, `looks.ts`) is kept parsed beside them, for the repo list.
 
 import type { BoardFiles } from './layout'
+import type { Look } from './looks'
 
 export type Snapshot = {
   repo: string
@@ -18,6 +20,7 @@ export type Snapshot = {
 
 const BLOB = 'corkboard:blob:'
 const SNAPSHOT = 'corkboard:snapshot:'
+const LOOK = 'corkboard:look:'
 
 export class RepoCache {
   constructor(private readonly storage: Storage) {}
@@ -38,6 +41,18 @@ export class RepoCache {
     } catch {
       return undefined
     }
+  }
+
+  look(repo: string): Look | undefined {
+    try {
+      return JSON.parse(this.storage.getItem(LOOK + repo) ?? 'null') ?? undefined
+    } catch {
+      return undefined
+    }
+  }
+
+  putLook(repo: string, look: Look): void {
+    this.storage.setItem(LOOK + repo, JSON.stringify(look))
   }
 
   /** Keeps the snapshot, then drops the files no kept snapshot names any more. */
