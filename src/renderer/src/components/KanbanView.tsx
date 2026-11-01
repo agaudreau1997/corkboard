@@ -33,7 +33,8 @@ import {
   useState,
   type RefObject,
 } from 'react'
-import { between, freezeListColors, isDivider, listSort, reorderLists, slugify } from '@shared/cardfile'
+import { newListId } from '@shared/boardmeta'
+import { between, freezeListColors, isDivider, listSort, reorderLists } from '@shared/cardfile'
 import { dueDay, isOverdue } from '@shared/due'
 import { imageUrl } from '@shared/images'
 import { boardColumns, boardOrder, UNLISTED, type Columns } from '@shared/selection'
@@ -614,9 +615,7 @@ function AddListColumn({ board }: { board: LoadedBoard }) {
   const add = async () => {
     const text = title.trim()
     if (!text) return setOpen(false)
-    const base = slugify(text)
-    let id = base
-    for (let n = 2; board.meta.lists.some(l => l.id === id); n++) id = `${base}-${n}`
+    const id = newListId(text, board.meta.lists)
     setTitle('')
     // Its colour is written down with it, so later moves never change it.
     const lists = freezeListColors([...board.meta.lists, { id, title: text }])

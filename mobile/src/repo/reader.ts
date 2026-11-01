@@ -1,12 +1,13 @@
 // Reading a board repo through GitHub, not git: the default branch's tree in one call, then the
 // files it names that the cache doesn't hold yet, in GraphQL batches. A refresh is the tree again
 // and only the files whose sha changed. Boards' `board.json` files are read with the tree (there
-// are few), and so are the repo's colours and settings at its root (`looks.ts`); a board's cards
-// when it is opened. Offline, or signed out, everything comes from the cache, and a board shows
-// the cards the cache holds.
+// are few), and so are the repo's colours and settings at its root (`looks.ts`; `project.json` also
+// says whether the project is in work mode); a board's cards when it is opened. Offline, or signed
+// out, everything comes from the cache, and a board shows the cards the cache holds.
 
 import { tryParseCard } from '@shared/cardfile'
-import type { BoardMeta, Card } from '@shared/types'
+import { parseProjectSettings, PROJECT_FILE } from '@shared/project'
+import type { BoardMeta, Card, ProjectSettings } from '@shared/types'
 import { answerJson as json } from '../github/answer'
 import { readBlobs } from './blobs'
 import type { RepoCache, Snapshot } from './cache'
@@ -36,7 +37,12 @@ export async function refresh(api: Api, cache: RepoCache, repo: string, now = ne
   // The look's changed files come in the same read as the boards' metas.
   const shas = rootShas(tree.tree)
   const kept = cache.look(repo)
-  const texts = await fetchMissing(api, cache, repo, [...boards.map(b => b.meta.sha), ...unread(shas, kept)])
+  const project = tree.tree.find(e => e.type === 'blob' && e.path === PROJECT_FILE)
+  const texts = await fetchMissing(api, cache, repo, [
+    ...boards.map(b => b.meta.sha),
+    ...unread(shas, kept),
+    ...(project ? [project.sha] : []),
+  ])
   cache.putLook(repo, lookAt(shas, kept, sha => texts.get(sha) ?? cache.blob(sha)))
   const snapshot: Snapshot = {
     repo,
@@ -44,6 +50,7 @@ export async function refresh(api: Api, cache: RepoCache, repo: string, now = ne
     tree: tree.sha,
     truncated: tree.truncated,
     boards,
+    ...(project ? { project: { path: project.path, sha: project.sha } } : {}),
     read: now.toISOString(),
   }
   cache.putSnapshot(snapshot)
@@ -76,6 +83,12 @@ export function boardMetas(cache: RepoCache, snapshot: Snapshot): { path: string
     const meta = parseMeta(cache.blob(b.meta.sha) ?? '')
     return meta ? [{ path: b.path, meta }] : []
   })
+}
+
+/** The project's settings from its `project.json`: none when it has none or it doesn't parse. */
+export function projectSettings(cache: RepoCache, snapshot: Snapshot | undefined): ProjectSettings {
+  const text = snapshot?.project && cache.blob(snapshot.project.sha)
+  return (text && parseProjectSettings(text)) || {}
 }
 
 /** Reads the files the cache lacks and keeps them; answers what it read. */

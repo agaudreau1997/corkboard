@@ -1,5 +1,6 @@
 // A card: read it, and change it (title and description, list, complete, archived), with the
-// question when it was edited elsewhere meanwhile.
+// question when it was edited elsewhere meanwhile; restore it from the archive; share it, and copy
+// its id with a tap.
 
 import { useState } from 'react'
 import Markdown from 'react-markdown'
@@ -7,13 +8,23 @@ import remarkGfm from 'remark-gfm'
 import type { Card, ListDef } from '@shared/types'
 import { SignedOut } from '../github/session'
 import { Conflict, type CardChange } from '../repo/editor'
+import { CardShare, CopyId } from './CardShare'
 import { formatDue, Header, markdownParts } from './parts'
 
 type ChangeCard = (change: CardChange, overwrite?: boolean) => Promise<void>
 
 /** A card: read it, edit its title and description, move it, mark it complete, archive it. */
-export function CardView(props: { card?: Card; id: string; lists: ListDef[]; canChange: boolean; onBack: () => void; onChange: ChangeCard }) {
-  const { card, id, lists, canChange, onBack, onChange } = props
+export function CardView(props: {
+  card?: Card
+  id: string
+  lists: ListDef[]
+  canChange: boolean
+  /** A work project: what's shared names the card's Jira key, never its id. */
+  work: boolean
+  onBack: () => void
+  onChange: ChangeCard
+}) {
+  const { card, id, lists, canChange, work, onBack, onChange } = props
   const [editing, setEditing] = useState(false)
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
@@ -82,6 +93,9 @@ export function CardView(props: { card?: Card; id: string; lists: ListDef[]; can
       <div className="page card-page">
         <h2>{card.title}</h2>
         <p className="card-meta">
+          <CopyId id={card.id} />
+          {card.jira && <CopyId id={card.jira} />}
+          {card.archived && <span className="chip">Archived</span>}
           {card.complete && <span className="chip done">Done</span>}
           {card.due && <span className="chip">Due {formatDue(card.due)}</span>}
           {card.labels.map(l => (
@@ -104,36 +118,50 @@ export function CardView(props: { card?: Card; id: string; lists: ListDef[]; can
             >
               Edit
             </button>
-            <select
-              aria-label="Move to list"
-              disabled={busy}
-              value=""
-              onChange={e => e.target.value && void save({ list: e.target.value })}
-            >
-              <option value="">Move to…</option>
-              {lists
-                .filter(l => l.id !== card.list)
-                .map(l => (
-                  <option key={l.id} value={l.id}>
-                    {l.title}
-                  </option>
-                ))}
-            </select>
-            <button type="button" disabled={busy} onClick={() => save({ complete: !card.complete })}>
-              {card.complete ? 'Not complete' : 'Mark complete'}
-            </button>
-            {archiving ? (
-              <button type="button" className="danger" disabled={busy} onClick={() => save({ archived: true })}>
-                Archive it
+            {card.archived ? (
+              <button type="button" disabled={busy} onClick={() => save({ restore: true })}>
+                {listTitle ? `Restore to ${listTitle}` : 'Restore as an idea'}
               </button>
             ) : (
-              <button type="button" disabled={busy} onClick={() => setArchiving(true)}>
-                Archive
-              </button>
+              <>
+                <select
+                  aria-label="Move to list"
+                  disabled={busy}
+                  value=""
+                  onChange={e => e.target.value && void save({ list: e.target.value })}
+                >
+                  <option value="">Move to…</option>
+                  {lists
+                    .filter(l => l.id !== card.list)
+                    .map(l => (
+                      <option key={l.id} value={l.id}>
+                        {l.title}
+                      </option>
+                    ))}
+                </select>
+                <button type="button" disabled={busy} onClick={() => save({ complete: !card.complete })}>
+                  {card.complete ? 'Not complete' : 'Mark complete'}
+                </button>
+                {archiving ? (
+                  <button type="button" className="danger" disabled={busy} onClick={() => save({ archived: true })}>
+                    Archive it
+                  </button>
+                ) : (
+                  <button type="button" disabled={busy} onClick={() => setArchiving(true)}>
+                    Archive
+                  </button>
+                )}
+              </>
             )}
+            <CardShare card={card} work={work} disabled={busy} />
           </div>
         ) : (
-          <p className="note">Changing a card needs a connection to GitHub.</p>
+          <>
+            <div className="actions">
+              <CardShare card={card} work={work} />
+            </div>
+            <p className="note">Changing a card needs a connection to GitHub.</p>
+          </>
         )}
         {error && <p className="note error">{error}</p>}
         {conflict && <ConflictNote conflict={conflict} busy={busy} onOverwrite={() => save(conflict.change, true)} onKeep={() => setConflict(undefined)} />}

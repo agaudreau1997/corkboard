@@ -8,7 +8,7 @@ import { boardColumns } from '@shared/selection'
 import { BATCH, blobsQuery } from '../src/repo/blobs'
 import { RepoCache } from '../src/repo/cache'
 import { boardTree, findBoards } from '../src/repo/layout'
-import { boardMetas, openBoard, refresh } from '../src/repo/reader'
+import { boardMetas, openBoard, projectSettings, refresh } from '../src/repo/reader'
 import { card, github, MemoryStorage, meta, sha } from './fakes'
 
 describe('finding boards in the tree', () => {
@@ -92,6 +92,28 @@ describe('reading a board repo', () => {
     gh.put('cork/cards/CORK-1.md', card({ id: 'CORK-1', title: 'Edited', list: 'todo', pos: 2048 }))
     await refresh(gh.api, cache, 'me/board')
     expect(storage.length).toBe(before - 1)
+  })
+
+  it('reads the project’s settings from project.json at the root, work mode among them, and keeps them', async () => {
+    const gh = github({ ...files(), 'project.json': '{ "work": true }' })
+    const storage = new MemoryStorage()
+    const cache = new RepoCache(storage)
+    const snapshot = await refresh(gh.api, cache, 'me/board')
+    expect(gh.asked).toHaveLength(1)
+    expect(projectSettings(cache, snapshot)).toEqual({ work: true })
+    // Kept while the snapshot names it, so a work project stays one offline.
+    await refresh(gh.api, cache, 'me/board')
+    const later = new RepoCache(storage)
+    expect(projectSettings(later, later.snapshot('me/board'))).toEqual({ work: true })
+    gh.put('project.json', '{}')
+    expect(projectSettings(cache, await refresh(gh.api, cache, 'me/board'))).toEqual({})
+  })
+
+  it('takes a repo without project.json, or with a broken one, as a personal project', async () => {
+    const cache = new RepoCache(new MemoryStorage())
+    expect(projectSettings(cache, await refresh(github(files()).api, cache, 'me/board'))).toEqual({})
+    const broken = github({ ...files(), 'project.json': '{ "work": tr' })
+    expect(projectSettings(cache, await refresh(broken.api, cache, 'me/board'))).toEqual({})
   })
 })
 

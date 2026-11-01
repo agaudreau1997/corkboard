@@ -1,0 +1,10 @@
+/* A card's id (and Jira key) as a chip that copies itself when tapped (CardShare.tsx). */
+
+button.chip.copy-id {
+  border: 0;
+  font-family: var(--mono, ui-monospace, monospace);
+}
+
+button.chip.copy-id:active {
+  background: var(--hover);
+}

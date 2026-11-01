@@ -94,4 +94,39 @@ describe('changing a card', () => {
     await changeCard(gh.api, cache, at, read, sha, { title: 'Jotted' }, options)
     expect(parseCard(gh.writes.at(-1)!.text)).toMatchObject({ title: 'Jotted', list: 'done' })
   })
+
+  it('restores an archived card to the end of its list, or as an idea when its list is gone or archived', async () => {
+    for (const [lists, list, pos] of [
+      [[{ id: 'todo', title: 'To do' }, { id: 'done', title: 'Done' }], 'todo', 5120],
+      [[{ id: 'todo', title: 'To do', archived: true }, { id: 'done', title: 'Done' }], null, 1024],
+      [[{ id: 'done', title: 'Done' }], null, 1024],
+    ] as const) {
+      const gh = github({
+        ...files(),
+        'cork/board.json': meta('CORK', 'Cork', [...lists]),
+        'cork/cards/CORK-3.md': card({ id: 'CORK-3', title: 'Back', list: 'todo', pos: 100, archived: true }),
+        'cork/cards/CORK-4.md': card({ id: 'CORK-4', title: 'Last', list: 'todo', pos: 4096 }),
+      })
+      const cache = new RepoCache(new MemoryStorage())
+      const board = (await openBoard(gh.api, cache, await refresh(gh.api, cache, 'me/board'), 'cork'))!
+      const read = board.cards.find(c => c.id === 'CORK-3')!
+      await changeCard(gh.api, cache, at, read, board.shas['CORK-3'], { restore: true }, options)
+      const write = gh.writes.at(-1)!
+      expect(write.message).toBe('Restore CORK-3')
+      const now = parseCard(write.text)
+      expect(now.archived).toBeUndefined()
+      expect([now.list, now.pos]).toEqual([list, pos])
+    }
+  })
+
+  it('decides where a restored card goes against the board as it is when written', async () => {
+    const gh = github({ ...files(), 'cork/cards/CORK-3.md': card({ id: 'CORK-3', title: 'Back', list: 'todo', pos: 100, archived: true }) })
+    const cache = new RepoCache(new MemoryStorage())
+    const board = (await openBoard(gh.api, cache, await refresh(gh.api, cache, 'me/board'), 'cork'))!
+    // A desktop archived the list and touched the card meanwhile.
+    gh.put('cork/board.json', meta('CORK', 'Cork', [{ id: 'todo', title: 'To do', archived: true }, { id: 'done', title: 'Done' }]))
+    gh.put('cork/cards/CORK-3.md', card({ id: 'CORK-3', title: 'Back', list: 'todo', pos: 100, archived: true, labels: ['x'] }))
+    await changeCard(gh.api, cache, at, board.cards.find(c => c.id === 'CORK-3')!, board.shas['CORK-3'], { restore: true }, options)
+    expect(parseCard(gh.writes.at(-1)!.text)).toMatchObject({ list: null, labels: ['x'] })
+  })
 })

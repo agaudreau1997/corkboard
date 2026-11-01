@@ -1,5 +1,5 @@
 // Changing a card from the phone: a new title or description, another list of its board, archived
-// or complete. Each change is one card file written through the Contents API, one commit named the
+// or complete, or restored from the archive. Each change is one card file written through the Contents API, one commit named the
 // way the desktop's auto-commit names it, and it stamps `updated:` (a sync between desktops keeps
 // the side changed last). The card goes through `serializeCard`, so its unknown keys and sessions
 // survive and a move is a one-line diff.
@@ -11,7 +11,7 @@
 // `overwrite` then writes it over the newer card.
 
 import { between, describeCardChange, serializeCard, sortCards } from '@shared/cardfile'
-import type { Card } from '@shared/types'
+import type { Card, ListDef } from '@shared/types'
 import { answerJson } from '../github/answer'
 import type { RepoCache } from './cache'
 import { openBoard, refresh } from './reader'
@@ -26,6 +26,11 @@ export type CardChange = {
   list?: string | null
   archived?: boolean
   complete?: boolean
+  /**
+   * Out of the archive: to the end of its list if the board still shows that list, else to the
+   * ideas (no list). Decided against the board as it is when written.
+   */
+  restore?: boolean
 }
 
 /** The card was edited elsewhere in a way this change would overwrite. */
@@ -39,17 +44,27 @@ type Target = { repo: string; board: string }
 
 const TRIES = 5
 
+type BoardNow = { cards: Card[]; lists: ListDef[] }
+
 /** The card with the change made, stamped, and placed at the end of a new list. */
-export function applyChange(card: Card, change: CardChange, boardCards: Card[], now: string): Card {
+export function applyChange(card: Card, change: CardChange, board: BoardNow, now: string): Card {
   const next: Card = { ...card, updated: now }
+  const endOf = (list: string | null) =>
+    between(sortCards(board.cards.filter(c => c.list === list && !c.archived && c.id !== card.id)).at(-1)?.pos, undefined)
+  if (change.restore && card.archived) {
+    const kept = board.lists.some(l => l.id === card.list && !l.archived)
+    next.archived = undefined
+    next.list = kept ? card.list : null
+    next.pos = endOf(next.list)
+    return next
+  }
   if (change.title !== undefined) next.title = change.title.trim() || card.title
   if (change.body !== undefined) next.body = change.body
   if (change.archived !== undefined) next.archived = change.archived || undefined
   if (change.complete !== undefined) next.complete = change.complete || undefined
   if (change.list !== undefined && change.list !== card.list) {
     next.list = change.list
-    const inList = sortCards(boardCards.filter(c => c.list === change.list && !c.archived && c.id !== card.id))
-    next.pos = between(inList.at(-1)?.pos, undefined)
+    next.pos = endOf(change.list)
   }
   return next
 }
@@ -75,9 +90,9 @@ export async function changeCard(
   const now = options.now ?? (() => new Date().toISOString())
   let base = read
   let baseSha = sha
-  let boardCards: Card[] | undefined
+  let boardNow: BoardNow | undefined
   for (let attempt = 0; attempt < TRIES; attempt++) {
-    const next = applyChange(base, change, boardCards ?? (await cardsOf(api, cache, at)), now())
+    const next = applyChange(base, change, boardNow ?? (await boardOf(api, cache, at)), now())
     const path = `${at.board}/cards/${read.id}.md`
     const text = serializeCard(next)
     const response = await api(`/repos/${at.repo}/contents/${path.split('/').map(encodeURIComponent).join('/')}`, {
@@ -99,12 +114,13 @@ export async function changeCard(
     if (!options.overwrite && overlaps(read, theirs, change)) throw new Conflict(theirs)
     base = theirs
     baseSha = board.shas[read.id]
-    boardCards = board.cards
+    boardNow = { cards: board.cards, lists: board.meta.lists }
   }
   throw new Error(`${read.id} kept changing while it was being saved: try again.`)
 }
 
-async function cardsOf(api: Api, cache: RepoCache, at: Target): Promise<Card[]> {
+async function boardOf(api: Api, cache: RepoCache, at: Target): Promise<BoardNow> {
   const snapshot = cache.snapshot(at.repo) ?? (await refresh(api, cache, at.repo))
-  return (await openBoard(undefined, cache, snapshot, at.board))?.cards ?? []
+  const board = await openBoard(undefined, cache, snapshot, at.board)
+  return { cards: board?.cards ?? [], lists: board?.meta.lists ?? [] }
 }

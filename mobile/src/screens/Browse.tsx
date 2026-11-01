@@ -1,10 +1,12 @@
 // Browsing: your board repos, a board's lists, and a card; and a "+" to jot a card down on the open
 // list. A repo opens on its main board, picked by the desktop's rule (`mainBoardOf`), and its other
-// boards are a tap on the board's title away (the switcher). This file holds where you are and the data the screens draw: where you
-// were is remembered, so the app reopens there, drawn from the cache at once and refreshed behind
-// it. A repo's screens are painted in its colours (`theme.json`), the repo list in the app's own.
-// Android's back button goes up a level: from a board, to the repo list. Signed out, the cache is all there is, and a bar
-// offers to sign in again. A new card waits in the outbox until it's sent.
+// boards are a tap on the board's title away (the switcher). This file holds where you are and the
+// data the screens draw: where you were is remembered, so the app reopens there, drawn from the
+// cache at once and refreshed behind it. A repo's screens are painted in its colours
+// (`theme.json`), the repo list in the app's own. Android's back button goes up a level: from a
+// board, to the repo list. Signed out, the cache is all there is, and a bar offers to sign in again.
+// A new card waits in the outbox until it's sent. A board's settings and lists change its
+// board.json, which needs a connection.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { App as CapApp } from '@capacitor/app'
@@ -12,12 +14,14 @@ import { mainBoardOf } from '@shared/project'
 import { UNLISTED } from '@shared/selection'
 import { SignedOut, type Session } from '../github/session'
 import type { RepoCache, Snapshot } from '../repo/cache'
+import { changeBoard, type BoardChange } from '../repo/boardchange'
 import { changeCard } from '../repo/editor'
 import { boardTree } from '../repo/layout'
 import type { Outbox } from '../repo/outbox'
-import { boardMetas, openBoard, refresh, type Board } from '../repo/reader'
+import { boardMetas, openBoard, projectSettings, refresh, type Board } from '../repo/reader'
 import type { Draft } from '../repo/writer'
 import { paint } from '../theme'
+import { BoardSettings } from './BoardSettings'
 import { BoardSwitcher } from './BoardSwitcher'
 import { BoardView } from './BoardView'
 import { CardView } from './CardView'
@@ -33,6 +37,7 @@ export type Place = {
   list?: string
   card?: string
   adding?: boolean
+  settings?: boolean
   /** The board switcher is open (not remembered: the app reopens on the board). */
   switching?: boolean
 }
@@ -72,11 +77,13 @@ export function Browse({ session, cache, outbox, signedOut, onSignIn, onSignOut 
         ? { ...p, switching: undefined }
         : p.adding
           ? { ...p, adding: undefined }
-          : p.card
-            ? { ...p, card: undefined }
-            : p.repo
-              ? {}
-              : undefined,
+          : p.settings
+            ? { ...p, settings: undefined }
+            : p.card
+              ? { ...p, card: undefined }
+              : p.repo
+                ? {}
+                : undefined,
     [],
   )
 
@@ -95,6 +102,7 @@ export function Browse({ session, cache, outbox, signedOut, onSignIn, onSignOut 
   const repo = useSnapshot(api, cache, place.repo)
   const board = useBoard(api, cache, repo.snapshot, place.board)
   const sending = useOutbox(api, cache, outbox, repo.refresh)
+  const boardChange = useBoardChange(api, cache, place, repo.refresh)
 
   // The open repo's look, kept by its last refresh (so read again whenever the snapshot changes).
   const look = place.repo && cache.look(place.repo)
@@ -163,6 +171,20 @@ export function Browse({ session, cache, outbox, signedOut, onSignIn, onSignOut 
         }}
       />
     )
+  } else if (place.settings && board.board) {
+    const counts = new Map<string, number>()
+    for (const c of board.board.cards) if (c.list && !c.archived) counts.set(c.list, (counts.get(c.list) ?? 0) + 1)
+    screen = (
+      <BoardSettings
+        meta={board.board.meta}
+        counts={counts}
+        canChange={!!api}
+        busy={boardChange.busy || repo.busy}
+        error={boardChange.error}
+        onBack={() => go({ ...place, settings: undefined })}
+        onChange={change => void boardChange.run(change)}
+      />
+    )
   } else if (!place.card) {
     screen = (
       <BoardView
@@ -184,6 +206,10 @@ export function Browse({ session, cache, outbox, signedOut, onSignIn, onSignOut 
         offline={!api}
         onAdd={() => go({ ...place, adding: true })}
         onDiscard={sending.discard}
+        canChangeBoard={!!api && !!board.board}
+        onBoardChange={boardChange.run}
+        boardError={boardChange.error}
+        onSettings={() => go({ ...place, settings: true })}
       />
     )
   } else {
@@ -195,6 +221,7 @@ export function Browse({ session, cache, outbox, signedOut, onSignIn, onSignOut 
         id={place.card}
         lists={b ? b.meta.lists.filter(l => !l.archived) : []}
         canChange={!!api && !!card && !!b?.shas[card.id]}
+        work={projectSettings(cache, repo.snapshot).work === true}
         onBack={() => go({ ...place, card: undefined })}
         onChange={async (change, overwrite) => {
           await changeCard(api!, cache, { repo: place.repo!, board: place.board! }, card!, b!.shas[card!.id], change, { overwrite })
@@ -262,6 +289,33 @@ function useOutbox(api: Session['api'] | undefined, cache: RepoCache, outbox: Ou
       setDrafts(outbox.drafts())
     },
   }
+}
+
+/** Changes to the open board's board.json, one at a time, with why the last one failed. */
+function useBoardChange(api: Session['api'] | undefined, cache: RepoCache, place: Place, refreshRepo: () => Promise<void>) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string>()
+  useEffect(() => setError(undefined), [place.board, place.settings])
+  const run = useCallback(
+    async (change: BoardChange) => {
+      if (!api || !place.repo || !place.board) return undefined
+      setBusy(true)
+      setError(undefined)
+      try {
+        const meta = await changeBoard(api, cache, { repo: place.repo, board: place.board }, change)
+        await refreshRepo()
+        return meta
+      } catch (e) {
+        if (e instanceof TypeError) setError('No connection: nothing was saved.')
+        else if (!(e instanceof SignedOut)) setError((e as Error).message)
+        return undefined
+      } finally {
+        setBusy(false)
+      }
+    },
+    [api, cache, place.repo, place.board, refreshRepo],
+  )
+  return { busy, error, run }
 }
 
 export type RepoState = { snapshot?: Snapshot; busy: boolean; error?: string; refresh: () => Promise<void> }
