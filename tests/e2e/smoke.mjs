@@ -1420,14 +1420,36 @@ try {
     (await notice.textContent()).includes(`${clashId}, made here, is now ${renumbered}`),
     `naming the old id and the new (${(await notice.textContent()).trim()})`,
   )
-  check(
-    !!(await until(async () => (await page.locator(`.card[data-card="${clashId}"]`, { hasText: 'Made on the other machine' }).count()) === 1)) &&
+  const bothCards = await until(
+    async () =>
+      (await page.locator(`.card[data-card="${clashId}"]`, { hasText: 'Made on the other machine' }).count()) === 1 &&
       (await page.locator(`.card[data-card="${renumbered}"]`, { hasText: 'Made on this machine' }).count()) === 1,
-    "both cards are on the board: the other machine's under the id, this one's renumbered",
+    10000,
+  )
+  const onBoard = async id => (await page.locator(`.card[data-card="${id}"]`).allTextContents()).join(' | ') || 'none'
+  check(
+    !!bothCards,
+    `both cards are on the board: the other machine's under the id, this one's renumbered (${clashId}: ${await onBoard(clashId)}; ${renumbered}: ${await onBoard(renumbered)})`,
   )
   await shot('11-renumbered')
-  await notice.getByRole('button', { name: 'Got it' }).click()
-  check(!!(await until(async () => (await notice.count()) === 0)), 'Got it takes the notice away')
+  // Untangle references: a terminal session with both cards in its prompt, the notice read.
+  const callsBeforeUntangle = sessionCalls().length
+  await notice.getByRole('button', { name: 'Untangle references' }).click()
+  const untangle = await until(() => sessionCalls().slice(callsBeforeUntangle)[0], 15000)
+  const untanglePrompt = untangle?.split('\0').at(-2) ?? ''
+  check(
+    untanglePrompt.includes(`1. ${clashId} is now ${renumbered}`) && untanglePrompt.includes('Made on the other machine') && untanglePrompt.includes(`Card: ${clashId}`),
+    'Untangle references starts a session naming the old id, the new one, both cards and the trailers to look for',
+  )
+  check(!!(await until(async () => (await notice.count()) === 0)), 'and takes the notice away')
+  const untangled = readFileSync(path.join(mainCards, `${renumbered}.md`), 'utf8')
+  check(untangled.includes('purpose: untangle') && untangled.includes('list: todo'), 'the untangle is recorded on the card, which stays in its list')
+  await page.locator(`.card[data-card="${renumbered}"]`).click({ button: 'right' })
+  check((await page.locator('.ctx-menu').getByRole('menuitem', { name: /Untangle references/ }).count()) === 1, "the renumbered card's menu offers it too")
+  await page.keyboard.press('Escape')
+  await page.locator(`.card[data-card="${clashId}"]`).click({ button: 'right' })
+  check((await page.locator('.ctx-menu').getByRole('menuitem', { name: /Untangle references/ }).count()) === 0, 'and no other card')
+  await page.keyboard.press('Escape')
 
   // ---- the notification program: set in the app's settings, tried from there ----
   await page.locator('.sidebar-foot').getByRole('button', { name: 'Corkboard settings…' }).click()

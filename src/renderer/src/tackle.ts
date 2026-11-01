@@ -111,6 +111,20 @@ export async function discussCards(
 }
 
 /**
+ * Starts a terminal session that sorts out what still names renumbered cards' old ids (see
+ * `untanglePrompt`). The board needn't be open: the side panel's notice offers it for any board.
+ */
+export async function untangleCards(boardPath: string, cardIds: string[]): Promise<boolean> {
+  try {
+    await api.tackle.start({ boardPath, cardIds, mode: 'local', split: 'together', purpose: 'untangle' })
+    return true
+  } catch (error) {
+    actions.toast((error as Error).message, 'error')
+    return false
+  }
+}
+
+/**
  * Triages a whole board in one conversation: the cards of each list in board order, then the
  * map-only ideas. Archived lists and cards are left out. The board loads first when it is not open.
  */

@@ -699,6 +699,7 @@ function SessionRow({
   return (
     <li className="session" title={detail || undefined}>
       {session.purpose === 'discuss' && <span className="kind k-discuss">Discuss</span>}
+      {session.purpose === 'untangle' && <span className="kind k-discuss">Untangle</span>}
       <span className={`kind k-${session.kind}`}>{kind}</span>
       <span className="muted">{localTime(session.started)}</span>
       <span className="muted">{others}</span>

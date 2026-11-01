@@ -41,6 +41,10 @@ A small panel at the board's bottom right shows the code repo of the board in fr
 
 *Discuss* on a card (its drawer, or its menu) and *Discuss / triage* on a list or a selection open one conversation, in Claude desktop or a terminal, that may not implement anything: no code changes, no new files, no commits in the code repo unless you ask in it. Claude reads the cards and the code and talks them through (what's unclear, risks, scope, splitting; for a list: still relevant, ready, to split, merge, move or archive), and once you agree it writes the outcome into the cards themselves (with the app's MCP server in a terminal, in the card files from Claude desktop), which is how a card gets its details before it's tackled. A discussion leaves the cards in their lists and shows as ✎ on the card.
 
+## Untangle a renumbered card
+
+When a sync renumbers a card (two machines made a card under one id: see [The board repo](board-repo.md#synced-between-machines)), what was written before it may still name the old id and mean either card. *Untangle references*, on the side panel's notice and on the renumbered card's menu, starts a Claude session in a terminal with both cards in its prompt. It reads every mention of the old id on the board (descriptions, `links:`, `after:`), decides from the context which card each means and fixes the ones meaning the renumbered card. In the code repo it finds the commits whose `Card:` trailer names the old id and the branches named after it: an unpushed one that belongs to the renumbered card it offers to reword before the push; a pushed one stays, and is named on the card. It asks before anything it isn't sure of. A work project's code repo names no card id, so there the session leaves it alone. The card stays in its list.
+
 ## Terminal tabs show what Claude is doing
 
 ![The terminal panel: two sessions waiting for you, a cloud one, one working](images/terminals.png)

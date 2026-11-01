@@ -5,7 +5,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import { inOrder } from '@shared/sideorder'
 import type { BoardNode, ProjectNode, Renumber, SyncStatus, UpdateStatus } from '@shared/types'
 import { actions, api, projectIdOf, useStore } from '../state'
-import { discussBoard } from '../tackle'
+import { discussBoard, untangleCards } from '../tackle'
 import { openContextMenu, type MenuItem } from './ContextMenu'
 import { ProjectMark } from './ProjectMark'
 
@@ -221,12 +221,28 @@ const renumberText = (r: Renumber) => `${r.from}, made here, is now ${r.to}: ano
  */
 function RenumberNotice({ project }: { project: ProjectNode }) {
   const renumbered = project.sync.renumbered ?? []
+  // One session per board, in the board's code repo: nearly always the one.
+  const untangle = async () => {
+    const boards = [...new Set(renumbered.map(r => r.board))]
+    for (const board of boards) {
+      const ids = renumbered.filter(r => r.board === board).map(r => r.to)
+      if (!(await untangleCards(`${project.id}:${board}`, ids))) return
+    }
+    actions.dismissRenumbered(project.id)
+  }
   return (
     <div className="guide-offer renumber-notice" role="status">
       {renumbered.map(r => (
         <div key={`${r.from}-${r.to}`}>{renumberText(r)}</div>
       ))}
       <span className="guide-offer-actions">
+        <button
+          className="link"
+          title="A Claude session in a terminal finds what still names the old id (descriptions, links, commits' Card: trailers) and fixes what means the renumbered card"
+          onClick={() => void untangle()}
+        >
+          Untangle references
+        </button>
         <button className="link muted" onClick={() => actions.dismissRenumbered(project.id)}>
           Got it
         </button>

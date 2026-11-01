@@ -41,9 +41,13 @@ export type PromptContext = {
   workDir?: string
   /** The session has the app's MCP server, whose tools change the cards instead of the files. */
   mcp?: boolean
+  /** A card by id anywhere in the repo: an untangle names the card now under a renumbered card's old id. */
+  findCard?: (id: string) => Card | undefined
+  /** The board's code repo on this machine, when it has one: where an untangle looks for trailers. */
+  codeRepo?: string
 }
 
-export type Purpose = 'tackle' | 'discuss'
+export type Purpose = 'tackle' | 'discuss' | 'untangle'
 
 export function sessionName(cards: Card[], groupTitle?: string, purpose: Purpose = 'tackle'): string {
   const name =
@@ -53,7 +57,73 @@ export function sessionName(cards: Card[], groupTitle?: string, purpose: Purpose
         ? `${groupTitle} (${cards.length} cards)`
         : `${cards.map(c => c.id).join(' ')}`
   if (purpose === 'tackle') return name
+  if (purpose === 'untangle') return `Untangle ${name}`
   return cards.length > 1 ? `Triage ${name}` : `Discuss ${name}`
+}
+
+/**
+ * Sorting out what still names a card's old id after a sync renumbered it (another machine had
+ * made a card under the same id). The sync moved the links this machine wrote; what is left needs
+ * reading: a description, a link written on the other machine, a commit's trailer or a branch
+ * may name the old id and mean either card. So the prompt gives both cards in full, and the
+ * session decides each mention from its context, fixes the board through the usual rules, and
+ * only proposes what would rewrite the code repo's history. A work project's code repo never names
+ * a card id, so there it is left alone and the rule against writing one is repeated.
+ */
+export function untanglePrompt(cards: Card[], ctx: PromptContext): string {
+  const renumbers = cards.flatMap(card => (card.renumbered ?? []).map(r => ({ card, from: r.from })))
+  const one = renumbers.length === 1
+  const parts: string[] = []
+  parts.push(
+    one
+      ? 'A sync of the task board renumbered a card: another machine had made a card under the same id before the two synced, so the card made on this machine took a new id. Anything written before that sync may still name the old id while meaning the renumbered card. Help me untangle those references.'
+      : `A sync of the task board renumbered ${renumbers.length} cards: another machine had made cards under the same ids before the two synced, so the cards made on this machine took new ids. Anything written before that sync may still name an old id while meaning the renumbered card. Help me untangle those references.`,
+  )
+  parts.push(
+    renumbers
+      .map(({ card, from }, i) => {
+        const lines = [`${i + 1}. ${from} is now ${card.id}${card.uid ? ` (uid ${card.uid})` : ''}.`]
+        lines.push(`   The renumbered card, now ${card.id}: ${card.title}`)
+        lines.push(`   File: ${ctx.cardFile(card.id)}`)
+        if (card.body.trim()) lines.push(indent(card.body.trim(), '      '))
+        const other = ctx.findCard?.(from)
+        if (other) {
+          lines.push(`   The card now under ${from}, made on the other machine: ${other.title}`)
+          if (other.body.trim()) lines.push(indent(other.body.trim(), '      '))
+        } else {
+          lines.push(`   No card is under ${from} on this machine now (moved, or not synced back yet).`)
+        }
+        return lines.join('\n')
+      })
+      .join('\n\n'),
+  )
+  parts.push(`The cards are Markdown files in the board repo ${ctx.boardRoot}${guideNote(ctx)}.`)
+
+  const fix = ctx.mcp
+    ? `with the corkboard tools (update_card for a description, links or \`after\`), never by editing a card file. ${MCP_NOTE}`
+    : 'in the card files, setting `updated:` (now, ISO UTC) on each card you change.'
+  const rules = [
+    `Search every card of the board repo (descriptions, \`links:\` and \`after:\`, on every board) for ${one ? 'the old id' : 'each old id'}. Decide from the context which card each mention means: the renumbered card, or the card now under the old id. Fix the ones that mean the renumbered card, ${fix} Leave the others as they are.`,
+  ]
+  if (ctx.work) {
+    rules.push(
+      "This is a work project: its code repo names Jira keys, never card ids, so a renumber leaves nothing to fix there. Don't change the code repo, and never write a card id of the task board in anything that goes into it or its remote: not in a commit message, a branch name, a PR title or description, code, a comment or a file. This overrides the board repo's CLAUDE.md, which asks for `Card:` trailers: put none.",
+    )
+  } else if (ctx.codeRepo) {
+    const trailers = renumbers.map(r => `\`Card: ${r.from}\``).join(', ')
+    rules.push(
+      `In the code repo ${ctx.codeRepo}, find the commits whose trailer names an old id (${trailers}; \`git log --all --grep\`) and the branches named after one. Decide from each commit's changes which card it was for. For those that belong to a renumbered card and aren't pushed yet (no remote branch contains them: \`git branch -r --contains <sha>\`), propose how to fix them (the trailer reworded to the new id by amending or rebasing before the push, a branch renamed with \`git branch -m\`), and change them only once I agree. Leave pushed commits as they are: name them (short hash and subject) in the renumbered card's description instead, saying their trailer names its old id.`,
+    )
+  } else {
+    rules.push('This board has no code repo on this machine: leave the commits alone.')
+  }
+  rules.push(
+    "Ask me before anything you aren't sure of: a mention that could mean either card, a commit you can't place, any rewrite of the code repo's history.",
+    'Change nothing else: this is untangling, not work on the cards.',
+    "Don't commit in the board repo; the board app commits it.",
+  )
+  parts.push(rules.map(r => `- ${r}`).join('\n'))
+  return parts.join('\n\n')
 }
 
 /**

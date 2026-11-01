@@ -3,7 +3,7 @@
 import { between, isDivider, LIST_SORTS, listSort, orderList, reorderLists, sortCards } from '@shared/cardfile'
 import type { BoardNode, Card, ListDef, LoadedBoard, TackleMode } from '@shared/types'
 import type { MenuItem } from './components/ContextMenu'
-import { discussCards, tackleCards } from './tackle'
+import { discussCards, tackleCards, untangleCards } from './tackle'
 import { actions, api, findNode, flatten, isWork, projectIdOf, useStore } from './state'
 
 /** Every other board as "Parent / Child" (behind its project's name when there are several). */
@@ -43,6 +43,10 @@ export function cardMenu(board: LoadedBoard, card: Card): MenuItem[] {
   if (!divider && !card.archived) {
     items.push({ label: 'Tackle', items: cardTackleItems(board, card.id) })
     items.push({ label: 'Discuss', hint: 'no implementing', items: discussItems(board, [card.id]) })
+    if (card.renumbered?.length) {
+      const was = card.renumbered.map(r => r.from).join(', ')
+      items.push({ label: 'Untangle references', hint: `was ${was}`, onSelect: () => void untangleCards(board.path, [card.id]) })
+    }
     if (selected.length > 1 && isSelected) {
       items.push({
         label: `Tackle the ${selected.length} selected`,

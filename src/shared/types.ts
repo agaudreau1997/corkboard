@@ -49,8 +49,11 @@ export type SessionRef = {
   name?: string
   /** The Claude desktop app's own id for the session (`local_…`), once found in its index. */
   desktopId?: string
-  /** A discussion (talk the card through, no implementing) rather than a tackle. */
-  purpose?: 'discuss'
+  /**
+   * A discussion (talk the card through, no implementing) or an untangle (fix what still names a
+   * renumbered card's old id) rather than a tackle.
+   */
+  purpose?: 'discuss' | 'untangle'
 }
 
 export type Card = {
@@ -194,8 +197,11 @@ export type TackleRequest = {
   listTitle?: string
   /** Title of the board, when the cards are a whole board. */
   boardTitle?: string
-  /** Talk the cards through (no implementing, the cards stay put) instead of working on them. */
-  purpose?: 'tackle' | 'discuss'
+  /**
+   * Talk the cards through (no implementing, the cards stay put), or untangle renumbered cards'
+   * old ids, instead of working on them.
+   */
+  purpose?: 'tackle' | 'discuss' | 'untangle'
 }
 
 /**

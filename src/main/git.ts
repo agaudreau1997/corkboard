@@ -408,7 +408,7 @@ export class AutoCommitter {
         else if (now.sessions.length > before.sessions.length) {
           const last = now.sessions.at(-1)
           const kind = last?.kind === 'cloud' ? ' in Claude Cloud' : ''
-          lines.push(`${last?.purpose === 'discuss' ? 'Discuss' : 'Tackle'} ${id}${kind}`)
+          lines.push(`${last?.purpose === 'discuss' ? 'Discuss' : last?.purpose === 'untangle' ? 'Untangle' : 'Tackle'} ${id}${kind}`)
         } else if (now.sessions.length < before.sessions.length) {
           const gone = before.sessions.length - now.sessions.length
           lines.push(`Forget ${gone} session${gone === 1 ? '' : 's'} on ${id}`)

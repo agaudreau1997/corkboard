@@ -792,7 +792,7 @@ export function CardFace({
   const linked = commitsFor(commits, card).length
   // Sessions are worth a badge while the work is open; a finished card keeps them in its drawer.
   const finished = card.complete || (!!board.meta.flow?.done && card.list === board.meta.flow.done)
-  const running = finished ? 0 : card.sessions.filter(s => s.purpose !== 'discuss').length
+  const running = finished ? 0 : card.sessions.filter(s => !s.purpose).length
   const talks = finished ? 0 : card.sessions.filter(s => s.purpose === 'discuss').length
   const late = isOverdue(card.due, finished)
   const waitsOn = finished ? [] : (unmetPrerequisites([card], board.cards, board.meta.flow?.done)[0]?.needs ?? [])
