@@ -6,11 +6,13 @@ import { GITHUB_APP } from './github/config'
 import { Session } from './github/session'
 import { secureTokenStore } from './github/storage'
 import { RepoCache } from './repo/cache'
+import { Outbox } from './repo/outbox'
 import { Browse, lastPlace } from './screens/Browse'
 import { SignIn } from './screens/SignIn'
 
 const session = new Session(secureTokenStore(), GITHUB_APP.clientId)
 const cache = new RepoCache(localStorage)
+const outbox = new Outbox(localStorage)
 
 type State = { kind: 'loading' } | { kind: 'in' } | { kind: 'out'; message?: string; signingIn?: boolean }
 
@@ -45,6 +47,7 @@ export function App() {
     <Browse
       session={session}
       cache={cache}
+      outbox={outbox}
       signedOut={state.kind === 'out' ? (state.message ?? 'Signed out.') : undefined}
       onSignIn={() => setState({ kind: 'out', message: state.kind === 'out' ? state.message : undefined, signingIn: true })}
       onSignOut={async () => {

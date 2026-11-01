@@ -7,7 +7,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, promises as fs, watch, type FSWatcher } from 'node:fs'
 import path from 'node:path'
-import { between, cardNumber, parseCard, serializeCard, slugify, sortCards, tryParseCard } from '@shared/cardfile'
+import { between, cardNumber, newCard, nextCardId, parseCard, serializeCard, slugify, sortCards, tryParseCard } from '@shared/cardfile'
 import { MAX_IMAGE_BYTES, sniffImage } from '@shared/images'
 import { parseProjectSettings, PROJECT_FILE, projectSettingsText } from '@shared/project'
 import { isEmptyTheme, parseTheme, THEME_FILE, themeText } from '@shared/theme'
@@ -380,23 +380,12 @@ export class BoardStore {
     fields: { title: string; list: string | null; pos?: number; body?: string; links?: string[] },
   ): Promise<Card> {
     const board = this.board(boardPath)
-    const own = board.cards.filter(c => c.id.startsWith(`${board.meta.key}-`))
-    const next = Math.max(0, ...own.map(c => cardNumber(c.id)).filter(n => Number.isFinite(n))) + 1
-    const inList = sortCards(board.cards.filter(c => c.list === fields.list && !c.archived))
-    const card: Card = {
-      id: `${board.meta.key}-${next}`,
-      title: fields.title.trim() || 'Untitled',
-      list: fields.list,
-      pos: fields.pos ?? between(inList.at(-1)?.pos, undefined),
-      created: new Date().toISOString(),
-      labels: [],
-      links: fields.links ?? [],
-      after: [],
-      sessions: [],
+    const card = newCard(board.cards, {
+      ...fields,
+      id: nextCardId(board.meta.key, board.cards.map(c => c.id)),
       uid: randomUUID(),
-      body: fields.body ?? '',
-      extra: {},
-    }
+      created: new Date().toISOString(),
+    })
     await this.writeCard(boardPath, card)
     return card
   }

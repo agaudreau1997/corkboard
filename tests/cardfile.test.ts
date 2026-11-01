@@ -4,6 +4,8 @@ import {
   isDivider,
   LIST_COLORS,
   listSort,
+  newCard,
+  nextCardId,
   orderList,
   parseCard,
   reorderLists,
@@ -114,6 +116,24 @@ describe('card files', () => {
 })
 
 describe('helpers', () => {
+  it('numbers a new card after the board\'s highest, archived and other keys aside', () => {
+    expect(nextCardId('CORK', [])).toBe('CORK-1')
+    expect(nextCardId('CORK', ['CORK-3', 'CORK-12', 'CORK-7', 'OLD-40', 'CORK-x'])).toBe('CORK-13')
+  })
+
+  it('makes a new card at the end of its list, past archived cards', () => {
+    const cards = [
+      { ...base, id: 'C-1', list: 'todo', pos: 1024 },
+      { ...base, id: 'C-2', list: 'todo', pos: 2048 },
+      { ...base, id: 'C-3', list: 'todo', pos: 9000, archived: true },
+      { ...base, id: 'C-4', list: 'done', pos: 5000 },
+    ]
+    const card = newCard(cards, { id: 'C-5', uid: 'u', created: '2026-11-01T00:00:00.000Z', title: '  Jot  ', list: 'todo' })
+    expect(card).toMatchObject({ id: 'C-5', uid: 'u', title: 'Jot', list: 'todo', pos: 3072, created: '2026-11-01T00:00:00.000Z' })
+    expect(card.updated).toBeUndefined()
+    expect(newCard([], { id: 'C-1', uid: 'u', created: 'c', title: ' ', list: null }).title).toBe('Untitled')
+  })
+
   it('positions between neighbours', () => {
     expect(between(undefined, undefined)).toBe(1024)
     expect(between(1024, undefined)).toBe(2048)

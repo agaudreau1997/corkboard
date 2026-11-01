@@ -3,73 +3,12 @@
 // reads only what changed.
 
 import { describe, expect, it } from 'vitest'
-import { serializeCard } from '@shared/cardfile'
 import { boardColumns } from '@shared/selection'
-import type { Card } from '@shared/types'
 import { BATCH, blobsQuery } from '../src/repo/blobs'
 import { RepoCache } from '../src/repo/cache'
-import { boardTree, findBoards, type TreeEntry } from '../src/repo/layout'
+import { boardTree, findBoards } from '../src/repo/layout'
 import { boardMetas, openBoard, refresh } from '../src/repo/reader'
-
-/** A Storage in memory, as localStorage is on the phone. */
-class MemoryStorage implements Storage {
-  private items = new Map<string, string>()
-  get length() {
-    return this.items.size
-  }
-  key(i: number) {
-    return [...this.items.keys()][i] ?? null
-  }
-  getItem(k: string) {
-    return this.items.get(k) ?? null
-  }
-  setItem(k: string, v: string) {
-    this.items.set(k, v)
-  }
-  removeItem(k: string) {
-    this.items.delete(k)
-  }
-  clear() {
-    this.items.clear()
-  }
-}
-
-let shas = 0
-const sha = () => (++shas).toString(16).padStart(40, '0')
-
-function card(fields: Partial<Card> & { id: string; title: string; list: string | null; pos: number }): string {
-  return serializeCard({ labels: [], links: [], after: [], sessions: [], body: '', extra: {}, ...fields })
-}
-
-/** A repo on a stand-in GitHub: files by path; the tree and the GraphQL reads are made from them. */
-function github(files: Record<string, string>) {
-  const blobs = new Map<string, string>()
-  const tree: TreeEntry[] = []
-  const put = (path: string, text: string) => {
-    const s = sha()
-    blobs.set(s, text)
-    const at = tree.findIndex(e => e.path === path)
-    if (at >= 0) tree[at] = { path, type: 'blob', sha: s }
-    else tree.push({ path, type: 'blob', sha: s })
-  }
-  for (const [path, text] of Object.entries(files)) put(path, text)
-  const asked: string[][] = []
-  const api = async (path: string, init?: RequestInit) => {
-    if (path === '/repos/me/board') return Response.json({ default_branch: 'main' })
-    if (path === '/repos/me/board/git/trees/main?recursive=1') return Response.json({ sha: sha(), truncated: false, tree })
-    if (path === '/graphql') {
-      const query = JSON.parse(String(init?.body)).query as string
-      const wanted = [...query.matchAll(/(b\d+): object\(oid: "([0-9a-f]{40})"\)/g)]
-      asked.push(wanted.map(m => m[2]))
-      const repository = Object.fromEntries(wanted.map(([, alias, s]) => [alias, { text: blobs.get(s), isBinary: false }]))
-      return Response.json({ data: { repository } })
-    }
-    return new Response('{}', { status: 404 })
-  }
-  return { api, put, asked }
-}
-
-const meta = (key: string, title: string, lists: object[]) => JSON.stringify({ key, title, lists })
+import { card, github, MemoryStorage, meta, sha } from './fakes'
 
 describe('finding boards in the tree', () => {
   it('finds boards and child boards, never the root or cards/ and dot folders', () => {

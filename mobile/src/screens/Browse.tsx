@@ -1,8 +1,9 @@
-// Browsing, read-only: your board repos, a repo's boards, a board's lists one at a time (tabs
-// along the top, which read better on a phone than columns scrolled sideways), and a card. Where
-// you were is remembered, so the app reopens there, drawn from the cache at once and refreshed
-// behind it. Android's back button goes up a level. Signed out, the cache is all there is, and a
-// bar offers to sign in again.
+// Browsing: your board repos, a repo's boards, a board's lists one at a time (tabs along the top,
+// which read better on a phone than columns scrolled sideways), and a card; and a "+" to jot a card
+// down on the open list. Where you were is remembered, so the app reopens there, drawn from the
+// cache at once and refreshed behind it. Android's back button goes up a level. Signed out, the
+// cache is all there is, and a bar offers to sign in again. A new card waits in the outbox until
+// it's sent, shown at the end of its list meanwhile.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import Markdown, { type Components } from 'react-markdown'
@@ -16,10 +17,12 @@ import { installUrl } from '../github/config'
 import { reach, type Reach } from '../github/installations'
 import { SignedOut, type Session } from '../github/session'
 import type { RepoCache, Snapshot } from '../repo/cache'
+import type { Outbox } from '../repo/outbox'
+import type { Draft } from '../repo/writer'
 import { boardTree, type BoardNode } from '../repo/layout'
 import { boardMetas, openBoard, refresh, type Board } from '../repo/reader'
 
-export type Place = { repo?: string; board?: string; list?: string; card?: string }
+export type Place = { repo?: string; board?: string; list?: string; card?: string; adding?: boolean }
 
 const PLACE = 'corkboard:place'
 const REACH = 'corkboard:reach'
@@ -35,13 +38,14 @@ export function lastPlace(): Place {
 type Props = {
   session: Session
   cache: RepoCache
+  outbox: Outbox
   /** Why you're signed out, when you are: the cache is then all there is. */
   signedOut?: string
   onSignIn: () => void
   onSignOut: () => Promise<void>
 }
 
-export function Browse({ session, cache, signedOut, onSignIn, onSignOut }: Props) {
+export function Browse({ session, cache, outbox, signedOut, onSignIn, onSignOut }: Props) {
   const [place, setPlace] = useState<Place>(lastPlace)
   const api = useMemo(() => (signedOut ? undefined : session.api.bind(session)), [session, signedOut])
 
@@ -52,7 +56,7 @@ export function Browse({ session, cache, signedOut, onSignIn, onSignOut }: Props
 
   const up = useCallback(
     (p: Place): Place | undefined =>
-      p.card ? { ...p, card: undefined } : p.board ? { repo: p.repo } : p.repo ? {} : undefined,
+      p.adding ? { ...p, adding: undefined } : p.card ? { ...p, card: undefined } : p.board ? { repo: p.repo } : p.repo ? {} : undefined,
     [],
   )
 
@@ -70,6 +74,7 @@ export function Browse({ session, cache, signedOut, onSignIn, onSignOut }: Props
 
   const repo = useSnapshot(api, cache, place.repo)
   const board = useBoard(api, cache, repo.snapshot, place.board)
+  const sending = useOutbox(api, cache, outbox, repo.refresh)
 
   const bar = signedOut && (
     <div className="bar">
@@ -93,6 +98,27 @@ export function Browse({ session, cache, signedOut, onSignIn, onSignOut }: Props
         onPick={b => go({ repo: place.repo, board: b })}
       />
     )
+  } else if (place.adding) {
+    const list = place.list ?? board.board?.meta.lists.find(l => !l.archived)?.id
+    screen = (
+      <NewCard
+        listTitle={list === UNLISTED ? 'Ideas' : (board.board?.meta.lists.find(l => l.id === list)?.title ?? '')}
+        onCancel={() => go({ ...place, adding: undefined })}
+        onSave={(title, body) => {
+          sending.add({
+            key: crypto.randomUUID(),
+            repo: place.repo!,
+            board: place.board!,
+            list: !list || list === UNLISTED ? null : list,
+            title,
+            body,
+            created: new Date().toISOString(),
+            uid: crypto.randomUUID(),
+          })
+          go({ ...place, list, adding: undefined })
+        }}
+      />
+    )
   } else if (!place.card) {
     screen = (
       <BoardView
@@ -104,7 +130,14 @@ export function Browse({ session, cache, signedOut, onSignIn, onSignOut }: Props
         onBack={() => go({ repo: place.repo })}
         onList={l => go({ ...place, list: l })}
         onCard={c => go({ ...place, card: c })}
-        onRefresh={repo.refresh}
+        onRefresh={async () => {
+          await sending.send()
+          await repo.refresh()
+        }}
+        drafts={sending.drafts.filter(d => d.repo === place.repo && d.board === place.board)}
+        offline={!api}
+        onAdd={() => go({ ...place, adding: true })}
+        onDiscard={sending.discard}
       />
     )
   } else {
@@ -118,6 +151,45 @@ export function Browse({ session, cache, signedOut, onSignIn, onSignOut }: Props
       {screen}
     </div>
   )
+}
+
+/**
+ * The outbox as the screens see it: its drafts, and a send when signed in, at start, when the app
+ * comes back to the front, when the connection does, and right after a card is written.
+ */
+function useOutbox(api: Session['api'] | undefined, cache: RepoCache, outbox: Outbox, refreshRepo: () => Promise<void>) {
+  const [drafts, setDrafts] = useState(() => outbox.drafts())
+  const send = useCallback(async () => {
+    if (!api || !outbox.drafts().length) return
+    const sent = await outbox.send(api, cache)
+    setDrafts(outbox.drafts())
+    if (sent) await refreshRepo()
+  }, [api, cache, outbox, refreshRepo])
+
+  useEffect(() => {
+    void send()
+    const handle = CapApp.addListener('resume', () => void send())
+    const online = () => void send()
+    window.addEventListener('online', online)
+    return () => {
+      void handle.then(h => h.remove())
+      window.removeEventListener('online', online)
+    }
+  }, [send])
+
+  return {
+    drafts,
+    send,
+    add(draft: Draft) {
+      outbox.add(draft)
+      setDrafts(outbox.drafts())
+      void send()
+    },
+    discard(key: string) {
+      outbox.discard(key)
+      setDrafts(outbox.drafts())
+    },
+  }
 }
 
 type RepoState = { snapshot?: Snapshot; busy: boolean; error?: string; refresh: () => Promise<void> }
@@ -341,8 +413,13 @@ function BoardView(props: {
   onList: (list: string) => void
   onCard: (id: string) => void
   onRefresh: () => Promise<void>
+  /** Cards written here and not yet sent, of this board. */
+  drafts: Draft[]
+  offline: boolean
+  onAdd: () => void
+  onDiscard: (key: string) => void
 }) {
-  const { title, state, board, loading, onBack, onList, onCard, onRefresh } = props
+  const { title, state, board, loading, onBack, onList, onCard, onRefresh, drafts, offline, onAdd, onDiscard } = props
   const columns = useMemo(() => (board ? boardColumns(board, () => true) : undefined), [board])
   const byId = useMemo(() => new Map(board?.cards.map(c => [c.id, c])), [board])
   const lists: (ListDef & { color: string })[] = board
@@ -351,6 +428,7 @@ function BoardView(props: {
   if (columns?.[UNLISTED].length) lists.unshift({ id: UNLISTED, title: 'Ideas', color: 'var(--idea)' })
   const current = lists.find(l => l.id === props.list) ?? lists[0]
   const cards = (current && columns?.[current.id]?.map(id => byId.get(id)).filter((c): c is Card => !!c)) ?? []
+  const waiting = drafts.filter(d => (d.list ?? UNLISTED) === current?.id)
 
   return (
     <>
@@ -373,7 +451,7 @@ function BoardView(props: {
         {state.error && <p className="note error">{state.error}</p>}
         {!board && <p className="note">{loading ? 'Reading the cards…' : 'This board isn’t saved on the phone yet.'}</p>}
         {!!board?.missing && <p className="note">{board.missing} cards aren’t saved on the phone yet.</p>}
-        {board && current && !cards.length && <p className="note">No cards.</p>}
+        {board && current && !cards.length && !waiting.length && <p className="note">No cards.</p>}
         <ul className="cards">
           {cards.map(card =>
             isDivider(card) ? (
@@ -396,8 +474,51 @@ function BoardView(props: {
               </li>
             ),
           )}
+          {waiting.map(draft => (
+            <li key={draft.key}>
+              <div className="card pending">
+                <span className="card-title">{draft.title}</span>
+                <span className="card-meta">
+                  <span className="chip">{draft.error ? 'Not sent' : offline ? 'Waiting to sign in' : 'Waiting to send'}</span>
+                  <button type="button" className="link" onClick={() => onDiscard(draft.key)}>
+                    Discard
+                  </button>
+                </span>
+                {draft.error && <span className="pending-error">{draft.error}</span>}
+              </div>
+            </li>
+          ))}
         </ul>
       </Pull>
+      {current && (
+        <button className="fab" type="button" aria-label={`New card in ${current.title}`} onClick={onAdd}>
+          +
+        </button>
+      )}
+    </>
+  )
+}
+
+/** Writing a new card: its title, and a description if you like. */
+function NewCard({ listTitle, onCancel, onSave }: { listTitle: string; onCancel: () => void; onSave: (title: string, body: string) => void }) {
+  const [title, setTitle] = useState('')
+  const [body, setBody] = useState('')
+  return (
+    <>
+      <Header title="New card" sub={listTitle ? `In ${listTitle}` : undefined} onBack={onCancel} />
+      <form
+        className="page new-card"
+        onSubmit={e => {
+          e.preventDefault()
+          if (title.trim()) onSave(title.trim(), body)
+        }}
+      >
+        <input autoFocus placeholder="Title" value={title} onChange={e => setTitle(e.target.value)} enterKeyHint="done" />
+        <textarea placeholder="Description (Markdown, optional)" value={body} onChange={e => setBody(e.target.value)} rows={8} />
+        <button className="primary" type="submit" disabled={!title.trim()}>
+          Add card
+        </button>
+      </form>
     </>
   )
 }

@@ -45,6 +45,8 @@ Install it on your board repos only (*Install App → Only select repositories*)
 
 **Reading a board repo** (`mobile/src/repo/`) goes through GitHub's API, not git: the default branch's tree in one call, boards found in it as the desktop's store finds them in its folders, then the files through GraphQL, up to 100 blobs a query by sha (a board's lists are only known by reading every card file, and one REST call per card is too slow). Files are cached in the WebView's localStorage by sha, which names their content, so a refresh reads only what changed. Boards are laid out with the desktop's `boardColumns` and `orderList`.
 
+**Making a card** (`mobile/src/repo/writer.ts`, `outbox.ts`) writes one card file through the Contents API, one commit with the auto-commit's `Add <ID>: <title>`. The card comes from `newCard` and `nextCardId` in `src/shared/cardfile.ts`, which the desktop's store uses too, so a card reads the same whichever made it. The file is written without a `sha`, which GitHub accepts only for a file that doesn't exist yet: a 422 means a desktop pushed that id meanwhile, and the next number is taken. Before writing, the board is checked for a card with the draft's `uid`, so a card whose answer was lost on the way back isn't made twice. Cards wait in an outbox in localStorage until sent.
+
 There's no end-to-end test on a device: the logic is unit-tested, and the screen is checked by hand on a phone. CI's `mobile` job runs the typecheck and the tests and builds the debug APK on every push, kept as the run's `companion-debug-apk` artifact. A debug APK is signed with the key of the machine that built it, so Android refuses one from another machine (or another CI run) over it: uninstall first.
 
 ## Packaging

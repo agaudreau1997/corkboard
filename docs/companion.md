@@ -6,7 +6,7 @@ It talks to GitHub, not git: it reads and writes the board repo's card files thr
 
 ## What it does today
 
-It signs in with GitHub and browses your board repos, read-only: their boards, each board's lists, and the cards in them. Making and changing cards come next.
+It signs in with GitHub, browses your board repos (their boards, each board's lists, and the cards in them) and makes cards. Changing cards comes next.
 
 ## Browsing
 
@@ -21,6 +21,12 @@ The app reopens where you left it, drawn at once from what it last read, then re
 The first time, GitHub also asks you to install the app: pick **only your board repos**. The app can read and write those repos' files and nothing else, so a lost phone can't touch your code repos. If you signed in without installing it, the app says so and opens the install page; to add or remove repos later, go to *GitHub → Settings → Applications → Installed GitHub Apps → Corkboard Companion → Configure*.
 
 You stay signed in: the app renews its access to GitHub by itself, as long as you open it at least once every six months. It keeps that access in Android's keystore. *Sign out* forgets it on the phone; to cut it off from GitHub's side as well (a lost phone), revoke *Corkboard Companion* under *GitHub → Settings → Applications → Authorized GitHub Apps*. Either way, the app goes back to *Sign in with GitHub*.
+
+## Making a card
+
+The **+** at the bottom of a list writes a card into it: a title, and a description if you like (Markdown, as on the desktop). It goes at the end of the list, numbered after the board's highest card, and reaches GitHub as one commit, `Add CORK-122: <title>`, the same message the desktop's auto-commit writes. The desktop picks it up at its next sync.
+
+Until it's sent, the card waits on the phone, dashed at the end of its list: offline, it goes when the connection is back and the app is in front again (or on a pull to refresh). It gets its number when it's sent, so if a desktop pushed a card with that number meanwhile, the phone's takes the next one; if a desktop made the same number and hasn't pushed yet, the desktop renumbers its own at its next sync. A card GitHub refused (its board gone, say) stays with the reason under it, until you *Discard* it.
 
 ## Installing it
 
