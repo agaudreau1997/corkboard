@@ -30,6 +30,33 @@ jobs:
       - run: npm run typecheck
       - run: npm test
 
+  # The Android companion (mobile/): its own install, typecheck and tests, then a debug APK, kept
+  # as the run's artifact to install on a phone. The runner image has the Android SDK.
+  mobile:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run apk
+      - uses: actions/upload-artifact@v7
+        with:
+          name: companion-debug-apk
+          path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
+
   # Builds the app and drives it on a made-up board repo (tests/e2e/fixture.mjs), with a stand-in
   # for `claude`.
   e2e:

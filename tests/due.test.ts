@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dueDay, isOverdue, localDay } from '@shared/due'
+import { dueDay, isOverdue, localDay, pickDue } from '@shared/due'
 import { parseCard, serializeCard } from '@shared/cardfile'
 
 describe('due dates', () => {
@@ -26,6 +26,14 @@ describe('due dates', () => {
     expect(dueDay('2026-11-02')).toBe('2026-11-02')
     expect(dueDay('2026-11-02T09:30:00.000Z')).toBe('2026-11-02')
     expect(localDay(noon)).toBe('2026-11-02')
+  })
+
+  it('keeps a time written by hand until another day is picked', () => {
+    const time = '2026-11-02T09:30:00.000Z'
+    expect(pickDue(time, '2026-11-02')).toBe(time)
+    expect(pickDue(time, '2026-11-03')).toBe('2026-11-03')
+    expect(pickDue(undefined, '2026-11-03')).toBe('2026-11-03')
+    expect(pickDue(time, '')).toBeUndefined()
   })
 
   it('a date round-trips through the card file as written', () => {

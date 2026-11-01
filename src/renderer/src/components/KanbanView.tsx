@@ -33,11 +33,11 @@ import {
   useState,
   type RefObject,
 } from 'react'
-import { between, freezeListColors, isDivider, listSort, reorderLists, slugify } from '@shared/cardfile'
-import { dueDay, isOverdue } from '@shared/due'
+import { badgeChildren, badgeClass, cardBadges } from '@shared/badges'
+import { newListId } from '@shared/boardmeta'
+import { between, freezeListColors, isDivider, listSort, reorderLists } from '@shared/cardfile'
 import { imageUrl } from '@shared/images'
 import { boardColumns, boardOrder, UNLISTED, type Columns } from '@shared/selection'
-import { unmetPrerequisites } from '@shared/tackleorder'
 import type { Card, CodeCommit, ListDef, LoadedBoard } from '@shared/types'
 import { useGrabScroll } from '../grabScroll'
 import { cardMenu, listMenu } from '../menus'
@@ -614,9 +614,7 @@ function AddListColumn({ board }: { board: LoadedBoard }) {
   const add = async () => {
     const text = title.trim()
     if (!text) return setOpen(false)
-    const base = slugify(text)
-    let id = base
-    for (let n = 2; board.meta.lists.some(l => l.id === id); n++) id = `${base}-${n}`
+    const id = newListId(text, board.meta.lists)
     setTitle('')
     // Its colour is written down with it, so later moves never change it.
     const lists = freezeListColors([...board.meta.lists, { id, title: text }])
@@ -791,13 +789,7 @@ export function CardFace({
       </div>
     )
   }
-  const linked = commitsFor(commits, card).length
-  // Sessions are worth a badge while the work is open; a finished card keeps them in its drawer.
-  const finished = card.complete || (!!board.meta.flow?.done && card.list === board.meta.flow.done)
-  const running = finished ? 0 : card.sessions.filter(s => !s.purpose).length
-  const talks = finished ? 0 : card.sessions.filter(s => s.purpose === 'discuss').length
-  const late = isOverdue(card.due, finished)
-  const waitsOn = finished ? [] : (unmetPrerequisites([card], board.cards, board.meta.flow?.done)[0]?.needs ?? [])
+  const badges = cardBadges(card, board, { commits: commitsFor(commits, card).length })
   return (
     <div
       className={`card${selected ? ' selected' : ''}${open ? ' open' : ''}${dragging ? ' dragging' : ''}${card.complete ? ' complete' : ''}${renaming ? ' renaming' : ''}`}
@@ -822,25 +814,11 @@ export function CardFace({
       )}
       <div className="card-meta">
         <span className="card-id">{card.id}</span>
-        {card.complete && <span className="badge ok" title="Marked complete">✓</span>}
-        {card.body.trim() && <span className="badge" title="Has a description">≡</span>}
-        {card.links.length > 0 && <span className="badge" title="Linked cards">⛓ {card.links.length}</span>}
-        {waitsOn.length > 0 && (
-          <span className="badge waits" title={`Waits on ${waitsOn.join(', ')}, not done yet`}>
-            ⧗ {waitsOn.length}
+        {badges.map(b => (
+          <span key={b.key} className={badgeClass(b)} title={b.title}>
+            {badgeChildren(b)}
           </span>
-        )}
-        {linked > 0 && <span className="badge commit" title="Commits naming this card">⎇ {linked}</span>}
-        {running > 0 && <span className="badge session" title="Claude sessions started for it">▶ {running}</span>}
-        {talks > 0 && <span className="badge discuss" title="Discussions about it">✎ {talks}</span>}
-        {card.due && (
-          <span
-            className={`badge${late ? ' overdue' : ''}`}
-            title={late ? 'Past due' : 'Due'}
-          >
-            ⏰ {dueDay(card.due)}
-          </span>
-        )}
+        ))}
       </div>
     </div>
   )

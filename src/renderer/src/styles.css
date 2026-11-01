@@ -29,6 +29,8 @@
   --purple: #c49cf0;
   --cyan: #7cc4f5;
   --idea: #c9b458;
+  /* The type and corners, shared with the companion (src/shared/fonts.ts): keep the two equal. */
+  --font: Inter, 'Segoe UI', 'Noto Sans', system-ui, sans-serif;
   --radius: 8px;
   --mono: 'JetBrains Mono', 'Fira Code', 'DejaVu Sans Mono', ui-monospace, monospace;
   color-scheme: dark;
@@ -48,7 +50,7 @@ body,
 body {
   background: var(--bg);
   color: var(--text);
-  font: 13px/1.4 Inter, 'Segoe UI', 'Noto Sans', system-ui, sans-serif;
+  font: 13px/1.4 var(--font);
   overflow: hidden;
 }
 

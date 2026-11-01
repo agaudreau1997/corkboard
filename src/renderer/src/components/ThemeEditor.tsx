@@ -1,37 +1,20 @@
 import { useEffect, useState } from 'react'
 import {
-  DEFAULT_COLORS,
   isEmptyTheme,
   normalizeHex,
+  shownColor,
+  swatchColors,
   THEME_COLORS,
   THEME_PRESETS,
-  themeTokens,
 } from '@shared/theme'
 import type { ProjectTheme, ThemeColor } from '@shared/types'
-
-/** The stylesheet token each base colour shows as, to show an unset one's mixed value. */
-const TOKEN_OF: Record<ThemeColor, string> = {
-  background: '--bg',
-  surface: '--card',
-  line: '--line',
-  text: '--text',
-  accent: '--accent',
-  link: '--blue',
-  success: '--green',
-  danger: '--red',
-}
-
-/** A colour as a theme paints it: its own, mixed from the others, or the app's. */
-function shownColor(theme: ProjectTheme | null | undefined, key: ThemeColor): string {
-  return themeTokens(theme)[TOKEN_OF[key]] ?? DEFAULT_COLORS[key]
-}
 
 /** A theme in small: its background, its cards and its accent. */
 export function ThemeSwatch({ theme, title }: { theme: ProjectTheme | null | undefined; title?: string }) {
   return (
     <span className="theme-swatch" title={title} aria-hidden={!title}>
-      {(['background', 'surface', 'accent'] as const).map(key => (
-        <i key={key} style={{ background: shownColor(theme, key) }} />
+      {swatchColors(theme).map((color, i) => (
+        <i key={i} style={{ background: color }} />
       ))}
     </span>
   )

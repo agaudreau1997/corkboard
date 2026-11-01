@@ -7,7 +7,8 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, promises as fs, watch, type FSWatcher } from 'node:fs'
 import path from 'node:path'
-import { between, cardNumber, parseCard, serializeCard, slugify, sortCards, tryParseCard } from '@shared/cardfile'
+import { metaText, patchMeta, uniqueListId } from '@shared/boardmeta'
+import { between, cardNumber, newCard, nextCardId, parseCard, serializeCard, slugify, sortCards, tryParseCard } from '@shared/cardfile'
 import { MAX_IMAGE_BYTES, sniffImage } from '@shared/images'
 import { parseProjectSettings, PROJECT_FILE, projectSettingsText } from '@shared/project'
 import { isEmptyTheme, parseTheme, THEME_FILE, themeText } from '@shared/theme'
@@ -295,10 +296,9 @@ export class BoardStore {
 
   async updateMeta(boardPath: string, patch: Partial<BoardMeta>): Promise<BoardMeta> {
     const board = this.board(boardPath)
-    const meta: BoardMeta = { ...board.meta, ...patch, key: board.meta.key }
-    for (const [k, v] of Object.entries(meta)) if (v === undefined || v === '') delete (meta as any)[k]
+    const meta = patchMeta(board.meta, patch)
     board.meta = meta
-    await this.writeText(this.metaFile(boardPath), formatJson(meta))
+    await this.writeText(this.metaFile(boardPath), metaText(meta))
     this.resolveInheritance()
     this.events?.onTreeChanged()
     return meta
@@ -380,23 +380,12 @@ export class BoardStore {
     fields: { title: string; list: string | null; pos?: number; body?: string; links?: string[] },
   ): Promise<Card> {
     const board = this.board(boardPath)
-    const own = board.cards.filter(c => c.id.startsWith(`${board.meta.key}-`))
-    const next = Math.max(0, ...own.map(c => cardNumber(c.id)).filter(n => Number.isFinite(n))) + 1
-    const inList = sortCards(board.cards.filter(c => c.list === fields.list && !c.archived))
-    const card: Card = {
-      id: `${board.meta.key}-${next}`,
-      title: fields.title.trim() || 'Untitled',
-      list: fields.list,
-      pos: fields.pos ?? between(inList.at(-1)?.pos, undefined),
-      created: new Date().toISOString(),
-      labels: [],
-      links: fields.links ?? [],
-      after: [],
-      sessions: [],
+    const card = newCard(board.cards, {
+      ...fields,
+      id: nextCardId(board.meta.key, board.cards.map(c => c.id)),
       uid: randomUUID(),
-      body: fields.body ?? '',
-      extra: {},
-    }
+      created: new Date().toISOString(),
+    })
     await this.writeCard(boardPath, card)
     return card
   }
@@ -497,8 +486,7 @@ export class BoardStore {
     const to = this.board(toPath)
     const list = from.meta.lists.find(l => l.id === listId)
     if (!list) throw new Error(`No list ${listId} on ${fromPath}`)
-    let id = list.id
-    for (let n = 2; to.meta.lists.some(l => l.id === id); n++) id = `${list.id}-${n}`
+    const id = uniqueListId(list.id, to.meta.lists)
     await this.updateMeta(toPath, { lists: [...to.meta.lists, { ...list, id }] })
     for (const card of sortCards(from.cards.filter(c => c.list === listId))) {
       await this.moveCard(fromPath, card.id, toPath, id, card.pos)

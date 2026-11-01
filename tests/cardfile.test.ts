@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   between,
+  describeCardChange,
   isDivider,
   LIST_COLORS,
   listSort,
+  newCard,
+  nextCardId,
   orderList,
   parseCard,
   reorderLists,
@@ -114,6 +117,51 @@ describe('card files', () => {
 })
 
 describe('helpers', () => {
+  it('says what changed on a card as a commit does', () => {
+    const card = { ...base, id: 'C-1', list: 'todo' }
+    expect(describeCardChange('C-1', card, { ...card, list: 'done' })).toEqual(['Move C-1: todo → done'])
+    expect(describeCardChange('C-1', card, { ...card, list: null })).toEqual(['Move C-1: todo → map'])
+    expect(describeCardChange('C-1', card, { ...card, archived: true })).toEqual(['Archive C-1'])
+    expect(describeCardChange('C-1', { ...card, archived: true }, card)).toEqual(['Restore C-1'])
+    expect(describeCardChange('C-1', { ...card, archived: true }, { ...card, list: null })).toEqual(['Restore C-1'])
+    expect(describeCardChange('C-1', card, { ...card, title: 'New' })).toEqual(['Rename C-1: New'])
+    expect(describeCardChange('C-1', card, { ...card, links: ['C-2'] })).toEqual(['Link C-1 to C-2'])
+    expect(describeCardChange('C-1', { ...card, links: ['C-3'] }, { ...card, links: ['C-2'] })).toEqual([
+      'Link C-1 to C-2',
+      'Unlink C-1 from C-3',
+    ])
+    expect(describeCardChange('C-1', card, { ...card, labels: ['ui', 'bug'] })).toEqual(['Label C-1: ui, bug'])
+    expect(describeCardChange('C-1', { ...card, labels: ['ui', 'bug'] }, { ...card, labels: ['bug', 'docs'] })).toEqual([
+      'Label C-1: docs',
+      'Unlabel C-1: ui',
+    ])
+    // Only their order changed (a hand edit): an edit like any other.
+    expect(describeCardChange('C-1', { ...card, labels: ['a', 'b'] }, { ...card, labels: ['b', 'a'] })).toEqual(['Edit C-1'])
+    expect(describeCardChange('C-1', card, { ...card, due: '2026-11-05' })).toEqual(['Make C-1 due 2026-11-05'])
+    expect(describeCardChange('C-1', { ...card, due: '2026-11-05' }, card)).toEqual(['Clear the due date of C-1'])
+    expect(describeCardChange('C-1', card, { ...card, pos: 99 })).toEqual(['Reorder C-1'])
+    expect(describeCardChange('C-1', card, { ...card, body: 'x' })).toEqual(['Edit C-1'])
+    expect(describeCardChange('C-1', undefined, card)).toEqual(['Edit C-1'])
+  })
+
+  it('numbers a new card after the board\'s highest, archived and other keys aside', () => {
+    expect(nextCardId('CORK', [])).toBe('CORK-1')
+    expect(nextCardId('CORK', ['CORK-3', 'CORK-12', 'CORK-7', 'OLD-40', 'CORK-x'])).toBe('CORK-13')
+  })
+
+  it('makes a new card at the end of its list, past archived cards', () => {
+    const cards = [
+      { ...base, id: 'C-1', list: 'todo', pos: 1024 },
+      { ...base, id: 'C-2', list: 'todo', pos: 2048 },
+      { ...base, id: 'C-3', list: 'todo', pos: 9000, archived: true },
+      { ...base, id: 'C-4', list: 'done', pos: 5000 },
+    ]
+    const card = newCard(cards, { id: 'C-5', uid: 'u', created: '2026-11-01T00:00:00.000Z', title: '  Jot  ', list: 'todo' })
+    expect(card).toMatchObject({ id: 'C-5', uid: 'u', title: 'Jot', list: 'todo', pos: 3072, created: '2026-11-01T00:00:00.000Z' })
+    expect(card.updated).toBeUndefined()
+    expect(newCard([], { id: 'C-1', uid: 'u', created: 'c', title: ' ', list: null }).title).toBe('Untitled')
+  })
+
   it('positions between neighbours', () => {
     expect(between(undefined, undefined)).toBe(1024)
     expect(between(1024, undefined)).toBe(2048)

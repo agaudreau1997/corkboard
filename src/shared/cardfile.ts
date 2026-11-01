@@ -143,6 +143,80 @@ export function between(before: number | undefined, after: number | undefined): 
   return (before + after) / 2
 }
 
+/**
+ * A board's next card id: its key and one more than the highest number among its own ids,
+ * archived cards included. Ids under another key (a card moved in from another board) don't count.
+ */
+export function nextCardId(key: string, ids: Iterable<string>): string {
+  const own = [...ids].filter(id => id.startsWith(`${key}-`)).map(cardNumber).filter(n => Number.isFinite(n))
+  return `${key}-${Math.max(0, ...own) + 1}`
+}
+
+/**
+ * A new card, at the end of its list among the board's `cards` unless given a `pos`. The desktop
+ * and the companion both make cards with it, so a card reads the same whichever made it.
+ */
+export function newCard(
+  cards: Card[],
+  fields: { id: string; uid: string; created: string; title: string; list: string | null; pos?: number; body?: string; links?: string[] },
+): Card {
+  const inList = sortCards(cards.filter(c => c.list === fields.list && !c.archived))
+  return {
+    id: fields.id,
+    title: fields.title.trim() || 'Untitled',
+    list: fields.list,
+    pos: fields.pos ?? between(inList.at(-1)?.pos, undefined),
+    created: fields.created,
+    labels: [],
+    links: fields.links ?? [],
+    after: [],
+    sessions: [],
+    uid: fields.uid,
+    body: fields.body ?? '',
+    extra: {},
+  }
+}
+
+/**
+ * What changed on a card, as a commit says it (`Move CORK-12: todo → done`), from the card as it
+ * was and as it is now; either unreadable is an `Edit`. The desktop's auto-commit and the companion
+ * both name their commits with it, so `git log` reads the same whichever made the change.
+ */
+export function describeCardChange(id: string, before: Card | undefined, now: Card | undefined): string[] {
+  if (!now || !before) return [`Edit ${id}`]
+  if (before.archived && !now.archived) return [`Restore ${id}`]
+  if (before.list !== now.list) return [`Move ${id}: ${before.list ?? 'map'} → ${now.list ?? 'map'}`]
+  if (!before.archived && now.archived) return [`Archive ${id}`]
+  if (now.sessions.length > before.sessions.length) {
+    const last = now.sessions.at(-1)
+    const kind = last?.kind === 'cloud' ? ' in Claude Cloud' : ''
+    return [`${last?.purpose === 'discuss' ? 'Discuss' : last?.purpose === 'untangle' ? 'Untangle' : 'Tackle'} ${id}${kind}`]
+  }
+  if (now.sessions.length < before.sessions.length) {
+    const gone = before.sessions.length - now.sessions.length
+    return [`Forget ${gone} session${gone === 1 ? '' : 's'} on ${id}`]
+  }
+  if (before.title !== now.title) return [`Rename ${id}: ${now.title}`]
+  if (before.links.join() !== now.links.join()) {
+    const added = now.links.filter(l => !before.links.includes(l))
+    const gone = before.links.filter(l => !now.links.includes(l))
+    return [...(added.length ? [`Link ${id} to ${added.join(', ')}`] : []), ...(gone.length ? [`Unlink ${id} from ${gone.join(', ')}`] : [])]
+  }
+  if (before.after.join() !== now.after.join()) {
+    return [now.after.length ? `Put ${id} after ${now.after.join(', ')}` : `Take ${id} out of the order`]
+  }
+  if (before.labels.join() !== now.labels.join()) {
+    const added = now.labels.filter(l => !before.labels.includes(l))
+    const gone = before.labels.filter(l => !now.labels.includes(l))
+    if (added.length || gone.length) {
+      return [...(added.length ? [`Label ${id}: ${added.join(', ')}`] : []), ...(gone.length ? [`Unlabel ${id}: ${gone.join(', ')}`] : [])]
+    }
+  }
+  if ((before.due ?? '') !== (now.due ?? '')) return [now.due ? `Make ${id} due ${now.due}` : `Clear the due date of ${id}`]
+  if (before.pos !== now.pos && before.body === now.body) return [`Reorder ${id}`]
+  return [`Edit ${id}`]
+}
+
 export function sortCards(cards: Card[]): Card[] {
   return [...cards].sort((a, b) => a.pos - b.pos || cardNumber(a.id) - cardNumber(b.id))
 }

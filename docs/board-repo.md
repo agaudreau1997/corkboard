@@ -53,7 +53,7 @@ moon-base/                  the board repo
 
 ## Versioned
 
-The app commits the board repo itself a few seconds after the last change, with a message that says what moved (`Move RS-886: todo → done`). So nobody commits in a board repo by hand, and a Claude session working a card edits its file and leaves the commit to the app.
+The app commits the board repo itself a few seconds after the last change, with a message that says what moved (`Move RS-886: todo → done`, `Add list Later on game`). So nobody commits in a board repo by hand, and a Claude session working a card edits its file and leaves the commit to the app.
 
 ## Synced between machines
 

@@ -1,0 +1,194 @@
+/* The side panel (Panel.tsx), drawn as the desktop's `.sidebar`: its colours (`--bg-2`, `--line`),
+   the accent *Corkboard* at its head, project rows in small capitals with their mark, board rows
+   under them, the open one on `--active`, and the same turning chevron; rows grown for a finger. */
+
+.panel-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  min-height: 56px;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.panel-head .brand {
+  flex: 1;
+  color: var(--accent);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.panel-tree {
+  flex: 1;
+  min-height: 0;
+  padding: 8px 8px 16px;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+.panel-repo,
+.panel-board {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 8px 0 4px;
+  border-radius: 8px;
+  user-select: none;
+}
+
+.panel-repo {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.panel-board + .panel-repo,
+.panel-repo + .panel-repo {
+  margin-top: 6px;
+}
+
+.panel-repo:active,
+.panel-board:active {
+  background: var(--bg-3);
+}
+
+.panel-repo.active,
+.panel-board.active {
+  background: var(--active);
+  color: var(--text);
+}
+
+.panel-repo .mark {
+  width: 22px;
+  height: 20px;
+}
+
+.panel-repo .mark-swatch {
+  height: 18px;
+}
+
+.panel-repo .mark-swatch i {
+  width: 7px;
+}
+
+.panel-repo-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.panel-repo.open .panel-repo-name {
+  color: var(--text);
+}
+
+.panel-board {
+  color: var(--text-2);
+  font-size: 16px;
+}
+
+.panel-board-icon {
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.panel-board-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-board-key {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+/* The desktop's twisty, on a hit area a finger finds. */
+.slide .twisty {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+}
+
+.slide .twisty:active {
+  background: var(--hover);
+}
+
+.slide .twisty svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.8;
+  transition: transform 0.12s ease;
+}
+
+.slide .twisty.open svg {
+  transform: rotate(90deg);
+}
+
+.slide .twisty.hidden {
+  visibility: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slide .twisty svg {
+    transition: none;
+  }
+}
+
+.panel-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 8px;
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+.panel-empty p {
+  margin: 0;
+}
+
+.panel-foot {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 16px 12px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.panel-foot-text {
+  padding: 6px 0;
+}
+
+.panel-foot-button {
+  padding: 8px 0;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+}
+
+.panel-foot-button:active {
+  color: var(--text);
+}

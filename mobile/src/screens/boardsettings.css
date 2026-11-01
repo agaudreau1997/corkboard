@@ -1,0 +1,156 @@
+/* The board settings page (BoardSettings.tsx). A list's colour is board data, set inline. */
+
+.settings-page {
+  padding: 0 0 32px;
+}
+
+.settings-page h3 {
+  margin: 0;
+  padding: 18px 16px 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.settings-row,
+.settings-name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+
+.settings-row {
+  width: 100%;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.settings-main {
+  overflow: hidden;
+  font-size: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-hint {
+  color: var(--muted);
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 12px;
+}
+
+.settings-lists {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-lists li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px 6px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.settings-lists li.archived .settings-main {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.settings-name {
+  flex: 1;
+  padding: 6px 0;
+}
+
+.settings-action {
+  flex: none;
+  padding: 8px 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--bg-3);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+}
+
+.settings-page button:disabled {
+  opacity: 0.5;
+}
+
+.swatch {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 2px solid var(--line-2);
+  border-radius: 50%;
+}
+
+.swatch.big {
+  width: 40px;
+  height: 40px;
+}
+
+.swatch.current {
+  border-color: var(--text);
+}
+
+.palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 8px 20px 12px;
+}
+
+.settings-add {
+  margin: 8px 16px 0;
+  padding: 10px 0;
+  border: 0;
+  background: none;
+  color: var(--blue);
+  font: inherit;
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 16px;
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+.settings-field select {
+  padding: 10px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--bg-3);
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+}
+
+.settings-readonly {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 8px 16px;
+  color: var(--text);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.settings-readonly span {
+  color: var(--muted);
+  font-size: 13px;
+}

@@ -1,0 +1,26 @@
+/* A repo's mark: its icon, or its swatch drawn as the desktop draws it, larger for a finger. */
+
+.mark {
+  display: inline-flex;
+  flex: none;
+  width: 26px;
+  height: 24px;
+}
+
+.mark-icon {
+  object-fit: contain;
+  border-radius: 5px;
+}
+
+.mark-swatch {
+  width: auto;
+  height: 20px;
+  align-self: center;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  border-radius: 5px;
+}
+
+.mark-swatch i {
+  width: 8px;
+}

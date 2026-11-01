@@ -1,0 +1,472 @@
+/* The colours are the desktop's tokens, set on :root at start (theme.ts). */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 16px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#root {
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+.centred {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 100%;
+  padding: 24px;
+  text-align: center;
+}
+
+.centred h1 {
+  margin: 0;
+  font-size: 28px;
+}
+
+.centred p {
+  margin: 0;
+  color: var(--text-2);
+}
+
+.centred .hint {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+button.primary {
+  margin-top: 12px;
+  padding: 12px 20px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: inherit;
+  font-weight: 600;
+}
+
+button.primary:disabled {
+  opacity: 0.6;
+}
+
+.centred .error {
+  color: var(--red);
+  font-size: 14px;
+}
+
+.centred .code {
+  margin: 8px 0;
+  color: var(--text);
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 32px;
+  letter-spacing: 0.08em;
+  user-select: all;
+}
+
+button.plain {
+  padding: 10px 16px;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+}
+
+/* Browsing: a header, a scrolling page under it, and a bar when signed out. */
+
+.browse {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--select-bg);
+  border-bottom: 1px solid var(--select-line);
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+.bar span {
+  flex: 1;
+}
+
+.bar button {
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: inherit;
+  font-weight: 600;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 56px;
+  padding: 6px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.header .back {
+  width: 40px;
+  height: 40px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font-size: 30px;
+  line-height: 1;
+}
+
+.header .titles {
+  flex: 1;
+  min-width: 0;
+  padding: 0 4px;
+}
+
+.header h1 {
+  margin: 0;
+  overflow: hidden;
+  font-size: 19px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  margin-right: 6px;
+  border: 2px solid var(--line-2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.page {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+.pull {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 8px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.note {
+  margin: 0;
+  padding: 16px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.note.error {
+  color: var(--red);
+}
+
+.card:active {
+  background: var(--hover);
+}
+
+.tabs {
+  display: flex;
+  flex: none;
+  gap: 4px;
+  padding: 0 8px;
+  overflow-x: auto;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  scrollbar-width: none;
+}
+
+.tab {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 10px 10px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+.tab.active {
+  color: var(--text);
+}
+
+
+.cards {
+  margin: 0;
+  padding: 8px 12px 24px;
+  list-style: none;
+}
+
+.cards li + li {
+  margin-top: 8px;
+}
+
+.cards .divider {
+  height: 1px;
+  margin: 16px 8px;
+  background: var(--line-2);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: 0 1px 0 rgb(0 0 0 / 25%);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+
+.card-title {
+  font-size: 16px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+
+.card-id {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.chip {
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--bg-3);
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.chip.done {
+  background: var(--green);
+  color: var(--bg);
+}
+
+.markdown {
+  margin-top: 16px;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.markdown a {
+  color: var(--blue);
+}
+
+.markdown code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--bg-3);
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 0.9em;
+}
+
+.markdown pre {
+  padding: 10px;
+  overflow-x: auto;
+  border-radius: 6px;
+  background: var(--bg-2);
+}
+
+.markdown pre code {
+  padding: 0;
+  background: none;
+}
+
+.markdown ul,
+.markdown ol {
+  padding-left: 22px;
+}
+
+.markdown table {
+  display: block;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+
+.markdown th,
+.markdown td {
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+}
+
+.markdown .note {
+  padding: 0;
+}
+
+/* Making a card: the "+" over the list, the form, and the cards waiting to be sent. */
+
+.fab {
+  position: fixed;
+  right: 20px;
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  width: 56px;
+  height: 56px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--accent);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.35);
+  color: var(--accent-ink);
+  font-size: 30px;
+  line-height: 1;
+}
+
+.cards {
+  padding-bottom: 96px;
+}
+
+.card.pending {
+  border-style: dashed;
+  border-color: var(--line-2);
+  opacity: 0.85;
+}
+
+.pending-error {
+  color: var(--red);
+  font-size: 13px;
+}
+
+button.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--blue);
+  font: inherit;
+  font-size: 13px;
+}
+
+.new-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+
+.new-card input,
+.new-card textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--card-edit);
+  color: var(--text);
+  font: inherit;
+}
+
+.new-card input {
+  font-size: 17px;
+}
+
+.new-card textarea {
+  resize: vertical;
+}
+
+.new-card .primary {
+  align-self: flex-end;
+}
+
+/* Changing a card: its actions, and the question when it was edited elsewhere meanwhile. */
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0 4px;
+}
+
+.actions button,
+.actions select {
+  padding: 9px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--bg-3);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+}
+
+.actions button.danger {
+  border-color: var(--red);
+  background: var(--danger-bg);
+  color: var(--red);
+}
+
+.actions button:disabled,
+.actions select:disabled {
+  opacity: 0.5;
+}
+
+.conflict {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--select-line);
+  border-radius: 8px;
+  background: var(--select-bg);
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+.conflict p {
+  margin: 0;
+}

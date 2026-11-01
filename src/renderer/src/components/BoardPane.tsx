@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { Card } from '@shared/types'
+import { cardMatcher } from '@shared/search'
 import { actions, projectIdOf, useStore, type ViewMode, NONE } from '../state'
 import { ProjectMark } from './ProjectMark'
 import { KanbanView } from './KanbanView'
@@ -37,14 +37,7 @@ export function BoardPane({ path }: { path: string }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  const matches = useMemo(() => {
-    const q = filter.trim().toLowerCase()
-    if (!q) return () => true
-    return (card: Card) =>
-      card.id.toLowerCase().includes(q) ||
-      card.title.toLowerCase().includes(q) ||
-      card.body.toLowerCase().includes(q)
-  }, [filter])
+  const matches = useMemo(() => cardMatcher(filter), [filter])
 
   if (!board) return <div className="empty-state">Loading board…</div>
 
