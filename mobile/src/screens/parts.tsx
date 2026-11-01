@@ -1,23 +1,39 @@
-// Pieces every screen shares: the header with its back button, the page that refreshes when
-// pulled down, how a card's description renders, and small wordings.
+// Pieces every screen shares: the header with its back and refresh buttons, the page that
+// refreshes when pulled down, how a card's description renders, and small wordings.
 
 import { useRef, useState, type ReactNode } from 'react'
 import { type Components } from 'react-markdown'
 import { Browser } from '@capacitor/browser'
+import { Icon } from '../Icon'
+import './parts.css'
 
-export function Header({ title, sub, onBack, busy }: { title: string; sub?: string; onBack?: () => void; busy?: boolean }) {
+/** A screen's header: back, the titles, and refresh where the screen can be refreshed. */
+export function Header(props: {
+  title: string
+  sub?: string
+  onBack?: () => void
+  busy?: boolean
+  onRefresh?: () => void
+}) {
+  const { title, sub, onBack, busy, onRefresh } = props
   return (
     <header className="header">
       {onBack && (
         <button className="back" type="button" onClick={onBack} aria-label="Back">
-          ‹
+          <Icon name="chevron-left" />
         </button>
       )}
       <div className="titles">
         <h1>{title}</h1>
         {sub && <p>{sub}</p>}
       </div>
-      {busy && <span className="spinner" aria-label="Refreshing" />}
+      {onRefresh ? (
+        <button className="refresh" type="button" onClick={onRefresh} disabled={busy} aria-label={busy ? 'Refreshing' : 'Refresh'}>
+          {busy ? <span className="spinner" /> : <Icon name="refresh" />}
+        </button>
+      ) : (
+        busy && <span className="spinner" aria-label="Refreshing" />
+      )}
     </header>
   )
 }

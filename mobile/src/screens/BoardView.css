@@ -11,3 +11,16 @@
   background: var(--column);
   font-weight: 600;
 }
+
+/* The "+" for a new card, from the shared icon set. */
+.fab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fab svg {
+  width: 26px;
+  height: 26px;
+  stroke-width: 1.8;
+}

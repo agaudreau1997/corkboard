@@ -7,6 +7,7 @@ import type { ProjectNode, ProjectTheme, PtyInfo, TerminalStatus } from '@shared
 import { actions, api, attachTerminalSink, projectIdOf, useStore } from '../state'
 import { repaint } from '../theme'
 import { openContextMenu, type MenuItem } from './ContextMenu'
+import { Icon } from './Icon'
 import { ProjectMark } from './ProjectMark'
 
 export function TerminalPanel() {
@@ -42,9 +43,7 @@ export function TerminalPanel() {
           onClick={() => useStore.setState(s => ({ terminalOpen: !s.terminalOpen }))}
           title="Toggle terminals (Ctrl+`)"
         >
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <path d="M3.5 10 8 5.5 12.5 10" />
-          </svg>
+          <Icon name="chevron-up" />
           Terminals
         </button>
         {attention.length > 0 && (

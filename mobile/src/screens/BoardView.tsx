@@ -6,6 +6,7 @@ import { useMemo } from 'react'
 import { isDivider, listColorAt } from '@shared/cardfile'
 import { boardColumns, UNLISTED } from '@shared/selection'
 import type { Card, ListDef } from '@shared/types'
+import { Icon } from '../Icon'
 import type { Board } from '../repo/reader'
 import type { Draft } from '../repo/writer'
 import type { RepoState } from './Browse'
@@ -42,7 +43,7 @@ export function BoardView(props: {
 
   return (
     <>
-      <Header title={title} sub={current ? count(cards.filter(c => !isDivider(c)).length) : undefined} onBack={onBack} busy={state.busy || loading} />
+      <Header title={title} sub={current ? count(cards.filter(c => !isDivider(c)).length) : undefined} onBack={onBack} busy={state.busy || loading} onRefresh={() => void onRefresh()} />
       <nav className="tabs">
         {lists.map(l => (
           <button
@@ -89,7 +90,7 @@ export function BoardView(props: {
       </Pull>
       {current && (
         <button className="fab" type="button" aria-label={`New card in ${current.title}`} onClick={onAdd}>
-          +
+          <Icon name="plus" />
         </button>
       )}
     </>
