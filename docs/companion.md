@@ -6,7 +6,13 @@ It talks to GitHub, not git: it reads and writes the board repo's card files thr
 
 ## What it does today
 
-It signs in with GitHub and shows the repos it can reach. Browsing the boards, and making and changing cards, come next.
+It signs in with GitHub and browses your board repos, read-only: their boards, each board's lists, and the cards in them. Making and changing cards come next.
+
+## Browsing
+
+The first screen lists the board repos the app can reach. A repo opens to its boards, child boards under their parents; a board opens on its first list, with the others as tabs along the top, in the board's colours. Each list is in the order the desktop shows it (by hand, or the list's *Sort cards by*), with dividers as lines; archived cards and archived lists stay hidden, and cards with no list (the map's ideas) get an *Ideas* tab of their own. A card opens to its title, labels, due date and description. Images in descriptions show as `[image]` for now, and links open in the browser. Android's back button goes up a level.
+
+The app reopens where you left it, drawn at once from what it last read, then refreshes: pull a screen down to refresh it by hand. It reads only the files that changed since, and only the open board's cards, so a refresh is quick and offline it shows the last read. If you're signed out (the sign-in was revoked, or the app went six months unopened), it still shows what it last read, with a bar to sign in again.
 
 ## Signing in
 

@@ -1,7 +1,9 @@
 // What the sign-in reaches: the GitHub App's installations, and the repos you gave each one. A
 // GitHub App's token sees those repos only, so none installed means the app can do nothing yet.
 
-import type { Session } from './session'
+import { answerJson as json } from './answer'
+
+type Api = (path: string, init?: RequestInit) => Promise<Response>
 
 export type Reach = {
   login: string
@@ -9,21 +11,16 @@ export type Reach = {
   repos: string[]
 }
 
-async function json<T>(response: Response, what: string): Promise<T> {
-  if (!response.ok) throw new Error(`GitHub answered ${response.status} for ${what}.`)
-  return (await response.json()) as T
-}
-
-export async function reach(session: Session): Promise<Reach> {
-  const user = await json<{ login: string }>(await session.api('/user'), 'your account')
+export async function reach(api: Api): Promise<Reach> {
+  const user = await json<{ login: string }>(await api('/user'), 'your account')
   const { installations } = await json<{ installations: { id: number }[] }>(
-    await session.api('/user/installations?per_page=100'),
+    await api('/user/installations?per_page=100'),
     'the app’s installations',
   )
   const repos: string[] = []
   for (const { id } of installations) {
     const page = await json<{ repositories: { full_name: string }[] }>(
-      await session.api(`/user/installations/${id}/repositories?per_page=100`),
+      await api(`/user/installations/${id}/repositories?per_page=100`),
       'the installed repos',
     )
     repos.push(...page.repositories.map(r => r.full_name))
