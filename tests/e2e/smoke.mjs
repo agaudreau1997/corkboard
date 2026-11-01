@@ -1283,6 +1283,25 @@ try {
   }, 15000)
   check(!!cloudEach, `cloud one-per-card started ${primeCount} cloud sessions`)
 
+  // ---- the order: a badge on the card that waits, its drawer's Do after, an arrow on the map ----
+  const waiter = prime.locator(`.card[data-card="${ORDERED.then}"]`)
+  check((await waiter.locator('.badge.waits').textContent())?.includes('1'), `${ORDERED.then}'s face says it waits on one card`)
+  check((await prime.locator(`.card[data-card="${ORDERED.first}"] .badge.waits`).count()) === 0, `${ORDERED.first} waits on nothing`)
+  const orderedFile = path.join(root, MAIN.path, 'cards', `${ORDERED.then}.md`)
+  await waiter.click()
+  const afterSection = page.locator('.drawer .after-section')
+  check((await afterSection.locator('.link-chip').textContent()).includes(ORDERED.first), `the drawer's Do after names ${ORDERED.first}`)
+  await afterSection.getByRole('button', { name: `Not after ${ORDERED.first}` }).click()
+  check(await until(() => !readFileSync(orderedFile, 'utf8').includes('after:')), 'taking it out writes the card without after')
+  await afterSection.locator('input[type="search"]').fill(ORDERED.first)
+  await afterSection.locator('input[type="search"]').press('Enter')
+  check(await until(() => readFileSync(orderedFile, 'utf8').includes(`after:\n  - ${ORDERED.first}\n`)), 'picking it writes it back')
+  await page.locator('.drawer').getByRole('button', { name: 'Close', exact: true }).click()
+  await page.getByRole('tab', { name: 'Map', exact: true }).click()
+  check(await until(async () => (await page.locator(`.react-flow__edge-order[data-id="after:${ORDERED.first}>${ORDERED.then}"]`).count()) === 1), 'the map draws the order as an arrow')
+  await page.getByRole('tab', { name: 'Board', exact: true }).click()
+  await prime.waitFor()
+
   // ---- card menu: copy the id, move the card to another board ----
   // Pinned by its id, so a card the cloud sessions still being recorded from the step above move
   // or touch between two clicks can't take its place.

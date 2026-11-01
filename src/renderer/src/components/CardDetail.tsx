@@ -7,6 +7,8 @@ import { cardImages, imageUrl, insertAt } from '@shared/images'
 import { imageFiles, saveImage, saveImages } from '../images'
 import { discussCards, tackleCards } from '../tackle'
 import { normalizeKey } from '@shared/project'
+import { isDivider } from '@shared/cardfile'
+import { findCycle } from '@shared/tackleorder'
 import { actions, api, commitsFor, listColor, localTime, projectIdOf, useStore } from '../state'
 import { openContextMenu } from './ContextMenu'
 
@@ -340,6 +342,44 @@ function Drawer({ board, card }: { board: LoadedBoard; card: Card }) {
           />
         </section>
 
+        <section className="after-section">
+          <h3>Do after</h3>
+          <div className="links">
+            {card.after.map(id => {
+              const before = board.cards.find(c => c.id === id)
+              const done = !!before && (before.complete || (!!board.meta.flow?.done && before.list === board.meta.flow.done))
+              return (
+                <span key={id} className={`link-chip${done ? ' done' : ''}`}>
+                  <button className="link" onClick={() => before && actions.openCard(board.path, id)}>
+                    {id}
+                  </button>
+                  <span className="link-title">
+                    {before?.title ?? 'not on this board'}
+                    {done && <span className="muted"> · done</span>}
+                  </span>
+                  <button
+                    className="icon-button small"
+                    aria-label={`Not after ${id}`}
+                    onClick={() => save({ after: card.after.filter(a => a !== id) })}
+                  >
+                    ×
+                  </button>
+                </span>
+              )
+            })}
+          </div>
+          <LinkPicker
+            placeholder="A card of this board to do before it: id or title"
+            menuFocus={false}
+            index={board.cards
+              // Never one already there, nor one that waits on this card: that order would loop.
+              .filter(c => c.id !== card.id && !c.archived && !isDivider(c) && !card.after.includes(c.id))
+              .filter(c => !findCycle(board.cards.map(x => (x.id === card.id ? { id: x.id, after: [...card.after, c.id] } : x))))
+              .map(c => ({ id: c.id, title: c.title, boardPath: board.path, boardTitle: board.meta.title }))}
+            onPick={id => save({ after: [...card.after, id] })}
+          />
+        </section>
+
         <section>
           <h3>Commits</h3>
           {commits.length ? (
@@ -534,16 +574,27 @@ async function openLinked(id: string, entry?: IndexEntry) {
   actions.openCard(entry.boardPath, id)
 }
 
-function LinkPicker({ index, onPick }: { index: IndexEntry[]; onPick: (id: string) => void }) {
+function LinkPicker({
+  index,
+  onPick,
+  placeholder = 'Link a card on any board: id or title',
+  menuFocus = true,
+}: {
+  index: IndexEntry[]
+  onPick: (id: string) => void
+  placeholder?: string
+  /** Whether the card menu's *Link to a card* focuses it: the links' picker, not the order's. */
+  menuFocus?: boolean
+}) {
   const [query, setQuery] = useState('')
   const focusLinks = useStore(s => s.focusLinks)
   const input = useRef<HTMLInputElement>(null)
   useEffect(() => {
-    if (focusLinks) {
+    if (focusLinks && menuFocus) {
       input.current?.scrollIntoView({ block: 'center' })
       input.current?.focus()
     }
-  }, [focusLinks])
+  }, [focusLinks, menuFocus])
   const q = query.trim().toLowerCase()
   const hits = q
     ? index.filter(e => e.id.toLowerCase().includes(q) || e.title.toLowerCase().includes(q)).slice(0, 8)
@@ -553,7 +604,7 @@ function LinkPicker({ index, onPick }: { index: IndexEntry[]; onPick: (id: strin
       <input
         ref={input}
         type="search"
-        placeholder="Link a card on any board: id or title"
+        placeholder={placeholder}
         value={query}
         onChange={e => setQuery(e.target.value)}
         onKeyDown={e => {

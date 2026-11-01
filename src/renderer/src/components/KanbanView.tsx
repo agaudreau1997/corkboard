@@ -37,6 +37,7 @@ import { between, freezeListColors, isDivider, listSort, reorderLists, slugify }
 import { dueDay, isOverdue } from '@shared/due'
 import { imageUrl } from '@shared/images'
 import { boardColumns, boardOrder, UNLISTED, type Columns } from '@shared/selection'
+import { unmetPrerequisites } from '@shared/tackleorder'
 import type { Card, CodeCommit, ListDef, LoadedBoard } from '@shared/types'
 import { useGrabScroll } from '../grabScroll'
 import { cardMenu, listMenu } from '../menus'
@@ -794,6 +795,7 @@ export function CardFace({
   const running = finished ? 0 : card.sessions.filter(s => s.purpose !== 'discuss').length
   const talks = finished ? 0 : card.sessions.filter(s => s.purpose === 'discuss').length
   const late = isOverdue(card.due, finished)
+  const waitsOn = finished ? [] : (unmetPrerequisites([card], board.cards, board.meta.flow?.done)[0]?.needs ?? [])
   return (
     <div
       className={`card${selected ? ' selected' : ''}${open ? ' open' : ''}${dragging ? ' dragging' : ''}${card.complete ? ' complete' : ''}${renaming ? ' renaming' : ''}`}
@@ -821,6 +823,11 @@ export function CardFace({
         {card.complete && <span className="badge ok" title="Marked complete">✓</span>}
         {card.body.trim() && <span className="badge" title="Has a description">≡</span>}
         {card.links.length > 0 && <span className="badge" title="Linked cards">⛓ {card.links.length}</span>}
+        {waitsOn.length > 0 && (
+          <span className="badge waits" title={`Waits on ${waitsOn.join(', ')}, not done yet`}>
+            ⧗ {waitsOn.length}
+          </span>
+        )}
         {linked > 0 && <span className="badge commit" title="Commits naming this card">⎇ {linked}</span>}
         {running > 0 && <span className="badge session" title="Claude sessions started for it">▶ {running}</span>}
         {talks > 0 && <span className="badge discuss" title="Discussions about it">✎ {talks}</span>}

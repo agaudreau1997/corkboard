@@ -305,6 +305,15 @@ function MapCanvas({ board, matches }: { board: LoadedBoard; matches: (c: Card) 
     const ids = new Set(visible.map(c => c.id))
     const seen = new Set<string>()
     const out: Edge[] = []
+    // An order is drawn as an arrow from the card to do first; a link between the same two cards
+    // would lie under it, so the arrow stands for both.
+    for (const card of visible) {
+      for (const first of card.after) {
+        if (!ids.has(first) || first === card.id) continue
+        seen.add([card.id, first].sort().join('~'))
+        out.push({ id: `after:${first}>${card.id}`, source: first, target: card.id, type: 'order' })
+      }
+    }
     for (const card of visible) {
       for (const link of card.links) {
         if (!ids.has(link)) continue
@@ -446,7 +455,7 @@ function MapCanvas({ board, matches }: { board: LoadedBoard; matches: (c: Card) 
           ))}
         <span className="spacer" />
         <span className="muted hint">
-          Double-click: a new card · drag a card's dot onto a card to link it, onto empty space for a new linked card ·
+          Double-click: a new card · drag a card's dot onto a card to link it, onto empty space for a new linked card · dashed arrows: do after ·
           right-click a backdrop to lay it out
         </span>
       </div>
@@ -463,9 +472,15 @@ function MapCanvas({ board, matches }: { board: LoadedBoard; matches: (c: Card) 
           onConnect={(c: Connection) => c.source && c.target && link(c.source, c.target)}
           onConnectEnd={onConnectEnd}
           onEdgesDelete={gone => {
-            // Every link deleted at once is one step, each card patched once.
+            // Every link or order deleted at once is one step, each card patched once.
             const links = new Map<string, string[]>()
+            const after = new Map<string, string[]>()
             for (const edge of gone) {
+              if (edge.type === 'order') {
+                const was = after.get(edge.target) ?? board.cards.find(x => x.id === edge.target)?.after
+                if (was?.includes(edge.source)) after.set(edge.target, was.filter(a => a !== edge.source))
+                continue
+              }
               for (const [a, b] of [
                 [edge.source, edge.target],
                 [edge.target, edge.source],
@@ -474,8 +489,18 @@ function MapCanvas({ board, matches }: { board: LoadedBoard; matches: (c: Card) 
                 if (was?.includes(b)) links.set(a, was.filter(l => l !== b))
               }
             }
-            const label = gone.length === 1 ? `unlink ${gone[0].source} and ${gone[0].target}` : `unlink ${gone.length} pairs`
-            change(label, null, [...links].map(([id, next]) => ({ id, patch: { links: next } })))
+            const one = gone.length === 1 ? gone[0] : undefined
+            const label = !one
+              ? `unlink ${gone.length} pairs`
+              : one.type === 'order'
+                ? `take ${one.target} out of the order after ${one.source}`
+                : `unlink ${one.source} and ${one.target}`
+            const ids = new Set([...links.keys(), ...after.keys()])
+            const patch = (id: string): Partial<Card> => ({
+              ...(links.has(id) ? { links: links.get(id) } : {}),
+              ...(after.has(id) ? { after: after.get(id) } : {}),
+            })
+            change(label, null, [...ids].map(id => ({ id, patch: patch(id) })))
           }}
           onNodeDoubleClick={(_, node) => node.type === 'card' && actions.openCard(board.path, node.id)}
           onNodeClick={(e, node) => {
@@ -643,6 +668,31 @@ function FloatingEdge({ id, source, target, selected }: EdgeProps) {
   )
 }
 
+/** An order: a dashed arrow from the card to do first to the card that waits on it. */
+function OrderEdge({ id, source, target, selected }: EdgeProps) {
+  const s = useInternalNode(source)
+  const t = useInternalNode(target)
+  if (!s || !t) return null
+  const [sx, sy] = borderPoint(s, t)
+  const [tx, ty] = borderPoint(t, s)
+  const [path] = getStraightPath({ sourceX: sx, sourceY: sy, targetX: tx, targetY: ty })
+  const length = Math.hypot(tx - sx, ty - sy) || 1
+  const [ux, uy] = [(tx - sx) / length, (ty - sy) / length]
+  const size = selected ? 11 : 9
+  const head = `M ${tx} ${ty} L ${tx - ux * size - uy * size * 0.55} ${ty - uy * size + ux * size * 0.55} L ${tx - ux * size + uy * size * 0.55} ${ty - uy * size - ux * size * 0.55} Z`
+  return (
+    <>
+      <BaseEdge
+        id={id}
+        path={path}
+        interactionWidth={14}
+        style={{ stroke: 'var(--accent)', strokeWidth: selected ? 2.5 : 1.6, strokeDasharray: '6 4' }}
+      />
+      <path className="order-head" d={head} style={{ fill: 'var(--accent)' }} />
+    </>
+  )
+}
+
 function borderPoint(node: InternalNode, other: InternalNode): [number, number] {
   const w = (node.measured.width ?? NODE_W) / 2
   const h = (node.measured.height ?? 50) / 2
@@ -658,4 +708,4 @@ function borderPoint(node: InternalNode, other: InternalNode): [number, number] 
 }
 
 const NODE_TYPES = { card: CardNodeView, area: AreaNodeView }
-const EDGE_TYPES = { floating: FloatingEdge }
+const EDGE_TYPES = { floating: FloatingEdge, order: OrderEdge }
