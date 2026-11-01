@@ -492,10 +492,12 @@ function Column({
         {...drag?.listeners}
         className={`column-head${drag ? ' draggable' : ''}`}
         style={{ borderTopColor: color }}
-        title={drag && !renaming ? 'Drag to move the list; double-click the title to rename it' : undefined}
+        title={drag && !renaming ? 'Drag to move the list; double-click to rename it' : undefined}
         onContextMenu={menu}
         onDoubleClick={e => {
-          if (!list.unlisted && (e.target as HTMLElement).closest('.column-title')) setRenaming(true)
+          // Anywhere on the header but its button: the title alone is a line of text in its padding,
+          // a narrow target next to a card, which answers a double-click anywhere on it.
+          if (!list.unlisted && !renaming && !(e.target as HTMLElement).closest('button')) setRenaming(true)
         }}
       >
         {renaming ? (

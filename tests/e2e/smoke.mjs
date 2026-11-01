@@ -737,6 +737,18 @@ try {
   await page.keyboard.press('Control+a')
   await page.keyboard.type('Known bugs\n')
   check(await until(() => readFileSync(path.join(root, 'scratch-board/board.json'), 'utf8').includes('"Known bugs"')), 'double-clicking a list title renames it')
+  // The whole header answers, not only the line of the title: its padding above and the space
+  // around the count too. Its ⋯ button keeps its own click.
+  const head = await page.locator('.column[data-list="bugs"] .column-head').boundingBox()
+  const count = await page.locator('.column[data-list="bugs"] .column-count').boundingBox()
+  for (const [x, y, where] of [[head.x + head.width / 2, head.y + 4, 'above the title'], [count.x - 4, count.y + count.height / 2, 'beside the count']]) {
+    await page.mouse.dblclick(x, y)
+    check(
+      await page.locator('.column[data-list="bugs"] .rename-list').evaluate(el => el === document.activeElement).catch(() => false),
+      `double-clicking a list's header ${where} renames it too`,
+    )
+    await page.keyboard.press('Escape')
+  }
   const renamed = page.locator('.card[data-card="SB-1"]')
   const faceBefore = await renamed.evaluate(el => {
     const r = el.querySelector('.card-title').getBoundingClientRect()
@@ -1620,6 +1632,7 @@ try {
   check(readFileSync(cardFileOf(COMMITTED), 'utf8').includes('sessions:') && (await page.locator(`.card[data-card="${COMMITTED}"] .badge.session`).count()) === 0, 'a card in Done keeps its sessions but shows no session badge')
   await page.locator('.filter').fill('')
   check((await page.locator('.column[data-list="todo"] .badge.session').count()) > 0, 'an open card with sessions shows the badge')
+
 
   // ---- project colours: a theme picked in the settings, shown at once, saved to theme.json ----
   const rootToken = name => page.evaluate(n => document.documentElement.style.getPropertyValue(n), name)
