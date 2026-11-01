@@ -28,6 +28,7 @@ export function Sidebar() {
         <button className="icon-button" title="Add project" onClick={() => actions.setModal({ kind: 'addProject' })}>
           +
         </button>
+        <SettingsButton />
         <FoldButton collapsed={false} />
       </div>
       {/* A row's own menu stops here (`openContextMenu` stops the event), so this one is the
@@ -41,15 +42,6 @@ export function Sidebar() {
         {!projects.length && <p className="muted pad">No projects yet.</p>}
       </div>
       <footer className="sidebar-foot">
-        <div className="foot-line">
-          <button
-            className="link app-settings"
-            onClick={() => actions.setModal({ kind: 'appSettings' })}
-            title="This machine's settings: desktop notifications and the notification program"
-          >
-            Corkboard settings…
-          </button>
-        </div>
         <UpdateLine />
         <ClaudeLine />
       </footer>
@@ -59,9 +51,9 @@ export function Sidebar() {
 }
 
 /**
- * The side panel folded: its button and a mark per project (its icon, else its swatch), which opens
- * the project's main board as its row does. Nothing else: no boards, no footer, no flyout; to see
- * the boards, it unfolds again.
+ * The side panel folded: its button, the settings' gear under it, and a mark per project (its icon,
+ * else its swatch), which opens the project's main board as its row does. Nothing else: no boards,
+ * no footer, no flyout; to see the boards, it unfolds again.
  */
 function Rail({ projects }: { projects: ProjectNode[] }) {
   const activeProject = useStore(s => (s.activeTab ? projectIdOf(s.activeTab) : null))
@@ -69,6 +61,7 @@ function Rail({ projects }: { projects: ProjectNode[] }) {
     <aside className="sidebar rail">
       <div className="sidebar-head" onContextMenu={e => openContextMenu(e, panelMenu())}>
         <FoldButton collapsed />
+        <SettingsButton />
       </div>
       <nav className="rail-marks" onContextMenu={e => openContextMenu(e, panelMenu())}>
         {projects.map(project => (
@@ -86,6 +79,24 @@ function Rail({ projects }: { projects: ProjectNode[] }) {
         ))}
       </nav>
     </aside>
+  )
+}
+
+/** The one way to Corkboard settings, in the header of the panel and of its rail alike. */
+function SettingsButton() {
+  const label = "Corkboard settings: this machine's, for every project"
+  return (
+    <button
+      className="icon-button settings-button"
+      title={label}
+      aria-label={label}
+      onClick={() => actions.setModal({ kind: 'appSettings' })}
+    >
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M6.9 1.5h2.2l.4 1.9 1.3.6 1.7-1 1.5 1.5-1 1.7.6 1.3 1.9.4v2.2l-1.9.4-.6 1.3 1 1.7-1.5 1.5-1.7-1-1.3.6-.4 1.9H6.9l-.4-1.9-1.3-.6-1.7 1-1.5-1.5 1-1.7-.6-1.3-1.9-.4V6.9l1.9-.4.6-1.3-1-1.7 1.5-1.5 1.7 1 1.3-.6z" />
+        <circle cx="8" cy="8" r="2.2" />
+      </svg>
+    </button>
   )
 }
 

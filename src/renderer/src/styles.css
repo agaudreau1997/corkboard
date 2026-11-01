@@ -471,13 +471,16 @@ code,
 
 
 
-/* The side panel folded to a rail: its button, then a mark per project. */
+/* The side panel folded to a rail: its button and the gear under it, then a mark per project. */
 .rail .sidebar-head {
+  flex-direction: column;
   justify-content: center;
+  gap: 4px;
   padding: 10px 0 8px;
 }
 
-.fold-button svg {
+.fold-button svg,
+.settings-button svg {
   width: 15px;
   height: 15px;
   fill: none;
