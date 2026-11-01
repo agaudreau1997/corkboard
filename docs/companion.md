@@ -6,7 +6,15 @@ It talks to GitHub, not git: it reads and writes the board repo's card files thr
 
 ## What it does today
 
-It opens to a *Sign in with GitHub* screen, and no further yet: signing in, browsing the boards, and making and changing cards come next.
+It signs in with GitHub and shows the repos it can reach. Browsing the boards, and making and changing cards, come next.
+
+## Signing in
+
+*Sign in with GitHub* shows a code, copies it, and opens github.com/login/device in the browser, where you're usually signed in already: paste the code, approve *Corkboard Companion*, and come back. There's no password to type into the app and no server between it and GitHub.
+
+The first time, GitHub also asks you to install the app: pick **only your board repos**. The app can read and write those repos' files and nothing else, so a lost phone can't touch your code repos. If you signed in without installing it, the app says so and opens the install page; to add or remove repos later, go to *GitHub → Settings → Applications → Installed GitHub Apps → Corkboard Companion → Configure*.
+
+You stay signed in: the app renews its access to GitHub by itself, as long as you open it at least once every six months. It keeps that access in Android's keystore. *Sign out* forgets it on the phone; to cut it off from GitHub's side as well (a lost phone), revoke *Corkboard Companion* under *GitHub → Settings → Applications → Authorized GitHub Apps*. Either way, the app goes back to *Sign in with GitHub*.
 
 ## Installing it
 

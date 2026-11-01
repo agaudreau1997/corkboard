@@ -32,6 +32,17 @@ adb install -r android/app/build/outputs/apk/debug/app-debug.apk
 
 The root's `npm run typecheck` and `npm test` don't cover `mobile/`: run its own. `npm run apk` needs a JDK 21 and the Android SDK (`JAVA_HOME`, `ANDROID_HOME`; Android Studio installs both, or Android's command-line tools with `sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"`). The APK's version is Corkboard's, read from the root `package.json` by `mobile/android/app/build.gradle` (version code `major * 10000 + minor * 100 + patch`). Its launcher icons come from `build/icon.svg` with the desktop's (`npm run icon`).
 
+**Its GitHub App.** The companion signs in through a GitHub App, *Corkboard Companion*, whose client id and slug are in `mobile/src/github/config.ts`. A client id isn't a secret: GitHub's device flow needs no client secret, so the app holds none and needs no server. A fork registers its own at *GitHub → Settings → Developer settings → GitHub Apps → New GitHub App* and builds with `VITE_GITHUB_CLIENT_ID` and `VITE_GITHUB_APP_SLUG` set:
+
+- *Homepage URL*: the repo; *Callback URL*: empty; *Request user authorization (OAuth) during installation*: off.
+- *Expire user authorization tokens*: **on**. Access tokens last 8 hours and the app renews them with the refresh token (about 6 months, renewed at each use), which GitHub accepts without the client secret. A refresh token works once: the app saves the new pair before using it.
+- *Enable Device Flow*: **on**.
+- *Webhook*: *Active* off.
+- *Repository permissions*: *Contents: Read and write*, nothing else (*Metadata: Read-only* comes with it). No account permissions, no events.
+- No client secret and no private key: the app needs neither.
+
+Install it on your board repos only (*Install App → Only select repositories*): a token from it reaches nothing else, so a phone that leaks one can't touch a code repo.
+
 There's no end-to-end test on a device: the logic is unit-tested, and the screen is checked by hand on a phone. CI's `mobile` job runs the typecheck and the tests and builds the debug APK on every push, kept as the run's `companion-debug-apk` artifact. A debug APK is signed with the key of the machine that built it, so Android refuses one from another machine (or another CI run) over it: uninstall first.
 
 ## Packaging

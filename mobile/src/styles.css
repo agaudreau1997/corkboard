@@ -23,7 +23,7 @@ body {
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
-.signed-out {
+.centred {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -34,17 +34,17 @@ body {
   text-align: center;
 }
 
-.signed-out h1 {
+.centred h1 {
   margin: 0;
   font-size: 28px;
 }
 
-.signed-out p {
+.centred p {
   margin: 0;
   color: var(--text-2);
 }
 
-.signed-out .hint {
+.centred .hint {
   color: var(--muted);
   font-size: 14px;
 }
@@ -62,4 +62,37 @@ button.primary {
 
 button.primary:disabled {
   opacity: 0.6;
+}
+
+.centred .error {
+  color: var(--red);
+  font-size: 14px;
+}
+
+.centred .code {
+  margin: 8px 0;
+  color: var(--text);
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 32px;
+  letter-spacing: 0.08em;
+  user-select: all;
+}
+
+.repos {
+  margin: 4px 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text);
+}
+
+.repos li {
+  padding: 4px 0;
+}
+
+button.plain {
+  padding: 10px 16px;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
 }
