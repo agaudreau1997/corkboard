@@ -17,6 +17,8 @@ export type Board = {
   path: string
   meta: BoardMeta
   cards: Card[]
+  /** Each card's blob sha as read: a change is written against it. */
+  shas: Record<string, string>
   /** Card files the cache doesn't hold (opened offline before they were ever read). */
   missing: number
 }
@@ -49,14 +51,17 @@ export async function openBoard(api: Api | undefined, cache: RepoCache, snapshot
   if (!files || !meta) return undefined
   if (api) await fetchMissing(api, cache, snapshot.repo, files.cards.map(c => c.sha))
   const cards: Card[] = []
+  const shas: Record<string, string> = {}
   let missing = 0
   for (const file of files.cards) {
     const text = cache.blob(file.sha)
     const card = text === undefined ? undefined : tryParseCard(text, file.id)
-    if (card) cards.push(card)
-    else if (text === undefined) missing++
+    if (card) {
+      cards.push(card)
+      shas[card.id] = file.sha
+    } else if (text === undefined) missing++
   }
-  return { path, meta, cards, missing }
+  return { path, meta, cards, shas, missing }
 }
 
 /** The boards' metas from the cache, for the board list. */

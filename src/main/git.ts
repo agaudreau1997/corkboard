@@ -8,7 +8,7 @@
 import { execFile } from 'node:child_process'
 import { existsSync, type FSWatcher, promises as fs, watch } from 'node:fs'
 import path from 'node:path'
-import { tryParseCard } from '@shared/cardfile'
+import { describeCardChange, tryParseCard } from '@shared/cardfile'
 import { cardImageOf } from '@shared/images'
 import { namesKey, parseProjectSettings, PROJECT_FILE } from '@shared/project'
 import { THEME_FILE } from '@shared/theme'
@@ -402,29 +402,7 @@ export class AutoCommitter {
         const before = tryParseCard(await git(this.root, ['show', `HEAD:${file}`]).catch(() => ''), id)
         // A card saved half-way is committed all the same: one unreadable file must not stop
         // every commit (and push) after it.
-        if (!now || !before) lines.push(`Edit ${id}`)
-        else if (before.list !== now.list) lines.push(`Move ${id}: ${before.list ?? 'map'} → ${now.list ?? 'map'}`)
-        else if (!before.archived && now.archived) lines.push(`Archive ${id}`)
-        else if (now.sessions.length > before.sessions.length) {
-          const last = now.sessions.at(-1)
-          const kind = last?.kind === 'cloud' ? ' in Claude Cloud' : ''
-          lines.push(`${last?.purpose === 'discuss' ? 'Discuss' : last?.purpose === 'untangle' ? 'Untangle' : 'Tackle'} ${id}${kind}`)
-        } else if (now.sessions.length < before.sessions.length) {
-          const gone = before.sessions.length - now.sessions.length
-          lines.push(`Forget ${gone} session${gone === 1 ? '' : 's'} on ${id}`)
-        }
-        else if (before.title !== now.title) lines.push(`Rename ${id}: ${now.title}`)
-        else if (before.links.join() !== now.links.join()) {
-          const added = now.links.filter(l => !before.links.includes(l))
-          const gone = before.links.filter(l => !now.links.includes(l))
-          if (added.length) lines.push(`Link ${id} to ${added.join(', ')}`)
-          if (gone.length) lines.push(`Unlink ${id} from ${gone.join(', ')}`)
-        }
-        else if (before.after.join() !== now.after.join()) {
-          lines.push(now.after.length ? `Put ${id} after ${now.after.join(', ')}` : `Take ${id} out of the order`)
-        }
-        else if (before.pos !== now.pos && before.body === now.body) lines.push(`Reorder ${id}`)
-        else lines.push(`Edit ${id}`)
+        lines.push(...describeCardChange(id, before, now))
       } else if (name === 'board.json') {
         lines.push(`${status === 'A' ? 'Create' : status === 'D' ? 'Delete' : 'Edit'} board ${dir}`)
       } else if (name === 'map.json') {

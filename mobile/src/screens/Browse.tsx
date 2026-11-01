@@ -17,6 +17,7 @@ import { installUrl } from '../github/config'
 import { reach, type Reach } from '../github/installations'
 import { SignedOut, type Session } from '../github/session'
 import type { RepoCache, Snapshot } from '../repo/cache'
+import { changeCard, Conflict, type CardChange } from '../repo/editor'
 import type { Outbox } from '../repo/outbox'
 import type { Draft } from '../repo/writer'
 import { boardTree, type BoardNode } from '../repo/layout'
@@ -142,7 +143,21 @@ export function Browse({ session, cache, outbox, signedOut, onSignIn, onSignOut 
     )
   } else {
     const card = board.board?.cards.find(c => c.id === place.card)
-    screen = <CardView card={card} id={place.card} onBack={() => go({ ...place, card: undefined })} />
+    const b = board.board
+    screen = (
+      <CardView
+        card={card}
+        id={place.card}
+        lists={b ? b.meta.lists.filter(l => !l.archived) : []}
+        canChange={!!api && !!card && !!b?.shas[card.id]}
+        onBack={() => go({ ...place, card: undefined })}
+        onChange={async (change, overwrite) => {
+          await changeCard(api!, cache, { repo: place.repo!, board: place.board! }, card!, b!.shas[card!.id], change, { overwrite })
+          await repo.refresh()
+          if (change.archived) go({ ...place, card: undefined })
+        }}
+      />
+    )
   }
 
   return (
@@ -432,7 +447,7 @@ function BoardView(props: {
 
   return (
     <>
-      <Header title={title} sub={current ? `${cards.filter(c => !isDivider(c)).length} cards` : undefined} onBack={onBack} busy={state.busy || loading} />
+      <Header title={title} sub={current ? count(cards.filter(c => !isDivider(c)).length) : undefined} onBack={onBack} busy={state.busy || loading} />
       <nav className="tabs">
         {lists.map(l => (
           <button
@@ -539,39 +554,171 @@ const markdownParts: Components = {
   img: ({ alt }) => <span className="img-alt">[image{alt ? `: ${alt}` : ''}]</span>,
 }
 
-function CardView({ card, id, onBack }: { card?: Card; id: string; onBack: () => void }) {
+type ChangeCard = (change: CardChange, overwrite?: boolean) => Promise<void>
+
+/** A card: read it, edit its title and description, move it, mark it complete, archive it. */
+function CardView(props: { card?: Card; id: string; lists: ListDef[]; canChange: boolean; onBack: () => void; onChange: ChangeCard }) {
+  const { card, id, lists, canChange, onBack, onChange } = props
+  const [editing, setEditing] = useState(false)
+  const [title, setTitle] = useState('')
+  const [body, setBody] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string>()
+  const [conflict, setConflict] = useState<{ theirs: Card; change: CardChange }>()
+  const [archiving, setArchiving] = useState(false)
+
+  async function save(change: CardChange, overwrite = false) {
+    setBusy(true)
+    setError(undefined)
+    try {
+      await onChange(change, overwrite)
+      setConflict(undefined)
+      setEditing(false)
+    } catch (e) {
+      if (e instanceof Conflict) setConflict({ theirs: e.theirs, change })
+      else if (e instanceof TypeError) setError('No connection: nothing was saved.')
+      else if (!(e instanceof SignedOut)) setError((e as Error).message)
+    } finally {
+      setBusy(false)
+      setArchiving(false)
+    }
+  }
+
+  if (!card) {
+    return (
+      <>
+        <Header title={id} onBack={onBack} />
+        <p className="note">This card isn’t on the board any more.</p>
+      </>
+    )
+  }
+
+  if (editing) {
+    return (
+      <>
+        <Header title={`Edit ${id}`} onBack={() => setEditing(false)} busy={busy} />
+        <form
+          className="page new-card"
+          onSubmit={e => {
+            e.preventDefault()
+            const change: CardChange = {}
+            if (title.trim() && title.trim() !== card.title) change.title = title.trim()
+            if (body !== card.body) change.body = body
+            if (Object.keys(change).length) void save(change)
+            else setEditing(false)
+          }}
+        >
+          <input placeholder="Title" value={title} onChange={e => setTitle(e.target.value)} />
+          <textarea placeholder="Description (Markdown)" value={body} onChange={e => setBody(e.target.value)} rows={14} />
+          {error && <p className="note error">{error}</p>}
+          {conflict && <ConflictNote conflict={conflict} busy={busy} onOverwrite={() => save(conflict.change, true)} onKeep={() => { setConflict(undefined); setEditing(false) }} />}
+          <button className="primary" type="submit" disabled={busy || !title.trim()}>
+            Save
+          </button>
+        </form>
+      </>
+    )
+  }
+
+  const listTitle = lists.find(l => l.id === card.list)?.title
   return (
     <>
-      <Header title={id} onBack={onBack} />
+      <Header title={id} sub={listTitle} onBack={onBack} busy={busy} />
       <div className="page card-page">
-        {!card ? (
-          <p className="note">This card isn’t on the board any more.</p>
+        <h2>{card.title}</h2>
+        <p className="card-meta">
+          {card.complete && <span className="chip done">Done</span>}
+          {card.due && <span className="chip">Due {formatDue(card.due)}</span>}
+          {card.labels.map(l => (
+            <span key={l} className="chip">
+              {l}
+            </span>
+          ))}
+        </p>
+        {canChange ? (
+          <div className="actions">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setTitle(card.title)
+                setBody(card.body)
+                setError(undefined)
+                setEditing(true)
+              }}
+            >
+              Edit
+            </button>
+            <select
+              aria-label="Move to list"
+              disabled={busy}
+              value=""
+              onChange={e => e.target.value && void save({ list: e.target.value })}
+            >
+              <option value="">Move to…</option>
+              {lists
+                .filter(l => l.id !== card.list)
+                .map(l => (
+                  <option key={l.id} value={l.id}>
+                    {l.title}
+                  </option>
+                ))}
+            </select>
+            <button type="button" disabled={busy} onClick={() => save({ complete: !card.complete })}>
+              {card.complete ? 'Not complete' : 'Mark complete'}
+            </button>
+            {archiving ? (
+              <button type="button" className="danger" disabled={busy} onClick={() => save({ archived: true })}>
+                Archive it
+              </button>
+            ) : (
+              <button type="button" disabled={busy} onClick={() => setArchiving(true)}>
+                Archive
+              </button>
+            )}
+          </div>
         ) : (
-          <>
-            <h2>{card.title}</h2>
-            <p className="card-meta">
-              {card.complete && <span className="chip done">Done</span>}
-              {card.due && <span className="chip">Due {formatDue(card.due)}</span>}
-              {card.labels.map(l => (
-                <span key={l} className="chip">
-                  {l}
-                </span>
-              ))}
-            </p>
-            <div className="markdown">
-              {card.body.trim() ? (
-                <Markdown remarkPlugins={[remarkGfm]} components={markdownParts}>
-                  {card.body}
-                </Markdown>
-              ) : (
-                <p className="note">No description.</p>
-              )}
-            </div>
-          </>
+          <p className="note">Changing a card needs a connection to GitHub.</p>
         )}
+        {error && <p className="note error">{error}</p>}
+        {conflict && <ConflictNote conflict={conflict} busy={busy} onOverwrite={() => save(conflict.change, true)} onKeep={() => setConflict(undefined)} />}
+        <div className="markdown">
+          {card.body.trim() ? (
+            <Markdown remarkPlugins={[remarkGfm]} components={markdownParts}>
+              {card.body}
+            </Markdown>
+          ) : (
+            <p className="note">No description.</p>
+          )}
+        </div>
       </div>
     </>
   )
+}
+
+/** Someone else edited the card's title or description meanwhile: overwrite it, or keep theirs. */
+function ConflictNote(props: { conflict: { theirs: Card }; busy: boolean; onOverwrite: () => void; onKeep: () => void }) {
+  const { theirs } = props.conflict
+  return (
+    <div className="conflict">
+      <p>
+        {theirs.id} was edited elsewhere since you opened it. It now reads <strong>{theirs.title}</strong>
+        {theirs.body.trim() ? ', with a different description' : ''}.
+      </p>
+      <div className="actions">
+        <button type="button" disabled={props.busy} onClick={props.onOverwrite}>
+          Overwrite with mine
+        </button>
+        <button type="button" disabled={props.busy} onClick={props.onKeep}>
+          Keep theirs
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function count(n: number): string {
+  return `${n} card${n === 1 ? '' : 's'}`
 }
 
 function formatDue(due: string): string {

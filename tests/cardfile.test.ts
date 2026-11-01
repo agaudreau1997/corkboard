@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   between,
+  describeCardChange,
   isDivider,
   LIST_COLORS,
   listSort,
@@ -116,6 +117,22 @@ describe('card files', () => {
 })
 
 describe('helpers', () => {
+  it('says what changed on a card as a commit does', () => {
+    const card = { ...base, id: 'C-1', list: 'todo' }
+    expect(describeCardChange('C-1', card, { ...card, list: 'done' })).toEqual(['Move C-1: todo → done'])
+    expect(describeCardChange('C-1', card, { ...card, list: null })).toEqual(['Move C-1: todo → map'])
+    expect(describeCardChange('C-1', card, { ...card, archived: true })).toEqual(['Archive C-1'])
+    expect(describeCardChange('C-1', card, { ...card, title: 'New' })).toEqual(['Rename C-1: New'])
+    expect(describeCardChange('C-1', card, { ...card, links: ['C-2'] })).toEqual(['Link C-1 to C-2'])
+    expect(describeCardChange('C-1', { ...card, links: ['C-3'] }, { ...card, links: ['C-2'] })).toEqual([
+      'Link C-1 to C-2',
+      'Unlink C-1 from C-3',
+    ])
+    expect(describeCardChange('C-1', card, { ...card, pos: 99 })).toEqual(['Reorder C-1'])
+    expect(describeCardChange('C-1', card, { ...card, body: 'x' })).toEqual(['Edit C-1'])
+    expect(describeCardChange('C-1', undefined, card)).toEqual(['Edit C-1'])
+  })
+
   it('numbers a new card after the board\'s highest, archived and other keys aside', () => {
     expect(nextCardId('CORK', [])).toBe('CORK-1')
     expect(nextCardId('CORK', ['CORK-3', 'CORK-12', 'CORK-7', 'OLD-40', 'CORK-x'])).toBe('CORK-13')

@@ -6,7 +6,7 @@ It talks to GitHub, not git: it reads and writes the board repo's card files thr
 
 ## What it does today
 
-It signs in with GitHub, browses your board repos (their boards, each board's lists, and the cards in them) and makes cards. Changing cards comes next.
+It signs in with GitHub, browses your board repos (their boards, each board's lists, and the cards in them), makes cards, and changes them: their title and description, their list, complete or not, archived.
 
 ## Browsing
 
@@ -27,6 +27,14 @@ You stay signed in: the app renews its access to GitHub by itself, as long as yo
 The **+** at the bottom of a list writes a card into it: a title, and a description if you like (Markdown, as on the desktop). It goes at the end of the list, numbered after the board's highest card, and reaches GitHub as one commit, `Add CORK-122: <title>`, the same message the desktop's auto-commit writes. The desktop picks it up at its next sync.
 
 Until it's sent, the card waits on the phone, dashed at the end of its list: offline, it goes when the connection is back and the app is in front again (or on a pull to refresh). It gets its number when it's sent, so if a desktop pushed a card with that number meanwhile, the phone's takes the next one; if a desktop made the same number and hasn't pushed yet, the desktop renumbers its own at its next sync. A card GitHub refused (its board gone, say) stays with the reason under it, until you *Discard* it.
+
+## Changing a card
+
+An open card has *Edit* (its title and description), *Move to…* (another list of its board; the card goes at the end), *Mark complete* and *Archive*, which asks once more and never deletes: the card is archived, as on the desktop, and the desktop can bring it back. Each change is one commit, named the way the desktop's auto-commit names it (`Move CORK-12: todo → done`, `Archive CORK-12`, `Rename CORK-12: …`), and stamps the card's `updated`, so a sync between desktops keeps it if the same card changed there too.
+
+If the card changed since you opened it (a desktop pushed meanwhile), the app reads it again: a move, a complete or an archive goes on top of the newer card, and so does an edit of a field nobody else touched. When its title or description was edited there too, the app says so and asks: *Overwrite with mine*, or *Keep theirs*.
+
+Changing a card needs a connection. Unlike a new card, a change isn't kept for later: offline, the app says nothing was saved. Labels, due dates, links, moving a card to another board and reordering a list are for the desktop.
 
 ## Installing it
 

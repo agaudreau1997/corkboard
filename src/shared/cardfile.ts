@@ -177,6 +177,37 @@ export function newCard(
   }
 }
 
+/**
+ * What changed on a card, as a commit says it (`Move CORK-12: todo → done`), from the card as it
+ * was and as it is now; either unreadable is an `Edit`. The desktop's auto-commit and the companion
+ * both name their commits with it, so `git log` reads the same whichever made the change.
+ */
+export function describeCardChange(id: string, before: Card | undefined, now: Card | undefined): string[] {
+  if (!now || !before) return [`Edit ${id}`]
+  if (before.list !== now.list) return [`Move ${id}: ${before.list ?? 'map'} → ${now.list ?? 'map'}`]
+  if (!before.archived && now.archived) return [`Archive ${id}`]
+  if (now.sessions.length > before.sessions.length) {
+    const last = now.sessions.at(-1)
+    const kind = last?.kind === 'cloud' ? ' in Claude Cloud' : ''
+    return [`${last?.purpose === 'discuss' ? 'Discuss' : last?.purpose === 'untangle' ? 'Untangle' : 'Tackle'} ${id}${kind}`]
+  }
+  if (now.sessions.length < before.sessions.length) {
+    const gone = before.sessions.length - now.sessions.length
+    return [`Forget ${gone} session${gone === 1 ? '' : 's'} on ${id}`]
+  }
+  if (before.title !== now.title) return [`Rename ${id}: ${now.title}`]
+  if (before.links.join() !== now.links.join()) {
+    const added = now.links.filter(l => !before.links.includes(l))
+    const gone = before.links.filter(l => !now.links.includes(l))
+    return [...(added.length ? [`Link ${id} to ${added.join(', ')}`] : []), ...(gone.length ? [`Unlink ${id} from ${gone.join(', ')}`] : [])]
+  }
+  if (before.after.join() !== now.after.join()) {
+    return [now.after.length ? `Put ${id} after ${now.after.join(', ')}` : `Take ${id} out of the order`]
+  }
+  if (before.pos !== now.pos && before.body === now.body) return [`Reorder ${id}`]
+  return [`Edit ${id}`]
+}
+
 export function sortCards(cards: Card[]): Card[] {
   return [...cards].sort((a, b) => a.pos - b.pos || cardNumber(a.id) - cardNumber(b.id))
 }

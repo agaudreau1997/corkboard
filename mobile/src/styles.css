@@ -487,3 +487,48 @@ button.link {
 .new-card .primary {
   align-self: flex-end;
 }
+
+/* Changing a card: its actions, and the question when it was edited elsewhere meanwhile. */
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0 4px;
+}
+
+.actions button,
+.actions select {
+  padding: 9px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--bg-3);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+}
+
+.actions button.danger {
+  border-color: var(--red);
+  background: var(--danger-bg);
+  color: var(--red);
+}
+
+.actions button:disabled,
+.actions select:disabled {
+  opacity: 0.5;
+}
+
+.conflict {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--select-line);
+  border-radius: 8px;
+  background: var(--select-bg);
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+.conflict p {
+  margin: 0;
+}

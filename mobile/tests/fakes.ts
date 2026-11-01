@@ -75,6 +75,10 @@ export function github(files: Record<string, string>) {
       if (tree.some(e => e.path === file) && !body.sha) {
         return Response.json({ message: 'Invalid request.\n\n"sha" wasn\'t supplied.' }, { status: 422 })
       }
+      const current = tree.find(e => e.path === file)
+      if (current && body.sha && body.sha !== current.sha) {
+        return Response.json({ message: `${file} does not match ${body.sha}` }, { status: 409 })
+      }
       const text = new TextDecoder().decode(Uint8Array.from(atob(body.content), c => c.charCodeAt(0)))
       writes.push({ path: file, message: body.message, text })
       const s = put(file, text)
