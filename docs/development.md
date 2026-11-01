@@ -49,6 +49,8 @@ Install it on your board repos only (*Install App → Only select repositories*)
 
 **Changing a card** (`mobile/src/repo/editor.ts`) writes the card file against the blob sha it was read at; a 409 means it changed since, so it is read again and the change applied on top, unless it would overwrite a title or description edited there too (a `Conflict`, which the screen asks about). Its commit message comes from `describeCardChange` in `src/shared/cardfile.ts`, which the desktop's auto-commit (`git.ts`) uses too.
 
+**Sharing a card** (`mobile/src/screens/CardShare.tsx`) builds its text with `src/shared/cardcopy.ts`, which the desktop's *Copy* menu (`menus.ts`) builds its items with too, so the two say the same and keep the same work-mode rule; `tests/cardcopy.test.ts` checks both modes. The phone knows a project is a work one from the root's `project.json`, read with the boards' `board.json` files and cached by sha like them (`projectSettings` in `reader.ts`). It goes through Capacitor's Share and Clipboard plugins.
+
 There's no end-to-end test on a device: the logic is unit-tested, and the screen is checked by hand on a phone. CI's `mobile` job runs the typecheck and the tests and builds the debug APK on every push, kept as the run's `companion-debug-apk` artifact. A debug APK is signed with the key of the machine that built it, so Android refuses one from another machine (or another CI run) over it: uninstall first.
 
 ## Packaging

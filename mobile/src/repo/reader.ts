@@ -1,11 +1,12 @@
 // Reading a board repo through GitHub, not git: the default branch's tree in one call, then the
 // files it names that the cache doesn't hold yet, in GraphQL batches. A refresh is the tree again
-// and only the files whose sha changed. Boards' `board.json` files are read with the tree (there
-// are few); a board's cards when it is opened. Offline, or signed out, everything comes from the
+// and only the files whose sha changed. Boards' `board.json` files, and the root's `project.json`,
+// are read with the tree (there are few); a board's cards when it is opened. Offline, or signed out, everything comes from the
 // cache, and a board shows the cards the cache holds.
 
 import { tryParseCard } from '@shared/cardfile'
-import type { BoardMeta, Card } from '@shared/types'
+import { parseProjectSettings, PROJECT_FILE } from '@shared/project'
+import type { BoardMeta, Card, ProjectSettings } from '@shared/types'
 import { answerJson as json } from '../github/answer'
 import { readBlobs } from './blobs'
 import type { RepoCache, Snapshot } from './cache'
@@ -31,13 +32,15 @@ export async function refresh(api: Api, cache: RepoCache, repo: string, now = ne
     `${repo}'s files`,
   )
   const boards = findBoards(tree.tree)
-  await fetchMissing(api, cache, repo, boards.map(b => b.meta.sha))
+  const project = tree.tree.find(e => e.type === 'blob' && e.path === PROJECT_FILE)
+  await fetchMissing(api, cache, repo, [...boards.map(b => b.meta.sha), ...(project ? [project.sha] : [])])
   const snapshot: Snapshot = {
     repo,
     branch: info.default_branch,
     tree: tree.sha,
     truncated: tree.truncated,
     boards,
+    ...(project ? { project: { path: project.path, sha: project.sha } } : {}),
     read: now.toISOString(),
   }
   cache.putSnapshot(snapshot)
@@ -70,6 +73,12 @@ export function boardMetas(cache: RepoCache, snapshot: Snapshot): { path: string
     const meta = parseMeta(cache.blob(b.meta.sha) ?? '')
     return meta ? [{ path: b.path, meta }] : []
   })
+}
+
+/** The project's settings from its `project.json`: none when it has none or it doesn't parse. */
+export function projectSettings(cache: RepoCache, snapshot: Snapshot | undefined): ProjectSettings {
+  const text = snapshot?.project && cache.blob(snapshot.project.sha)
+  return (text && parseProjectSettings(text)) || {}
 }
 
 async function fetchMissing(api: Api, cache: RepoCache, repo: string, shas: string[]): Promise<void> {

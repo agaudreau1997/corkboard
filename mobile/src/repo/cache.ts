@@ -3,7 +3,7 @@
 // and a repo's snapshot is its tree as last read. Board files aren't secrets: the WebView's
 // localStorage is enough, and is a few hundred kilobytes for a board repo.
 
-import type { BoardFiles } from './layout'
+import type { BoardFiles, FileRef } from './layout'
 
 export type Snapshot = {
   repo: string
@@ -13,6 +13,8 @@ export type Snapshot = {
   /** GitHub cut the tree short (a huge repo): some boards may be missing. */
   truncated: boolean
   boards: BoardFiles[]
+  /** The repo's `project.json` (the project's settings, work mode among them), when it has one. */
+  project?: FileRef
   read: string
 }
 
@@ -47,6 +49,7 @@ export class RepoCache {
     const keys = Array.from({ length: this.storage.length }, (_, i) => this.storage.key(i) ?? '')
     for (const key of keys.filter(k => k.startsWith(SNAPSHOT))) {
       const kept = this.snapshot(key.slice(SNAPSHOT.length))
+      if (kept?.project) named.add(kept.project.sha)
       for (const board of kept?.boards ?? []) {
         named.add(board.meta.sha)
         for (const card of board.cards) named.add(card.sha)

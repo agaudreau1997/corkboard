@@ -12,6 +12,8 @@ dependencies {
     implementation project(':aparajita-capacitor-secure-storage')
     implementation project(':capacitor-app')
     implementation project(':capacitor-browser')
+    implementation project(':capacitor-clipboard')
+    implementation project(':capacitor-share')
 
 }
 

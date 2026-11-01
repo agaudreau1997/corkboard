@@ -12,7 +12,7 @@ import type { RepoCache, Snapshot } from '../repo/cache'
 import { changeCard } from '../repo/editor'
 import { boardTree } from '../repo/layout'
 import type { Outbox } from '../repo/outbox'
-import { boardMetas, openBoard, refresh, type Board } from '../repo/reader'
+import { boardMetas, openBoard, projectSettings, refresh, type Board } from '../repo/reader'
 import type { Draft } from '../repo/writer'
 import { Boards } from './Boards'
 import { BoardView } from './BoardView'
@@ -146,6 +146,7 @@ export function Browse({ session, cache, outbox, signedOut, onSignIn, onSignOut 
         id={place.card}
         lists={b ? b.meta.lists.filter(l => !l.archived) : []}
         canChange={!!api && !!card && !!b?.shas[card.id]}
+        work={projectSettings(cache, repo.snapshot).work === true}
         onBack={() => go({ ...place, card: undefined })}
         onChange={async (change, overwrite) => {
           await changeCard(api!, cache, { repo: place.repo!, board: place.board! }, card!, b!.shas[card!.id], change, { overwrite })

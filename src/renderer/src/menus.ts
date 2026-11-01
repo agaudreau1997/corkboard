@@ -1,5 +1,6 @@
 // The right-click menus of cards and lists, shared by the board, map and table views.
 
+import { cardCopies } from '@shared/cardcopy'
 import { between, isDivider, LIST_SORTS, listSort, orderList, reorderLists, sortCards } from '@shared/cardfile'
 import type { BoardNode, Card, ListDef, LoadedBoard, TackleMode } from '@shared/types'
 import type { MenuItem } from './components/ContextMenu'
@@ -34,8 +35,11 @@ export function cardMenu(board: LoadedBoard, card: Card): MenuItem[] {
   const tackle = (mode: TackleMode) => () => void tackleCards(board.path, [card.id], mode)
   const divider = isDivider(card)
   // A work project's code repo never sees a card id: what is copied for it names the Jira key.
-  const work = isWork(board.path)
-  const markdown = work ? (card.jira ? `[${card.jira}] ${card.title}` : card.title) : `[${card.id}] ${card.title}`
+  const copies = cardCopies(card, isWork(board.path)).map(c => ({
+    label: c.label,
+    hint: c.hint,
+    onSelect: () => actions.copy(c.text, c.what),
+  }))
 
   const items: MenuItem[] = [
     { label: 'Open', onSelect: () => actions.openCard(board.path, card.id) },
@@ -113,18 +117,7 @@ export function cardMenu(board: LoadedBoard, card: Card): MenuItem[] {
     {
       label: 'Copy',
       items: [
-        { label: 'Identifier', hint: card.id, onSelect: () => actions.copy(card.id) },
-        { label: 'Title', onSelect: () => actions.copy(card.title, 'the title') },
-        ...(work
-          ? card.jira
-            ? [{ label: 'Jira key', hint: card.jira, onSelect: () => actions.copy(card.jira!, 'the Jira key') }]
-            : []
-          : [{ label: 'Commit trailer', hint: `Card: ${card.id}`, onSelect: () => actions.copy(`Card: ${card.id}`) }]),
-        {
-          label: 'Markdown',
-          hint: work ? (card.jira ? `[${card.jira}] …` : 'the title') : `[${card.id}] …`,
-          onSelect: () => actions.copy(markdown, 'as Markdown'),
-        },
+        ...copies,
         {
           label: 'File path',
           onSelect: async () => actions.copy(await api.cards.filePath(board.path, card.id), 'the file path'),

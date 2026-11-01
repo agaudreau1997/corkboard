@@ -6,7 +6,7 @@ It talks to GitHub, not git: it reads and writes the board repo's card files thr
 
 ## What it does today
 
-It signs in with GitHub, browses your board repos (their boards, each board's lists, and the cards in them), makes cards, and changes them: their title and description, their list, complete or not, archived.
+It signs in with GitHub, browses your board repos (their boards, each board's lists, and the cards in them), makes cards, and changes them: their title and description, their list, complete or not, archived. It shares a card to another app, and copies its id.
 
 ## Browsing
 
@@ -35,6 +35,12 @@ An open card has *Edit* (its title and description), *Move to…* (another list 
 If the card changed since you opened it (a desktop pushed meanwhile), the app reads it again: a move, a complete or an archive goes on top of the newer card, and so does an edit of a field nobody else touched. When its title or description was edited there too, the app says so and asks: *Overwrite with mine*, or *Keep theirs*.
 
 Changing a card needs a connection. Unlike a new card, a change isn't kept for later: offline, the app says nothing was saved. Labels, due dates, links, moving a card to another board and reordering a list are for the desktop.
+
+## Sharing a card
+
+An open card's *Share* opens a sheet: *Share* hands its title and description to Android's share sheet (a message, a note, an email), and *Share as Markdown* heads them with `[CORK-12] Title`, the line the desktop's *Copy → Markdown* gives. Below them are the desktop's *Copy* items: the id, the title, the commit trailer (`Card: CORK-12`) and the Markdown line. A tap on the card's id, beside its labels, copies it, as a click on it does in the desktop's drawer. None of it needs a connection.
+
+In a [work project](work-mode.md) (`project.json` says so, read with the boards), what you share names the card's Jira key, or its title alone, and never its id: *Share as Markdown* starts `[SPDI-42] Title`, and the copy items offer the *Jira key* in place of the commit trailer, exactly as on the desktop. Only the id itself, copied by name or with a tap, carries it. A card with a key shows it beside the id, and a tap copies that too.
 
 ## Installing it
 
