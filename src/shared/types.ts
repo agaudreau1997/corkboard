@@ -252,6 +252,11 @@ export type AppConfig = {
   notify?: NotifyConfig
   /** This machine's order of the side panel's projects and boards, dragged by their handles. */
   order?: SidebarOrder
+  /**
+   * One board tab per project, showing whichever of its boards was opened last. Absent means on,
+   * so a config written before it gets it; only `false` is written.
+   */
+  oneTabPerProject?: boolean
 }
 
 /**

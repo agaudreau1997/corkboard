@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { slugify } from '@shared/cardfile'
 import { isEmptyTheme } from '@shared/theme'
 import type { BoardMeta, CodeRepoFrom, ListDef, ProjectSettingsPatch, ProjectTheme } from '@shared/types'
-import { actions, api, findNode, projectIdOf, useStore } from '../state'
+import { actions, api, findNode, oneTabPerProject, projectIdOf, useStore } from '../state'
 import { iconFromFile, ProjectMark } from './ProjectMark'
 import { ThemeEditor } from './ThemeEditor'
 
@@ -547,12 +547,14 @@ function AddProject() {
 }
 
 /**
- * This machine's settings (app config, never synced): desktop notifications, and the program run
- * when a terminal tab changes state. *Try it* runs what is typed, saved or not, so a script can be
+ * This machine's settings (app config, never synced): one board tab per project, desktop
+ * notifications, and the program run when a terminal tab changes state. *Try it* runs what is typed, saved or not, so a script can be
  * fixed before it is kept.
  */
 function AppSettings() {
   const saved = useStore(s => s.config?.notify)
+  const savedOneTab = useStore(oneTabPerProject)
+  const [oneTab, setOneTab] = useState(savedOneTab)
   const [desktop, setDesktop] = useState(saved?.desktop !== false)
   const [command, setCommand] = useState(saved?.command ?? '')
   const [tried, setTried] = useState<{ command: string; error: string | null } | null>(null)
@@ -568,6 +570,7 @@ function AppSettings() {
   const save = async () => {
     try {
       await actions.setNotify({ desktop, command })
+      if (oneTab !== savedOneTab) await actions.setOneTabPerProject(oneTab)
       actions.setModal(null)
     } catch (error) {
       actions.toast((error as Error).message, 'error')
@@ -585,6 +588,19 @@ function AppSettings() {
         The app's own, for every project: kept on this computer, never synced, so each of these is marked{' '}
         <MachineOnly />.
       </p>
+      <div className="field">
+        <span className="check-row">
+          <label className="check">
+            <input type="checkbox" checked={oneTab} onChange={e => setOneTab(e.target.checked)} />
+            One tab per project
+          </label>
+          <MachineOnly />
+        </span>
+        <small className="muted">
+          A project's boards share one tab, which shows the board opened last; back and forward step through
+          them. Turned on, the tabs open fold into one per project. Off, every board opened gets a tab of its own.
+        </small>
+      </div>
       <div className="field">
         <span className="check-row">
           <label className="check">

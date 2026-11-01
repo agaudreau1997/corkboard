@@ -157,6 +157,7 @@ async function readSavedConfig(): Promise<AppConfig> {
     codeRepos,
     ...(saved.notify ? { notify: saved.notify } : {}),
     ...(saved.order ? { order: saved.order } : {}),
+    ...(saved.oneTabPerProject === false ? { oneTabPerProject: false } : {}),
   }
 }
 
@@ -417,6 +418,12 @@ function registerIpc(): void {
     await writeConfig(c => {
       const { notify: _, ...rest } = c
       return Object.keys(next).length ? { ...rest, notify: next } : rest
+    })
+  })
+  ipcMain.handle('config:setOneTabPerProject', async (_e, on: boolean) => {
+    await writeConfig(c => {
+      const { oneTabPerProject: _, ...rest } = c
+      return on ? rest : { ...rest, oneTabPerProject: false }
     })
   })
   ipcMain.handle('config:setOrder', async (_e, patch: SidebarOrder) => {

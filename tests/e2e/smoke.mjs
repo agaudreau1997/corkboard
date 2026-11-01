@@ -383,9 +383,13 @@ try {
   await page.setViewportSize({ width: 1500, height: 940 }).catch(() => {})
   await shot('01-kanban')
 
-  // Second tab, map view.
+  // Another board of the project, map view: one tab per project is on to begin with, so it takes
+  // the project's tab.
   await page.locator('.tree-row', { hasText: IDEAS.title }).click()
-  check((await page.locator('.tab').count()) === 2, 'a second tab opened')
+  check(!!(await until(async () => ((await page.locator('.tab.active').getAttribute('title')) ?? '').endsWith(`:${IDEAS.path}`))), 'another board of the project opens')
+  check((await page.locator('.tab').count()) === 1, "in the project's tab, one tab per project")
+  const tabParent = (await page.locator('.tab.active .tab-parent').first().textContent()) ?? ''
+  check(tabParent.endsWith('›') && tabParent.length > 1 && (await page.locator('.tab.active').textContent()).includes(IDEAS.title), `the tab names the project and the board (${await page.locator('.tab.active').textContent()})`)
   await page.getByRole('tab', { name: 'Map' }).click()
   await page.locator('.map-node').first().waitFor()
   check((await page.locator('.map-node').count()) > 30, `map draws the open idea cards (${await page.locator('.map-node').count()})`)
@@ -420,7 +424,8 @@ try {
   const prevented = await mouseNav(3)
   check(prevented && (await isAt(IDEAS.path, 'Board')), `mouse 4 goes back to the tab's board view, and nothing else sees it (${JSON.stringify(await where())})`)
   await mouseNav(3)
-  check(await isAt(MAIN.path, 'Board'), `mouse 4 again goes back to the tab before (${JSON.stringify(await where())})`)
+  check(await isAt(MAIN.path, 'Board'), `mouse 4 again goes back to the board before (${JSON.stringify(await where())})`)
+  check((await page.locator('.tab').count()) === 1, "in the project's one tab")
   await mouseNav(4)
   await mouseNav(4)
   check(await isAt(IDEAS.path, 'Map'), `mouse 5 goes forward again (${JSON.stringify(await where())})`)
@@ -429,6 +434,33 @@ try {
   await mouseNav(4)
   check(await isAt(IDEAS.path, 'Table'), `a view chosen after going back drops the way forward (${JSON.stringify(await where())})`)
   await page.getByRole('tab', { name: 'Map', exact: true }).click()
+  await page.locator('.map-node').first().waitFor()
+
+  // ---- one tab per project: a Corkboard setting, on by default ----
+  const oneTabSaved = () => JSON.parse(readFileSync(path.join(scratch, 'profile', 'config.json'), 'utf8')).oneTabPerProject
+  const setOneTab = async on => {
+    await page.locator('.sidebar-head').getByRole('button', { name: /Corkboard settings/ }).click()
+    const box = page.getByRole('dialog').getByRole('checkbox', { name: 'One tab per project' })
+    const was = await box.isChecked()
+    await box.setChecked(on)
+    await page.getByRole('dialog').getByRole('button', { name: 'Save' }).click()
+    await until(async () => (await page.getByRole('dialog').count()) === 0)
+    return was
+  }
+  check((await setOneTab(false)) === true, 'One tab per project is on to begin with')
+  check(oneTabSaved() === false, "turned off, it is kept in this machine's config")
+  check((await page.locator('.tab').count()) === 1, 'turning it off leaves the tabs as they are')
+  await projectRow.click()
+  check(!!(await until(async () => (await page.locator('.tab').count()) === 2)), 'and a board opened afterwards gets a tab of its own')
+  await setOneTab(true)
+  check(oneTabSaved() === undefined, 'turned on again, the config is back to its default')
+  const foldedTabs = await page.locator('.tab').evaluateAll(els => els.map(el => el.getAttribute('title')))
+  check(foldedTabs.length === 1 && foldedTabs[0].endsWith(`:${MAIN.path}`), `the project's tabs fold into one, on the board in front (${foldedTabs})`)
+  // A tab per board for the rest of the test, the idea board back in its map view.
+  await setOneTab(false)
+  await page.locator('.tree-row', { hasText: IDEAS.title }).click()
+  check(!!(await until(async () => (await page.locator('.tab').count()) === 2)), 'with the setting off, the idea board has its tab again')
+  check(await isAt(IDEAS.path, 'Map'), `in the view it was last shown in (${JSON.stringify(await where())})`)
   await page.locator('.map-node').first().waitFor()
 
   // Link two ideas by dragging handle to node.
