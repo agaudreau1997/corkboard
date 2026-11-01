@@ -2081,12 +2081,42 @@ button.copy-id:hover {
 }
 
 .terminal-toggle {
+  display: inline-flex;
   flex: none;
+  align-items: center;
+  gap: 5px;
   background: none;
   border: none;
   color: var(--text-2);
   font-weight: 600;
   white-space: nowrap;
+}
+
+/* A chevron drawn like the side panel's twisty: up while the panel is closed, turned down when it
+   opens, so it points the way a click moves the panel. */
+.terminal-toggle svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.12s ease;
+}
+
+.terminal-toggle:hover svg {
+  stroke: currentColor;
+}
+
+.terminal-toggle.open svg {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .terminal-toggle svg {
+    transition: none;
+  }
 }
 
 .terminal-tab {
