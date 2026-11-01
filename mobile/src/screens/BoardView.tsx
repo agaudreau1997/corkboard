@@ -9,7 +9,9 @@ import type { Card, ListDef } from '@shared/types'
 import type { Board } from '../repo/reader'
 import type { Draft } from '../repo/writer'
 import type { RepoState } from './Browse'
-import { count, formatDue, Header, Pull } from './parts'
+import { CardFace } from './CardFace'
+import { count, Header, Pull } from './parts'
+import './BoardView.css'
 
 export function BoardView(props: {
   title: string
@@ -47,10 +49,9 @@ export function BoardView(props: {
             key={l.id}
             type="button"
             className={l.id === current?.id ? 'tab active' : 'tab'}
-            style={{ borderBottomColor: l.id === current?.id ? l.color : 'transparent' }}
+            style={{ borderTopColor: l.color }}
             onClick={() => onList(l.id)}
           >
-            <span className="dot" style={{ background: l.color }} />
             {l.title}
           </button>
         ))}
@@ -66,19 +67,7 @@ export function BoardView(props: {
               <li key={card.id} className="divider" />
             ) : (
               <li key={card.id}>
-                <button type="button" className="card" onClick={() => onCard(card.id)}>
-                  <span className="card-title">{card.title}</span>
-                  <span className="card-meta">
-                    <span className="card-id">{card.id}</span>
-                    {card.complete && <span className="chip done">Done</span>}
-                    {card.due && <span className="chip">{formatDue(card.due)}</span>}
-                    {card.labels.map(l => (
-                      <span key={l} className="chip">
-                        {l}
-                      </span>
-                    ))}
-                  </span>
-                </button>
+                <CardFace card={card} board={board!} onOpen={() => onCard(card.id)} />
               </li>
             ),
           )}
