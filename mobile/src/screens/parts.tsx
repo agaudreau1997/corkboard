@@ -1,10 +1,14 @@
-// Pieces every screen shares: the header with its back button, the page that refreshes when
-// pulled down, how a card's description renders, and small wordings.
+// Pieces every screen shares: the header with its back and refresh buttons, the page that
+// refreshes when pulled down, how a card's description renders, and small wordings.
 
 import { useRef, useState, type ReactNode } from 'react'
 import { type Components } from 'react-markdown'
 import { Browser } from '@capacitor/browser'
+import { Icon } from '../Icon'
+import { CardImage } from './CardImage'
+import './parts.css'
 
+/** A screen's header: back, the titles, and refresh where the screen can be refreshed. */
 export function Header(props: {
   title: string
   sub?: string
@@ -14,8 +18,9 @@ export function Header(props: {
   mark?: ReactNode
   /** Given, the titles are a button (the board header's, which opens the board switcher). */
   onTitle?: () => void
+  onRefresh?: () => void
 }) {
-  const { title, sub, onBack, busy, mark, onTitle } = props
+  const { title, sub, onBack, busy, mark, onTitle, onRefresh } = props
   const titles = (
     <>
       <h1>{title}</h1>
@@ -26,7 +31,7 @@ export function Header(props: {
     <header className="header">
       {onBack && (
         <button className="back" type="button" onClick={onBack} aria-label="Back">
-          ‹
+          <Icon name="chevron-left" />
         </button>
       )}
       {mark}
@@ -37,7 +42,13 @@ export function Header(props: {
       ) : (
         <div className="titles">{titles}</div>
       )}
-      {busy && <span className="spinner" aria-label="Refreshing" />}
+      {onRefresh ? (
+        <button className="refresh" type="button" onClick={onRefresh} disabled={busy} aria-label={busy ? 'Refreshing' : 'Refresh'}>
+          {busy ? <span className="spinner" /> : <Icon name="refresh" />}
+        </button>
+      ) : (
+        busy && <span className="spinner" aria-label="Refreshing" />
+      )}
     </header>
   )
 }
@@ -87,8 +98,8 @@ export const markdownParts: Components = {
       {children}
     </a>
   ),
-  // Images in descriptions are the board repo's own files, which the phone doesn't read yet.
-  img: ({ alt }) => <span className="img-alt">[image{alt ? `: ${alt}` : ''}]</span>,
+  // Images in descriptions are the board repo's own files, named relative to the card file.
+  img: ({ src, alt }) => <CardImage src={typeof src === 'string' ? src : undefined} alt={alt} />,
 }
 
 export function count(n: number): string {

@@ -1,0 +1,37 @@
+/* The header's buttons, drawn from the shared icon set (src/shared/icons.ts): back on the left,
+   refresh on the right, each a 40 px target. While refreshing, the spinner takes the icon's place. */
+
+.header .back,
+.header .refresh {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--text);
+}
+
+.header .refresh {
+  color: var(--text-2);
+}
+
+.header .back:active,
+.header .refresh:active {
+  background: var(--hover);
+}
+
+.header .back svg,
+.header .refresh svg {
+  width: 22px;
+  height: 22px;
+  stroke-width: 1.6;
+}
+
+.header .refresh .spinner {
+  margin: 0;
+}

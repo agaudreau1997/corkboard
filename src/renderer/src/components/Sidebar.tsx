@@ -9,6 +9,7 @@ import { actions, api, projectIdOf, useStore } from '../state'
 import { discussPlaces } from '../menus'
 import { discussBoard, untangleCards } from '../tackle'
 import { openContextMenu, type MenuItem } from './ContextMenu'
+import { Icon } from './Icon'
 import { ProjectMark } from './ProjectMark'
 
 /** The menu of the side panel's own space: its header, and below the projects. */
@@ -94,11 +95,7 @@ function SettingsButton() {
       aria-label={label}
       onClick={() => actions.setModal({ kind: 'appSettings' })}
     >
-      <svg viewBox="0 0 16 16" aria-hidden="true">
-        {/* Eight teeth at 45° steps around (8, 8), so it reads round at 15 px. */}
-        <path d="M6.57 3.31 6.74 1.52 9.26 1.52 9.43 3.31 10.3 3.67 11.69 2.53 13.47 4.31 12.33 5.7 12.69 6.57 14.48 6.74 14.48 9.26 12.69 9.43 12.33 10.3 13.47 11.69 11.69 13.47 10.3 12.33 9.43 12.69 9.26 14.48 6.74 14.48 6.57 12.69 5.7 12.33 4.31 13.47 2.53 11.69 3.67 10.3 3.31 9.43 1.52 9.26 1.52 6.74 3.31 6.57 3.67 5.7 2.53 4.31 4.31 2.53 5.7 3.67z" />
-        <circle cx="8" cy="8" r="2.2" />
-      </svg>
+      <Icon name="gear" />
     </button>
   )
 }
@@ -114,10 +111,7 @@ function FoldButton({ collapsed }: { collapsed: boolean }) {
       aria-expanded={!collapsed}
       onClick={() => useStore.setState({ sidebarCollapsed: !collapsed })}
     >
-      <svg viewBox="0 0 16 16" aria-hidden="true">
-        <rect x="2" y="3" width="12" height="10" rx="2" />
-        <path d="M6 3v10" />
-      </svg>
+      <Icon name="sidebar" />
     </button>
   )
 }
@@ -518,9 +512,7 @@ function Twisty({ open, hidden, onToggle }: { open: boolean; hidden?: boolean; o
         onToggle()
       }}
     >
-      <svg viewBox="0 0 16 16" aria-hidden="true">
-        <path d="M6 3.5 10.5 8 6 12.5" />
-      </svg>
+      <Icon name="chevron-right" />
     </button>
   )
 }

@@ -17,6 +17,8 @@ export type Snapshot = {
   boards: BoardFiles[]
   /** The repo's `project.json` (the project's settings, work mode among them), when it has one. */
   project?: FileRef
+  /** The images in the tree, path to blob sha (missing from a snapshot an older build kept). */
+  images?: Record<string, string>
   read: string
 }
 

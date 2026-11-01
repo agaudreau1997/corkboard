@@ -9,6 +9,7 @@
 
 import { useEffect } from 'react'
 import { actions, useStore } from '../state'
+import { Icon } from './Icon'
 
 export function RepoPanel({ path, codeRepo }: { path: string; codeRepo: string | undefined }) {
   const repo = useStore(s => (s.repo?.path === path ? s.repo : null))
@@ -62,9 +63,7 @@ export function RepoPanel({ path, codeRepo }: { path: string; codeRepo: string |
             disabled={!!busy || !upstream || diverged}
             onClick={() => void actions.pullRepo(path)}
           >
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <path d="M8 2.5v10M3.5 8 8 12.5 12.5 8" />
-            </svg>
+            <Icon name="arrow-down" />
             {busy === 'pull' ? 'Pulling…' : 'Pull'}
           </button>
           <button
@@ -73,9 +72,7 @@ export function RepoPanel({ path, codeRepo }: { path: string; codeRepo: string |
             disabled={!!busy || !branch || !status.remote || (!!upstream && !ahead)}
             onClick={() => void actions.pushRepo(path)}
           >
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <path d="M8 13.5v-10M3.5 8 8 3.5 12.5 8" />
-            </svg>
+            <Icon name="arrow-up" />
             {busy === 'push' ? 'Pushing…' : 'Push'}
           </button>
         </div>

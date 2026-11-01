@@ -28,6 +28,12 @@
   font-size: 20px;
 }
 
+.tabbar-button svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 1.6;
+}
+
 .tabbar-button:active {
   background: var(--hover);
 }

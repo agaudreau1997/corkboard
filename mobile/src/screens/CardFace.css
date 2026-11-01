@@ -1,0 +1,28 @@
+/* A card's face in a list: the desktop's (KanbanView's CardFace and its rules in the desktop's
+   styles.css), a size up for touch. The desktop's 13 px text and 11 px meta are 16 and 13 here. */
+
+.card .card-meta {
+  gap: 7px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.card.complete .card-title {
+  color: var(--text-2);
+}
+
+.badge.ok {
+  color: var(--green);
+}
+
+.badge.session {
+  color: var(--accent);
+}
+
+.badge.discuss {
+  color: var(--cyan);
+}
+
+.badge.overdue {
+  color: var(--red);
+}

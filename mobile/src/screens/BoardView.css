@@ -1,0 +1,26 @@
+/* A board's list tabs marked as the desktop marks its columns' heads: a 3 px band of the list's
+   colour along the top (set inline), the open one filled with the column's shade, its title bold. */
+
+.tabs .tab {
+  border-top: 3px solid transparent;
+  border-bottom: 0;
+  border-radius: 10px 10px 0 0;
+}
+
+.tabs .tab.active {
+  background: var(--column);
+  font-weight: 600;
+}
+
+/* The "+" for a new card, from the shared icon set. */
+.fab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fab svg {
+  width: 26px;
+  height: 26px;
+  stroke-width: 1.8;
+}

@@ -1,9 +1,11 @@
-// Stand-ins for the tests: localStorage in memory, and a GitHub holding one repo, `me/board`, that
-// answers the calls the companion makes (the repo, its tree, GraphQL blob and root file sha reads,
-// and Contents API writes) the way the real one does.
+// Stand-ins for the tests: localStorage and the image store in memory, and a GitHub holding one
+// repo, `me/board`, that answers the calls the companion makes (the repo, its tree, GraphQL blob
+// and root file sha reads, REST reads of binary blobs, and Contents API writes) the way the real
+// one does.
 
 import { serializeCard } from '@shared/cardfile'
 import type { Card } from '@shared/types'
+import type { ImageEntry, ImageStorage, StoredImage } from '../src/repo/images'
 import type { TreeEntry } from '../src/repo/layout'
 
 export class MemoryStorage implements Storage {
@@ -28,6 +30,34 @@ export class MemoryStorage implements Storage {
   }
 }
 
+/** The image store in memory, with the bookkeeping IndexedDB keeps. */
+export class MemoryImages implements ImageStorage {
+  readonly images = new Map<string, StoredImage>()
+  readonly used = new Map<string, number>()
+  async get(sha: string) {
+    return this.images.get(sha)
+  }
+  async put(image: StoredImage, used: number) {
+    this.images.set(image.sha, image)
+    this.used.set(image.sha, used)
+  }
+  async touch(sha: string, used: number) {
+    if (this.images.has(sha)) this.used.set(sha, used)
+  }
+  async entries(): Promise<ImageEntry[]> {
+    return [...this.images.values()].map(i => ({ sha: i.sha, size: i.bytes.byteLength, used: this.used.get(i.sha)! }))
+  }
+  async remove(shas: string[]) {
+    for (const sha of shas) {
+      this.images.delete(sha)
+      this.used.delete(sha)
+    }
+  }
+}
+
+/** A PNG's signature and a few bytes: enough for the sniffing, which never decodes it. */
+export const png = (...more: number[]) => new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...more])
+
 let shas = 0
 export const sha = () => (++shas).toString(16).padStart(40, '0')
 
@@ -39,10 +69,10 @@ export const meta = (key: string, title: string, lists: object[]) => JSON.string
 
 type Write = { path: string; message: string; text: string }
 
-export function github(files: Record<string, string>) {
-  const blobs = new Map<string, string>()
+export function github(files: Record<string, string | Uint8Array>) {
+  const blobs = new Map<string, string | Uint8Array>()
   const tree: TreeEntry[] = []
-  const put = (path: string, text: string) => {
+  const put = (path: string, text: string | Uint8Array) => {
     const s = sha()
     blobs.set(s, text)
     const at = tree.findIndex(e => e.path === path)
@@ -53,6 +83,7 @@ export function github(files: Record<string, string>) {
   for (const [path, text] of Object.entries(files)) put(path, text)
   const asked: string[][] = []
   const looked: string[] = []
+  const blobReads: string[] = []
   const writes: Write[] = []
   const hooks: { beforeWrite?: (path: string) => void; afterWrite?: () => void } = {}
   let offline = false
@@ -79,8 +110,23 @@ export function github(files: Record<string, string>) {
       }
       const wanted = [...query.matchAll(/(b\d+): object\(oid: "([0-9a-f]{40})"\)/g)]
       asked.push(wanted.map(m => m[2]))
-      const repository = Object.fromEntries(wanted.map(([, alias, s]) => [alias, { text: blobs.get(s), isBinary: false }]))
+      const repository = Object.fromEntries(
+        wanted.map(([, alias, s]) => {
+          const blob = blobs.get(s)
+          return [alias, typeof blob === 'string' ? { text: blob, isBinary: false } : { text: null, isBinary: true }]
+        }),
+      )
       return Response.json({ data: { repository } })
+    }
+    const blob = /^\/repos\/me\/board\/git\/blobs\/([0-9a-f]{40})$/.exec(path)
+    if (blob) {
+      const bytes = blobs.get(blob[1])
+      if (bytes === undefined) return Response.json({ message: 'Not Found' }, { status: 404 })
+      const raw = typeof bytes === 'string' ? new TextEncoder().encode(bytes) : bytes
+      blobReads.push(blob[1])
+      // GitHub wraps the base64 in lines of 60.
+      const content = btoa(String.fromCharCode(...raw)).replace(/.{60}/g, '$&\n')
+      return Response.json({ sha: blob[1], size: raw.length, encoding: 'base64', content })
     }
     const contents = /^\/repos\/me\/board\/contents\/(.+)$/.exec(path)
     if (contents && init?.method === 'PUT') {
@@ -107,6 +153,8 @@ export function github(files: Record<string, string>) {
     put,
     asked,
     looked,
+    blobReads,
+    tree,
     writes,
     hooks,
     goOffline: (value = true) => {

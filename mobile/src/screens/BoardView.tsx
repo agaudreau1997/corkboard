@@ -8,14 +8,17 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { isDivider, listColorAt } from '@shared/cardfile'
 import { boardColumns, UNLISTED } from '@shared/selection'
 import type { BoardMeta, Card, ListDef } from '@shared/types'
+import { Icon } from '../Icon'
 import type { BoardChange } from '../repo/boardchange'
 import { archivedCards, findCards, whereCard } from '../repo/find'
 import type { Board } from '../repo/reader'
 import type { Draft } from '../repo/writer'
 import type { RepoState } from './Browse'
+import { CardFace } from './CardFace'
 import { FindBar, FindButton } from './Find'
 import { ListMenu } from './ListMenu'
-import { count, formatDue, Header, Pull } from './parts'
+import { count, Header, Pull } from './parts'
+import './BoardView.css'
 
 /** The tab of the board's archived cards. */
 export const ARCHIVED = '__archived__'
@@ -78,6 +81,7 @@ export function BoardView(props: {
         sub={sub}
         onBack={onBack}
         busy={state.busy || loading}
+        onRefresh={() => void onRefresh()}
       />
       {query !== undefined ? (
         <FindBar query={query} onQuery={setQuery} onClose={() => setQuery(undefined)} />
@@ -89,7 +93,7 @@ export function BoardView(props: {
                 key={l.id}
                 type="button"
                 className={l.id === current?.id ? 'tab active' : 'tab'}
-                style={{ borderBottomColor: l.id === current?.id ? l.color : 'transparent' }}
+                style={{ borderTopColor: l.color }}
                 onClick={() => onList(l.id)}
                 onContextMenu={e => {
                   // A long press on a phone.
@@ -97,7 +101,6 @@ export function BoardView(props: {
                   if (board) setMenu(l.id)
                 }}
               >
-                <span className="dot" style={{ background: l.color }} />
                 {l.title}
               </button>
             ))}
@@ -105,7 +108,7 @@ export function BoardView(props: {
           {board && <FindButton onOpen={() => setQuery('')} />}
           {board && (
             <button type="button" className="tabbar-button" aria-label="List menu" onClick={() => setMenu(current?.id ?? '')}>
-              ⋯
+              <Icon name="more" />
             </button>
           )}
         </div>
@@ -122,20 +125,7 @@ export function BoardView(props: {
               <li key={card.id} className="divider" />
             ) : (
               <li key={card.id}>
-                <button type="button" className="card" onClick={() => onCard(card.id)}>
-                  <span className="card-title">{card.title}</span>
-                  <span className="card-meta">
-                    <span className="card-id">{card.id}</span>
-                    {where && <span className="chip where">{where(card)}</span>}
-                    {card.complete && <span className="chip done">Done</span>}
-                    {card.due && <span className="chip">{formatDue(card.due)}</span>}
-                    {card.labels.map(l => (
-                      <span key={l} className="chip">
-                        {l}
-                      </span>
-                    ))}
-                  </span>
-                </button>
+                <CardFace card={card} board={board!} where={where?.(card)} onOpen={() => onCard(card.id)} />
               </li>
             ),
           )}
@@ -172,7 +162,7 @@ export function BoardView(props: {
       )}
       {current && current.id !== ARCHIVED && !found && (
         <button className="fab" type="button" aria-label={`New card in ${current.title}`} onClick={onAdd}>
-          +
+          <Icon name="plus" />
         </button>
       )}
     </>

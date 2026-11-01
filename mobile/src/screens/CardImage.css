@@ -1,0 +1,53 @@
+/* A card's images: the description's at the screen's width, whole over everything on a tap, and
+   the cover edge to edge across the top of the face. The desktop crops a cover to 140 px on a
+   276 px column; at the phone's width that proportion is about 55% of the screen's width. */
+
+.markdown .card-image {
+  display: block;
+  max-width: 100%;
+  max-height: 70vh;
+  margin: 8px 0;
+  border-radius: 4px;
+}
+
+.image-missing {
+  display: block;
+  margin: 8px 0;
+  padding: 18px 12px;
+  border: 1px dashed var(--line-2);
+  border-radius: 4px;
+  color: var(--text-2);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.image-missing.loading {
+  color: var(--muted);
+}
+
+.image-whole {
+  position: fixed;
+  z-index: 10;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  background: var(--term-bg);
+}
+
+.image-whole img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.card .card-cover {
+  display: block;
+  width: calc(100% + 24px);
+  max-height: 55vw;
+  margin: -10px -12px 2px;
+  object-fit: cover;
+  border-radius: var(--radius) var(--radius) 0 0;
+}

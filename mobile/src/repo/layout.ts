@@ -3,6 +3,7 @@
 // holding its own is a child board, and `.git`, `node_modules`, `cards` and dot folders are never
 // boards. A board's cards are the `cards/<ID>.md` files right under it.
 
+import { imageType } from '@shared/images'
 import type { BoardMeta } from '@shared/types'
 
 export type TreeEntry = { path: string; type: string; sha: string }
@@ -36,6 +37,20 @@ export function findBoards(entries: TreeEntry[]): BoardFiles[] {
     boards.get(m[1])?.cards.push({ id: m[2], path: entry.path, sha: entry.sha })
   }
   return [...boards.values()].sort((a, b) => a.path.localeCompare(b.path))
+}
+
+/**
+ * The images in the tree, path to blob sha, for the cards' descriptions and covers to find theirs
+ * by: the types the desktop keeps (`IMAGE_TYPES`), wherever they are (a description may name
+ * another board's), but in hidden folders.
+ */
+export function findImages(entries: TreeEntry[]): Record<string, string> {
+  const images: Record<string, string> = {}
+  for (const entry of entries) {
+    const hidden = entry.path.split('/').some(part => part.startsWith('.') || part === 'node_modules')
+    if (entry.type === 'blob' && imageType(entry.path) && !hidden) images[entry.path] = entry.sha
+  }
+  return images
 }
 
 export type BoardNode = { path: string; title: string; key: string; children: BoardNode[] }

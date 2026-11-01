@@ -24,6 +24,7 @@ import { paint } from '../theme'
 import { BoardSettings } from './BoardSettings'
 import { BoardSwitcher } from './BoardSwitcher'
 import { BoardView } from './BoardView'
+import { Images } from './CardImage'
 import { CardView } from './CardView'
 import { NewCard } from './NewCard'
 import { Header, Pull } from './parts'
@@ -235,7 +236,9 @@ export function Browse({ session, cache, outbox, signedOut, onSignIn, onSignOut 
   return (
     <div className="browse">
       {bar}
-      {screen}
+      <Images api={api} snapshot={repo.snapshot} board={place.board}>
+        {screen}
+      </Images>
       {place.repo && place.switching && (
         <BoardSwitcher
           repo={place.repo}

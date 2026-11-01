@@ -14,7 +14,7 @@ body,
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: system-ui, sans-serif;
+  font-family: var(--font);
   font-size: 16px;
   -webkit-tap-highlight-color: transparent;
 }
@@ -284,11 +284,6 @@ button.plain {
   color: var(--text);
 }
 
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
 
 .cards {
   margin: 0;
@@ -311,10 +306,11 @@ button.plain {
   flex-direction: column;
   gap: 6px;
   width: 100%;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
   background: var(--card);
+  box-shadow: 0 1px 0 rgb(0 0 0 / 25%);
   color: var(--text);
   font: inherit;
   text-align: left;
@@ -322,7 +318,9 @@ button.plain {
 
 .card-title {
   font-size: 16px;
-  line-height: 1.35;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .card-meta {
@@ -335,7 +333,8 @@ button.plain {
 
 .card-id {
   color: var(--muted);
-  font-size: 12px;
+  font-family: var(--mono);
+  font-size: 13px;
 }
 
 .chip {
@@ -414,10 +413,6 @@ button.plain {
   padding: 0;
 }
 
-.img-alt {
-  color: var(--muted);
-}
-
 /* Making a card: the "+" over the list, the form, and the cards waiting to be sent. */
 
 .fab {
@@ -441,6 +436,7 @@ button.plain {
 
 .card.pending {
   border-style: dashed;
+  border-color: var(--line-2);
   opacity: 0.85;
 }
 
