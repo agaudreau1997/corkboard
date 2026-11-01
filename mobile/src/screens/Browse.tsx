@@ -16,6 +16,7 @@ import { boardMetas, openBoard, refresh, type Board } from '../repo/reader'
 import type { Draft } from '../repo/writer'
 import { Boards } from './Boards'
 import { BoardView } from './BoardView'
+import { Images } from './CardImage'
 import { CardView } from './CardView'
 import { NewCard } from './NewCard'
 import { Repos } from './Repos'
@@ -159,7 +160,9 @@ export function Browse({ session, cache, outbox, signedOut, onSignIn, onSignOut 
   return (
     <div className="browse">
       {bar}
-      {screen}
+      <Images api={api} snapshot={repo.snapshot} board={place.board}>
+        {screen}
+      </Images>
     </div>
   )
 }

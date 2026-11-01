@@ -5,6 +5,7 @@ import { useRef, useState, type ReactNode } from 'react'
 import { type Components } from 'react-markdown'
 import { Browser } from '@capacitor/browser'
 import { Icon } from '../Icon'
+import { CardImage } from './CardImage'
 import './parts.css'
 
 /** A screen's header: back, the titles, and refresh where the screen can be refreshed. */
@@ -83,8 +84,8 @@ export const markdownParts: Components = {
       {children}
     </a>
   ),
-  // Images in descriptions are the board repo's own files, which the phone doesn't read yet.
-  img: ({ alt }) => <span className="img-alt">[image{alt ? `: ${alt}` : ''}]</span>,
+  // Images in descriptions are the board repo's own files, named relative to the card file.
+  img: ({ src, alt }) => <CardImage src={typeof src === 'string' ? src : undefined} alt={alt} />,
 }
 
 export function count(n: number): string {

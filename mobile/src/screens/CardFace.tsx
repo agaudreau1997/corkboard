@@ -6,12 +6,14 @@
 import { badgeChildren, badgeClass, cardBadges } from '@shared/badges'
 import type { Card } from '@shared/types'
 import type { Board } from '../repo/reader'
+import { CardCover } from './CardImage'
 import './CardFace.css'
 
 export function CardFace({ card, board, onOpen }: { card: Card; board: Board; onOpen: () => void }) {
   const badges = cardBadges(card, board)
   return (
     <button type="button" className={card.complete ? 'card complete' : 'card'} onClick={onOpen}>
+      {card.cover && <CardCover src={card.cover} />}
       <span className="card-title">{card.title}</span>
       <span className="card-meta">
         <span className="card-id">{card.id}</span>

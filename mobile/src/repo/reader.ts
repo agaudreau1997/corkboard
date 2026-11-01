@@ -9,7 +9,7 @@ import type { BoardMeta, Card } from '@shared/types'
 import { answerJson as json } from '../github/answer'
 import { readBlobs } from './blobs'
 import type { RepoCache, Snapshot } from './cache'
-import { findBoards, parseMeta, type TreeEntry } from './layout'
+import { findBoards, findImages, parseMeta, type TreeEntry } from './layout'
 
 type Api = (path: string, init?: RequestInit) => Promise<Response>
 
@@ -38,6 +38,7 @@ export async function refresh(api: Api, cache: RepoCache, repo: string, now = ne
     tree: tree.sha,
     truncated: tree.truncated,
     boards,
+    images: findImages(tree.tree),
     read: now.toISOString(),
   }
   cache.putSnapshot(snapshot)

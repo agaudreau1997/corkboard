@@ -13,6 +13,8 @@ export type Snapshot = {
   /** GitHub cut the tree short (a huge repo): some boards may be missing. */
   truncated: boolean
   boards: BoardFiles[]
+  /** The images in the tree, path to blob sha (missing from a snapshot an older build kept). */
+  images?: Record<string, string>
   read: string
 }
 

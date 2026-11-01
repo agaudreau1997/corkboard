@@ -418,10 +418,6 @@ button.plain {
   padding: 0;
 }
 
-.img-alt {
-  color: var(--muted);
-}
-
 /* Making a card: the "+" over the list, the form, and the cards waiting to be sent. */
 
 .fab {

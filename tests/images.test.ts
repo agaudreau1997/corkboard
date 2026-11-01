@@ -6,6 +6,7 @@ import {
   cardImageOf,
   cardImages,
   imageMarkdown,
+  imagePath,
   imageUrl,
   insertAt,
   MAX_IMAGE_SIDE,
@@ -58,6 +59,18 @@ describe('card image paths', () => {
     expect(imageUrl('cork:game/ideas', '../../cards/MB-3/a.png')).toBe('card-image://cork/game/cards/MB-3/a.png')
     const spaced = imageUrl('cork:game', 'MB-1/a%20b.png')!
     expect(parseImageUrl(spaced)).toEqual({ projectId: 'cork', rel: 'game/cards/MB-1/a b.png' })
+  })
+
+  it('finds the path in the repo of a source relative to the card file, as the companion looks it up', () => {
+    expect(imagePath('game/ideas', 'MB-12/3f2a.png')).toBe('game/ideas/cards/MB-12/3f2a.png')
+    expect(imagePath('game/ideas', './MB-12/3f2a.png?raw#top')).toBe('game/ideas/cards/MB-12/3f2a.png')
+    expect(imagePath('game/ideas', '../../cards/MB-3/a.png')).toBe('game/cards/MB-3/a.png')
+    expect(imagePath('game', 'MB-1/a%20b.png')).toBe('game/cards/MB-1/a b.png')
+    expect(imagePath('game', 'MB-1\\a.png')).toBe('game/cards/MB-1/a.png')
+    expect(imagePath('game', '../../../x.png')).toBeUndefined()
+    expect(imagePath('game', '/etc/x.png')).toBeUndefined()
+    expect(imagePath('game', 'https://example.com/x.png')).toBeUndefined()
+    expect(imagePath('game', 'MB-1%2F..%2Fx.png')).toBeUndefined()
   })
 
   it('refuses sources and URLs that climb out of the repo or into a hidden folder', () => {

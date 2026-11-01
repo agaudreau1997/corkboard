@@ -73,16 +73,9 @@ export function imageMarkdown(src: string): string {
   return `![](${/[\s()<>]/.test(src) ? `<${src}>` : src})`
 }
 
-/**
- * The URL that shows an image a card's description names, for a board key (`<project>:<path>`);
- * undefined for a source that is not a path in the repo, or that climbs out of it.
- */
-export function imageUrl(boardKey: string, src: string): string | undefined {
+/** The folders and file of an image a card of a board names, from the repo's root. */
+function imageParts(board: string, src: string): string[] | undefined {
   if (!isRelativeImage(src)) return undefined
-  const i = boardKey.indexOf(':')
-  if (i < 0) return undefined
-  const project = boardKey.slice(0, i)
-  const board = boardKey.slice(i + 1)
   const parts: string[] = [...board.split('/').filter(Boolean), 'cards']
   for (const raw of src.split(/[?#]/)[0].split(/[/\\]/)) {
     let seg = raw
@@ -97,8 +90,30 @@ export function imageUrl(boardKey: string, src: string): string | undefined {
       parts.pop()
     } else parts.push(seg)
   }
-  if (!parts.length) return undefined
-  return `${IMAGE_SCHEME}://${encodeURIComponent(project)}/${parts.map(encodeURIComponent).join('/')}`
+  return parts.length ? parts : undefined
+}
+
+/**
+ * The path in the repo of an image a card's description names, relative to the card file of a
+ * board (`game/art`, so `game/art/cards/<ID>.md`); undefined for a source that is not a path in the
+ * repo, that climbs out of it, or that hides a separator in an escape. The Android companion finds
+ * the image's blob in the repo's tree by it.
+ */
+export function imagePath(board: string, src: string): string | undefined {
+  const parts = imageParts(board, src)
+  return parts && !parts.some(p => /[/\\]/.test(p)) ? parts.join('/') : undefined
+}
+
+/**
+ * The URL that shows an image a card's description names, for a board key (`<project>:<path>`);
+ * undefined for a source that is not a path in the repo, or that climbs out of it.
+ */
+export function imageUrl(boardKey: string, src: string): string | undefined {
+  const i = boardKey.indexOf(':')
+  if (i < 0) return undefined
+  const parts = imageParts(boardKey.slice(i + 1), src)
+  if (!parts) return undefined
+  return `${IMAGE_SCHEME}://${encodeURIComponent(boardKey.slice(0, i))}/${parts.map(encodeURIComponent).join('/')}`
 }
 
 /**
