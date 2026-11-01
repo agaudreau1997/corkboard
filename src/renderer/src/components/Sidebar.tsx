@@ -2,6 +2,7 @@ import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type D
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { CSSProperties, ReactNode } from 'react'
+import { sideBoards } from '@shared/project'
 import { inOrder } from '@shared/sideorder'
 import type { BoardNode, ProjectNode, Renumber, SyncStatus, UpdateStatus } from '@shared/types'
 import { actions, api, projectIdOf, useStore } from '../state'
@@ -155,7 +156,7 @@ function ProjectRow({ project }: { project: ProjectNode }) {
   const drag = useReorderable(project.id)
   const main = project.boards.find(b => b.path === project.mainBoard)
   // One sibling list, in this machine's order: the main board's children and the other top-level boards.
-  const listed = inOrder([...(main?.children ?? []), ...project.boards.filter(b => b !== main)], b => b.path, boardOrder)
+  const listed = inOrder(sideBoards(project.boards, project.mainBoard), b => b.path, boardOrder)
   const offer = !project.guide && !declined
   const tip = [
     main ? `Opens ${main.title} (${main.key}), the main board` : undefined,

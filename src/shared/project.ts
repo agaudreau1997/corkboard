@@ -53,6 +53,15 @@ export function mainBoardOf(settings: ProjectSettings, topLevel: { path: string 
   return topLevel.find(b => b.path === settings.board)?.path ?? topLevel[0]?.path
 }
 
+/**
+ * The boards listed under a project, as one sibling list: its main board's child boards, then its
+ * other top-level boards, each with its own children under it. The project's row is the main board.
+ */
+export function sideBoards<T extends { path: string; children: T[] }>(topLevel: T[], main: string | undefined): T[] {
+  const mainBoard = topLevel.find(b => b.path === main)
+  return [...(mainBoard?.children ?? []), ...topLevel.filter(b => b !== mainBoard)]
+}
+
 /** The settings with a patch applied: a key given replaces it, `null` clears it. */
 export function patchSettings(settings: ProjectSettings, patch: ProjectSettingsPatch): ProjectSettings {
   const next: Record<string, unknown> = { ...settings }

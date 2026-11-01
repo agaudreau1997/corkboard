@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   isIcon,
   mainBoardOf,
+  sideBoards,
   mergeProjectSettings,
   namesKey,
   normalizeKey,
@@ -67,6 +68,14 @@ describe('project.json', () => {
     expect(mainBoardOf({ board: 'gone' }, top)).toBe('moon-base')
     expect(mainBoardOf({}, [{ path: 'only' }])).toBe('only')
     expect(mainBoardOf({ board: 'x' }, [])).toBeUndefined()
+  })
+
+  it('lists the main board’s children, then the other top-level boards, under the project', () => {
+    type Node = { path: string; children: Node[] }
+    const node = (path: string, children: Node[] = []): Node => ({ path, children })
+    const top = [node('art'), node('cork', [node('cork/ideas')]), node('game')]
+    expect(sideBoards(top, 'cork').map(b => b.path)).toEqual(['cork/ideas', 'art', 'game'])
+    expect(sideBoards(top, undefined).map(b => b.path)).toEqual(['art', 'cork', 'game'])
   })
 
   it('patches the settings: a key given replaces, null clears, one left out stays', () => {

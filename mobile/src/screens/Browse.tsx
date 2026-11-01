@@ -1,12 +1,14 @@
-// Browsing: your board repos, a repo's boards, a board's lists, and a card; and a "+" to jot a card
-// down on the open list. This file holds where you are and the data the screens draw: where you
+// Browsing: your board repos, a board's lists, and a card; and a "+" to jot a card down on the open
+// list. A repo opens on its main board, picked by the desktop's rule (`mainBoardOf`), and its other
+// boards are a tap on the board's title away (the switcher). This file holds where you are and the data the screens draw: where you
 // were is remembered, so the app reopens there, drawn from the cache at once and refreshed behind
 // it. A repo's screens are painted in its colours (`theme.json`), the repo list in the app's own.
-// Android's back button goes up a level. Signed out, the cache is all there is, and a bar
+// Android's back button goes up a level: from a board, to the repo list. Signed out, the cache is all there is, and a bar
 // offers to sign in again. A new card waits in the outbox until it's sent.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { App as CapApp } from '@capacitor/app'
+import { mainBoardOf } from '@shared/project'
 import { UNLISTED } from '@shared/selection'
 import { SignedOut, type Session } from '../github/session'
 import type { RepoCache, Snapshot } from '../repo/cache'
@@ -16,14 +18,24 @@ import type { Outbox } from '../repo/outbox'
 import { boardMetas, openBoard, refresh, type Board } from '../repo/reader'
 import type { Draft } from '../repo/writer'
 import { paint } from '../theme'
-import { Boards } from './Boards'
+import { BoardSwitcher } from './BoardSwitcher'
 import { BoardView } from './BoardView'
 import { CardView } from './CardView'
 import { NewCard } from './NewCard'
+import { Header, Pull } from './parts'
 import { ProjectMark } from './ProjectMark'
 import { Repos } from './Repos'
 
-export type Place = { repo?: string; board?: string; list?: string; card?: string; adding?: boolean }
+export type Place = {
+  repo?: string
+  /** None while the repo's main board isn't known yet (a repo just picked, never read). */
+  board?: string
+  list?: string
+  card?: string
+  adding?: boolean
+  /** The board switcher is open (not remembered: the app reopens on the board). */
+  switching?: boolean
+}
 
 const PLACE = 'corkboard:place'
 
@@ -51,12 +63,20 @@ export function Browse({ session, cache, outbox, signedOut, onSignIn, onSignOut 
 
   const go = useCallback((next: Place) => {
     setPlace(next)
-    localStorage.setItem(PLACE, JSON.stringify(next))
+    localStorage.setItem(PLACE, JSON.stringify({ ...next, switching: undefined }))
   }, [])
 
   const up = useCallback(
     (p: Place): Place | undefined =>
-      p.adding ? { ...p, adding: undefined } : p.card ? { ...p, card: undefined } : p.board ? { repo: p.repo } : p.repo ? {} : undefined,
+      p.switching
+        ? { ...p, switching: undefined }
+        : p.adding
+          ? { ...p, adding: undefined }
+          : p.card
+            ? { ...p, card: undefined }
+            : p.repo
+              ? {}
+              : undefined,
     [],
   )
 
@@ -86,6 +106,18 @@ export function Browse({ session, cache, outbox, signedOut, onSignIn, onSignOut 
     return () => paint()
   }, [themeKey])
 
+  // The repo's boards as the desktop's side panel nests them, and the one it opens on.
+  const snapshot = repo.snapshot?.repo === place.repo ? repo.snapshot : undefined
+  const tree = useMemo(() => (snapshot ? boardTree(boardMetas(cache, snapshot)) : []), [cache, snapshot])
+  const named = look ? look.settings.board : undefined
+  const main = useMemo(() => mainBoardOf({ board: named }, tree), [named, tree])
+  // A repo just picked opens on its main board once read; so does one whose open board went.
+  useEffect(() => {
+    if (!place.repo || !snapshot || !main) return
+    if (place.board && snapshot.boards.some(b => b.path === place.board)) return
+    go({ repo: place.repo, board: main })
+  }, [go, main, place.board, place.repo, snapshot])
+
   const bar = signedOut && (
     <div className="bar">
       <span>{signedOut} Showing what was last read.</span>
@@ -99,14 +131,16 @@ export function Browse({ session, cache, outbox, signedOut, onSignIn, onSignOut 
   if (!place.repo) {
     screen = <Repos api={api} cache={cache} onPick={r => go({ repo: r })} onSignOut={onSignOut} />
   } else if (!place.board) {
+    // Waiting for the repo's first read, to know its main board.
     screen = (
-      <Boards
-        repo={place.repo}
-        state={repo}
-        tree={repo.snapshot ? boardTree(boardMetas(cache, repo.snapshot)) : []}
-        onBack={() => go({})}
-        onPick={b => go({ repo: place.repo, board: b })}
-      />
+      <>
+        <Header title={place.repo.split('/')[1]} mark={<ProjectMark look={look || undefined} />} onBack={() => go({})} busy={repo.busy} />
+        <Pull onRefresh={repo.refresh}>
+          {repo.error && <p className="note error">{repo.error}</p>}
+          {!snapshot && !repo.error && <p className="note">{api ? 'Reading the repo…' : 'This repo isn’t saved on the phone yet.'}</p>}
+          {snapshot && !tree.length && <p className="note">No boards in this repo.</p>}
+        </Pull>
+      </>
     )
   } else if (place.adding) {
     const list = place.list ?? board.board?.meta.lists.find(l => !l.archived)?.id
@@ -138,7 +172,8 @@ export function Browse({ session, cache, outbox, signedOut, onSignIn, onSignOut 
         board={board.board}
         loading={board.loading}
         list={place.list}
-        onBack={() => go({ repo: place.repo })}
+        onBack={() => go({})}
+        onSwitch={tree.length > 1 || tree[0]?.children.length ? () => go({ ...place, switching: true }) : undefined}
         onList={l => go({ ...place, list: l })}
         onCard={c => go({ ...place, card: c })}
         onRefresh={async () => {
@@ -174,6 +209,18 @@ export function Browse({ session, cache, outbox, signedOut, onSignIn, onSignOut 
     <div className="browse">
       {bar}
       {screen}
+      {place.repo && place.switching && (
+        <BoardSwitcher
+          repo={place.repo}
+          look={look || undefined}
+          tree={tree}
+          main={main}
+          current={place.board}
+          truncated={snapshot?.truncated}
+          onPick={b => go(b === place.board ? { ...place, switching: undefined } : { repo: place.repo, board: b })}
+          onClose={() => go({ ...place, switching: undefined })}
+        />
+      )}
     </div>
   )
 }

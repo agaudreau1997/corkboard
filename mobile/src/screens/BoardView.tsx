@@ -15,6 +15,8 @@ export function BoardView(props: {
   title: string
   /** The repo's icon or swatch, in the header. */
   mark?: ReactNode
+  /** Opens the board switcher, from the header's title; none when the repo has one board. */
+  onSwitch?: () => void
   state: RepoState
   board?: Board
   loading: boolean
@@ -45,6 +47,7 @@ export function BoardView(props: {
       <Header
         title={title}
         mark={props.mark}
+        onTitle={props.onSwitch}
         sub={current ? count(cards.filter(c => !isDivider(c)).length) : undefined}
         onBack={onBack}
         busy={state.busy || loading}

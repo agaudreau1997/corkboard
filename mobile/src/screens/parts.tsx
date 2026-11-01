@@ -12,8 +12,16 @@ export function Header(props: {
   busy?: boolean
   /** Before the title: the repo's icon or swatch. */
   mark?: ReactNode
+  /** Given, the titles are a button (the board header's, which opens the board switcher). */
+  onTitle?: () => void
 }) {
-  const { title, sub, onBack, busy, mark } = props
+  const { title, sub, onBack, busy, mark, onTitle } = props
+  const titles = (
+    <>
+      <h1>{title}</h1>
+      {sub && <p>{sub}</p>}
+    </>
+  )
   return (
     <header className="header">
       {onBack && (
@@ -22,10 +30,13 @@ export function Header(props: {
         </button>
       )}
       {mark}
-      <div className="titles">
-        <h1>{title}</h1>
-        {sub && <p>{sub}</p>}
-      </div>
+      {onTitle ? (
+        <button className="titles" type="button" onClick={onTitle}>
+          {titles}
+        </button>
+      ) : (
+        <div className="titles">{titles}</div>
+      )}
       {busy && <span className="spinner" aria-label="Refreshing" />}
     </header>
   )

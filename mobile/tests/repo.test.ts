@@ -3,6 +3,7 @@
 // reads only what changed.
 
 import { describe, expect, it } from 'vitest'
+import { mainBoardOf, sideBoards } from '@shared/project'
 import { boardColumns } from '@shared/selection'
 import { BATCH, blobsQuery } from '../src/repo/blobs'
 import { RepoCache } from '../src/repo/cache'
@@ -91,5 +92,36 @@ describe('reading a board repo', () => {
     gh.put('cork/cards/CORK-1.md', card({ id: 'CORK-1', title: 'Edited', list: 'todo', pos: 2048 }))
     await refresh(gh.api, cache, 'me/board')
     expect(storage.length).toBe(before - 1)
+  })
+})
+
+describe('opening a repo', () => {
+  const files = (project?: object) => ({
+    'zeta/board.json': meta('Z', 'Alpha', []),
+    'zeta/art/board.json': meta('ART', 'Art', []),
+    'beta/board.json': meta('B', 'Beta', []),
+    ...(project ? { 'project.json': JSON.stringify(project) } : {}),
+  })
+
+  async function opened(project?: object) {
+    const gh = github(files(project))
+    const cache = new RepoCache(new MemoryStorage())
+    const snapshot = await refresh(gh.api, cache, 'me/board')
+    const tree = boardTree(boardMetas(cache, snapshot))
+    return { tree, main: mainBoardOf(cache.look('me/board')!.settings, tree) }
+  }
+
+  it('opens on the board project.json names, as the desktop does', async () => {
+    expect((await opened({ board: 'beta' })).main).toBe('beta')
+  })
+
+  it('else on the first top-level board by title', async () => {
+    expect((await opened()).main).toBe('zeta')
+    expect((await opened({ board: 'gone' })).main).toBe('zeta')
+  })
+
+  it('switches to the main board’s children and the other top-level boards', async () => {
+    const { tree, main } = await opened()
+    expect(sideBoards(tree, main).map(b => b.path)).toEqual(['zeta/art', 'beta'])
   })
 })
