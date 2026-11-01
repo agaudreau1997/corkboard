@@ -1,0 +1,32 @@
+{
+  "name": "corkboard-companion",
+  "description": "Corkboard's Android companion: a board repo's cards on the go, through GitHub",
+  "license": "GPL-3.0-or-later",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "sync": "vite build && cap sync android",
+    "apk": "vite build && cap sync android && cd android && ./gradlew assembleDebug"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/core": "^8.6.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "yaml": "^2.9.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.0",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.6",
+    "vitest": "^3.2.7"
+  }
+}

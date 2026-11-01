@@ -91,3 +91,33 @@ for size in (512, 256, 128, 64, 48, 32, 16):
         check=True, capture_output=True,
     )
     print('wrote', OUT / name)
+
+# The companion's launcher icons. An adaptive icon's foreground is a 108 dp square the launcher
+# masks to its own shape, showing about the middle 72 dp: the icon sits in the middle 66 dp (the part
+# no mask cuts) on the frame's dark brown, which the background colour fills to the edge.
+RES = OUT.parent / 'mobile' / 'android' / 'app' / 'src' / 'main' / 'res'
+inner = svg.split('>', 1)[1].rsplit('</svg>', 1)[0]
+foreground = OUT / 'icon-android-foreground.svg'
+foreground.write_text(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="108" height="108">'
+    f'<svg x="21" y="21" width="66" height="66" viewBox="0 0 512 512">{inner}</svg></svg>'
+)
+
+def render(source, target, size):
+    subprocess.run(
+        ['inkscape', str(source), '--export-type=png', f'--export-filename={target}',
+         f'--export-width={size}', f'--export-height={size}'],
+        check=True, capture_output=True,
+    )
+    print('wrote', target)
+
+for density, scale in (('mdpi', 1), ('hdpi', 1.5), ('xhdpi', 2), ('xxhdpi', 3), ('xxxhdpi', 4)):
+    folder = RES / f'mipmap-{density}'
+    render(OUT / 'icon.svg', folder / 'ic_launcher.png', int(48 * scale))
+    render(OUT / 'icon.svg', folder / 'ic_launcher_round.png', int(48 * scale))
+    render(foreground, folder / 'ic_launcher_foreground.png', int(108 * scale))
+foreground.unlink()
+(RES / 'values' / 'ic_launcher_background.xml').write_text(
+    '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n'
+    '    <color name="ic_launcher_background">#2a1d14</color>\n</resources>\n'
+)

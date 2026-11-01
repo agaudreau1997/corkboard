@@ -16,6 +16,24 @@ To start it from the desktop menu (and get its icon on the taskbar, which a Wayl
 
 **Windows.** The terminals run PowerShell there (`pwsh` when installed, else Windows PowerShell 5.1), with the command handed over as JSON in an environment variable rather than pasted into a command line. PowerShell before 7.3 drops the double quotes inside an argument it passes to a program, and prompts have quotes, so it gets the arguments escaped for that. Tackling a card in a terminal works on Windows 11 under 5.1; the rest of the Windows path is less tried.
 
+## The Android companion
+
+The companion ([companion.md](companion.md)) lives in `mobile/`: a React page that Capacitor wraps in an Android app. It has its own `package.json` and lockfile, so Capacitor stays out of the desktop's install and building the APK installs nothing of Electron's; it is not an npm workspace (hoisting trips electron-builder and node-pty). It imports the desktop's `src/shared/` as `@shared`, so the phone reads and writes card files with the same `cardfile.ts`, and paints with the desktop's colour tokens (`themeTokens`). `cardfile.ts` imports `yaml`, which `mobile/vite.config.ts` and `mobile/tsconfig.json` point at `mobile/node_modules`: looked up from `src/shared/` it would be the desktop's copy.
+
+```bash
+cd mobile
+npm install
+npm run dev          # the page in a browser, with hot reload (no native HTTP there)
+npm run typecheck
+npm test             # vitest: mobile/tests/*.test.ts
+npm run apk          # builds the page, copies it into android/, and builds android/app/build/outputs/apk/debug/app-debug.apk
+adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+The root's `npm run typecheck` and `npm test` don't cover `mobile/`: run its own. `npm run apk` needs a JDK 21 and the Android SDK (`JAVA_HOME`, `ANDROID_HOME`; Android Studio installs both, or Android's command-line tools with `sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"`). The APK's version is Corkboard's, read from the root `package.json` by `mobile/android/app/build.gradle` (version code `major * 10000 + minor * 100 + patch`). Its launcher icons come from `build/icon.svg` with the desktop's (`npm run icon`).
+
+There's no end-to-end test on a device: the logic is unit-tested, and the screen is checked by hand on a phone. CI's `mobile` job runs the typecheck and the tests and builds the debug APK on every push, kept as the run's `companion-debug-apk` artifact. A debug APK is signed with the key of the machine that built it, so Android refuses one from another machine (or another CI run) over it: uninstall first.
+
 ## Packaging
 
 `npm run dist` packages it for Windows into `dist/`: `Corkboard Setup <version>.exe` (an installer with a Start menu entry and an uninstaller), `Corkboard <version>.exe` (a single portable exe that unpacks itself on each start), and `win-unpacked/Corkboard.exe` (the app as a plain folder). The settings are in `electron-builder.yml`. The exes are unsigned, so SmartScreen warns on first run (*More info → Run anyway*).

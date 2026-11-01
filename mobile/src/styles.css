@@ -1,0 +1,65 @@
+/* The colours are the desktop's tokens, set on :root at start (theme.ts). */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, sans-serif;
+  font-size: 16px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#root {
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+.signed-out {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 100%;
+  padding: 24px;
+  text-align: center;
+}
+
+.signed-out h1 {
+  margin: 0;
+  font-size: 28px;
+}
+
+.signed-out p {
+  margin: 0;
+  color: var(--text-2);
+}
+
+.signed-out .hint {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+button.primary {
+  margin-top: 12px;
+  padding: 12px 20px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: inherit;
+  font-weight: 600;
+}
+
+button.primary:disabled {
+  opacity: 0.6;
+}

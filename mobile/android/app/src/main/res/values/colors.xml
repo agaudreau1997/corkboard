@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The desktop stylesheet's background token, so the launch screen opens onto the page's own colour. -->
+    <color name="splash_background">#15171c</color>
+</resources>
