@@ -17,6 +17,8 @@ export const SPARE = { path: 'old-prototype', title: 'Old prototype', key: 'OP',
 export const TO_FIX = 'MB-201'
 /** A card in Done that a commit in the scratch code repo names. */
 export const COMMITTED = 'MB-202'
+/** Two cards of To do, the second to be done after the first: a parallel tackle gives them one session. */
+export const ORDERED = { first: 'MB-2', then: 'MB-3' }
 
 /**
  * A work project: a board repo of its own whose `project.json` says `work`, holding one board of
@@ -67,6 +69,7 @@ function writeBoard(root, stamp, spec, lists, cards, extra = {}) {
       `created: ${at}`,
       `updated: ${at}`,
       ...(card.archived ? ['archived: true'] : []),
+      ...(card.after ? [`after: [${card.after.join(', ')}]`] : []),
       ...(card.jira ? [`jira: ${card.jira}`] : []),
     ]
     writeFileSync(path.join(dir, 'cards', `${id}.md`), `---\n${front.join('\n')}\n---\n${card.body ? `\n${card.body}\n` : ''}`)
@@ -122,7 +125,7 @@ export function writeFixture(root) {
       ['thoughts', 'Thoughts'],
     ],
     [
-      ...many('todo', 3),
+      ...many('todo', 3).map((card, i) => (i === 2 ? { ...card, after: [ORDERED.first] } : card)),
       ...many('todo', 4, { archived: true, from: 3 }),
       ...many('doing', 3, { archived: true, from: 7 }),
       { id: TO_FIX, list: 'tofix', title: 'The rover gets stuck under the hangar ramp', body: STUCK_BODY },

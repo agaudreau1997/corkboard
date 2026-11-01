@@ -18,7 +18,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { _electron as electron } from 'playwright'
-import { CHILDREN, COMMITTED, IDEAS, KEYED, MAIN, SPARE, TO_FIX, UNKEYED, WORK, writeFixture, writeWorkFixture } from './fixture.mjs'
+import { CHILDREN, COMMITTED, IDEAS, KEYED, MAIN, ORDERED, SPARE, TO_FIX, UNKEYED, WORK, writeFixture, writeWorkFixture } from './fixture.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const appDir = path.resolve(here, '../..')
@@ -1231,20 +1231,32 @@ try {
     'with the terminal panel open, a long list still meets its top edge',
   )
 
-  // Tackle a whole list in parallel: one terminal per card.
+  // Tackle a whole list in parallel: one terminal per card, but one for the two cards in order.
   const before = await page.locator('.terminal-tab').count()
   const callsBeforeParallel = sessionCalls().length
   const prime = page.locator('.column[data-list="todo"]')
-  const primeCount = await prime.locator('.card').count()
+  const primeIds = await prime.locator('.card').evaluateAll(cards => cards.map(c => c.getAttribute('data-card')))
+  const ordered = primeIds.includes(ORDERED.first) && primeIds.includes(ORDERED.then)
+  check(ordered, `To do holds the ordered pair ${ORDERED.first}, ${ORDERED.then} (${primeIds.join(' ')})`)
+  const primeCount = primeIds.length - (ordered ? 1 : 0)
   await prime.locator('.column-head').click({ button: 'right' })
   await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Tackle all' }).hover()
   await page.getByRole('menuitem', { name: /In terminals, in parallel/ }).click()
-  await page.getByRole('button', { name: /Start \d+ sessions/ }).click()
+  const parallelBody = await page.getByRole('dialog').textContent()
+  check(parallelBody.includes(`share a session, in that order: ${ORDERED.first} → ${ORDERED.then}`), 'the dialog says which cards share a session')
+  await page.getByRole('button', { name: `Start ${primeCount} sessions` }).click()
   const after = await until(async () => ((await page.locator('.terminal-tab').count()) === before + primeCount ? true : false), 15000)
   check(after, `parallel tackle opened ${primeCount} terminals`)
   await sleep(1500)
   const worktreeCalls = sessionCalls().slice(callsBeforeParallel)
   check(worktreeCalls.every(c => c.split('\0').includes('-w')), 'each parallel session runs in a worktree')
+  const runCall = worktreeCalls.find(c => c.includes(`1. ${ORDERED.first}: `)) ?? ''
+  check(
+    runCall.includes(`2. ${ORDERED.then}: `) && runCall.includes('   Do it after 1.') && !worktreeCalls.some(c => c !== runCall && c.includes(`${ORDERED.then}: `)),
+    `the ordered pair is one session, ${ORDERED.first} first`,
+  )
+  const runTree = runCall.split('\0')[runCall.split('\0').indexOf('-w') + 1]
+  check(new Set(worktreeCalls.map(c => c.split('\0')[c.split('\0').indexOf('-w') + 1])).size === primeCount && runTree.startsWith(`cards-${ORDERED.first.toLowerCase()}-`), `every session has a worktree of its own, the pair's named after its first card (${runTree})`)
   const worktreeGlyphs = await page.locator('.terminal-tab').evaluateAll((tabs, from) => tabs.slice(from).map(t => t.querySelector('.term-kind.local-worktree')?.textContent), before)
   check(worktreeGlyphs.length === primeCount && worktreeGlyphs.every(g => g === '⌥'), `a worktree tackle's tab shows the worktree glyph: ${worktreeGlyphs.join(' ')}`)
   const worktreeTip = await page.locator('.terminal-tab').nth(before).getAttribute('title')

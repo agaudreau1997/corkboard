@@ -9,6 +9,7 @@ import path from 'node:path'
 import { BOARD_GUIDE_FILE } from '@shared/boardguide'
 import { isDivider, slugify } from '@shared/cardfile'
 import { discussPrompt, sessionName, tacklePrompt } from '@shared/prompts'
+import { findCycle, tackleGroups } from '@shared/tackleorder'
 import type { Card, PtyInfo, SessionRef, TackleRequest } from '@shared/types'
 import {
   continueUrl,
@@ -47,9 +48,15 @@ export async function tackle(
   if (discuss && (req.mode === 'cloud' || req.mode === 'local-worktree')) {
     throw new Error('A discussion runs in Claude desktop or a terminal.')
   }
+  const loop = discuss ? undefined : findCycle(cards)
+  if (loop) throw new Error(`These cards wait on each other in a loop: ${[...loop, loop[0]].join(' → ')}. Change one's "after" first.`)
   const cwd = sessionDir(store, req.boardPath)
-  // A discussion of several cards is one conversation: triage needs them side by side.
-  const groups = req.split === 'each' && !discuss ? cards.map(c => [c]) : [cards]
+  // A discussion of several cards is one conversation: triage needs them side by side. A tackle
+  // keeps the cards an order joins in one session, prerequisites first.
+  const groups = discuss ? [cards] : tackleGroups(cards, req.split)
+  // A group of a split tackle is named after its own cards: its list's title would give every
+  // group the same name, and the same worktree.
+  const groupTitle = groups.length > 1 ? undefined : (req.listTitle ?? req.boardTitle)
   const opened: PtyInfo[] = []
 
   for (const group of groups) {
@@ -59,7 +66,7 @@ export async function tackle(
     // this machine, and a claude:// link carries no MCP config.
     const mcp = req.mode === 'local' || req.mode === 'local-worktree' ? mcpConfig : undefined
     const prompt = buildPrompt(store, req, group, !!mcp)
-    const name = sessionName(group, req.listTitle ?? req.boardTitle, discuss ? 'discuss' : 'tackle')
+    const name = sessionName(group, groupTitle, discuss ? 'discuss' : 'tackle')
     const purpose = discuss ? ({ purpose: 'discuss' } as const) : {}
     const started = new Date().toISOString()
     let ref: SessionRef
@@ -83,7 +90,7 @@ export async function tackle(
       command = [CLAUDE, '--cloud', prompt]
     } else {
       const id = randomUUID()
-      const worktree = req.mode === 'local-worktree' ? worktreeName(group, req.listTitle, !!store.settings.work) : undefined
+      const worktree = req.mode === 'local-worktree' ? worktreeName(group, groupTitle && req.listTitle, !!store.settings.work) : undefined
       command = localCommand({ claude: CLAUDE, boardRoot: store.root, name, sessionId: id, worktree, mcpConfig: mcp, prompt })
       worktreeDir = worktree ? path.join(cwd, '.claude', 'worktrees', worktree) : undefined
       ref = { id, kind: req.mode, started, cwd: worktreeDir ?? cwd, cards: ids, name, ...purpose }
@@ -118,7 +125,7 @@ export function promptFor(req: TackleRequest, store: BoardStore): string {
     .map(id => board.cards.find(c => c.id === id))
     .filter((c): c is Card => !!c && !c.archived && !isDivider(c))
   if (!cards.length) throw new Error('No cards to write a prompt for (dividers and archived cards are skipped).')
-  return buildPrompt(store, req, cards)
+  return buildPrompt(store, req, req.purpose === 'discuss' ? cards : tackleGroups(cards)[0])
 }
 
 function buildPrompt(store: BoardStore, req: TackleRequest, cards: Card[], mcp = false): string {

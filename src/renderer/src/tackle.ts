@@ -1,5 +1,6 @@
 import { isDivider, listSort, orderList, sortCards } from '@shared/cardfile'
-import type { TackleMode } from '@shared/types'
+import { findCycle, tackleGroups, unmetPrerequisites } from '@shared/tackleorder'
+import type { Card, TackleMode } from '@shared/types'
 import { actions, api, isWork, useStore } from './state'
 
 /** Starts Claude on cards; a cloud run asks first, since it works from GitHub's copy and is billed. */
@@ -18,35 +19,60 @@ export async function tackleCards(
     actions.toast('Nothing to tackle: dividers and archived cards are skipped.', 'error')
     return
   }
-  const count = cards.length
+  const live = cards as Card[]
+  const loop = findCycle(live)
+  if (loop) {
+    actions.toast(`These cards wait on each other in a loop: ${[...loop, loop[0]].join(' → ')}. Change one's "after" first.`, 'error')
+    return
+  }
+  const count = live.length
+  const groups = tackleGroups(live, opts.split)
+  const sessions = groups.length
+  // What the dialog says of the sessions that hold several cards, and of the cards waited on that
+  // the tackle leaves out: it goes ahead all the same, once you say so.
+  const chains = groups.filter(g => g.length > 1).map(g => g.map(c => c.id).join(' → '))
+  const together = chains.length ? ` Cards ordered by "after" share a session, in that order: ${chains.join('; ')}.` : ''
+  const unmet = unmetPrerequisites(live, board.cards, board.meta.flow?.done)
+  const warning = unmet
+    .map(u => ` ${u.id} waits on ${u.needs.join(', ')}, not done yet and not in this tackle.`)
+    .join('')
+  const perCard = chains.length ? 'one per card or ordered run' : 'one per card'
   if (mode === 'cloud') {
-    const sessions = opts.split === 'each' ? count : 1
     const ok = await actions.confirm(
       sessions > 1
-        ? `Start ${sessions} Claude Cloud sessions, one per card?`
-        : `Tackle ${count === 1 ? cards[0]!.id : `${count} cards`} in Claude Cloud?`,
+        ? `Start ${sessions} Claude Cloud sessions, ${perCard}?`
+        : `Tackle ${count === 1 ? live[0].id : `${count} cards`} in Claude Cloud?`,
       'A cloud session clones the code repo from GitHub at your current branch, so it only sees pushed commits. ' +
-        'It runs on claude.ai and is billed like any session. The card gets the session link once it prints one.',
+        'It runs on claude.ai and is billed like any session. The card gets the session link once it prints one.' +
+        together +
+        warning,
       sessions > 1 ? `Start ${sessions} cloud sessions` : 'Start cloud session',
     )
     if (!ok) return
-  } else if (mode === 'desktop' && opts.split === 'each' && count > 1) {
+  } else if (mode === 'desktop' && opts.split === 'each' && sessions > 1) {
     const ok = await actions.confirm(
-      `Open ${count} sessions in Claude desktop?`,
-      'Each card gets its own new Code session in the desktop app, its prompt filled in.',
-      `Open ${count} sessions`,
+      `Open ${sessions} sessions in Claude desktop?`,
+      `Each card gets its own new Code session in the desktop app, its prompt filled in.${together}${warning}`,
+      `Open ${sessions} sessions`,
     )
     if (!ok) return
-  } else if (opts.split === 'each' && count > 1) {
+  } else if (opts.split === 'each' && sessions > 1) {
     const ok = await actions.confirm(
-      `Start ${count} parallel sessions?`,
-      `Each card gets its own Claude Code session in its own git worktree (.claude/worktrees/${isWork(boardPath) ? '<Jira key>' : 'card-<id>'}), each in a terminal tab.`,
-      `Start ${count} sessions`,
+      `Start ${sessions} parallel sessions?`,
+      `Each card gets its own Claude Code session in its own git worktree (.claude/worktrees/${isWork(boardPath) ? '<Jira key>' : 'card-<id>'}), each in a terminal tab.${together}${warning}`,
+      `Start ${sessions} sessions`,
+    )
+    if (!ok) return
+  } else if (warning) {
+    const ok = await actions.confirm(
+      `Tackle ${count === 1 ? live[0].id : `${count} cards`} before what they wait on?`,
+      `${warning.trim()} The session starts all the same if you go ahead.`,
+      'Tackle anyway',
     )
     if (!ok) return
   }
   try {
-    await api.tackle.start({ boardPath, cardIds: cards.map(c => c!.id), mode, ...opts })
+    await api.tackle.start({ boardPath, cardIds: live.map(c => c.id), mode, ...opts })
     actions.clearSelection(boardPath)
     if (mode === 'desktop') {
       actions.toast('Opened in Claude desktop; the card links to the session once its prompt is sent.')

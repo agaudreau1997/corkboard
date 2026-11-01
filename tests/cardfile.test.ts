@@ -265,6 +265,26 @@ describe('tackle prompts', () => {
   })
 })
 
+describe('tackle prompts of an ordered run', () => {
+  const meta: BoardMeta = { key: 'RS', title: 'Game', lists: [{ id: 'todo', title: 'To do' }] }
+  const ctx = { meta, boardRoot: '/b', cardFile: (id: string) => `/b/game/cards/${id}.md`, linkTitle: () => undefined, cloud: false }
+
+  it('names the cards each one waits on, and says to stop before them when one fails', () => {
+    const cards = [{ ...base, id: 'RS-1', title: 'Map' }, { ...base, id: 'RS-2', title: 'Fog', after: ['RS-1', 'RS-9'] }]
+    const prompt = tacklePrompt(cards, ctx)
+    expect(prompt).toContain('1. RS-1: Map\n   File: /b/game/cards/RS-1.md')
+    // A card waited on outside the session isn't one of its numbers.
+    expect(prompt).toContain('2. RS-2: Fog\n   Do it after 1.\n   File: /b/game/cards/RS-2.md')
+    expect(prompt).toContain("don't start the cards that wait on it")
+  })
+
+  it('says nothing of an order when no card waits on another of the session', () => {
+    const prompt = tacklePrompt([{ ...base, id: 'RS-1' }, { ...base, id: 'RS-2', after: ['RS-9'] }], ctx)
+    expect(prompt).not.toContain('Do it after')
+    expect(prompt).not.toContain('wait on')
+  })
+})
+
 describe('work-mode tackle prompts', () => {
   const meta: BoardMeta = {
     key: 'RS',
@@ -336,6 +356,19 @@ describe('work-mode tackle prompts', () => {
     expect(local).toContain('A card with no Jira key yet: ask me for it before its first commit')
     expect(local).not.toContain('Card: <ID>')
     const cloud = tacklePrompt(cards.map(c => ({ ...c, links: [] })), { ...ctx, cloud: true })
+    expect(ids(cloud)).toEqual([])
+  })
+
+  it('an ordered run says what waits on what by number, so not by id', () => {
+    const cards = [
+      { ...base, id: 'RS-12', title: 'Turrets', jira: 'SPDI-12' },
+      { ...base, id: 'RS-13', title: 'Traps', after: ['RS-12'] },
+      { ...card, links: [], after: ['RS-12', 'RS-13', 'RS-1'] },
+    ]
+    const cloud = tacklePrompt(cards, { ...ctx, cloud: true })
+    expect(cloud).toContain('2. Traps\n   Do it after 1.')
+    expect(cloud).toContain('3. SPDI-42: Add occlusion culling: take it from the gdvmf 2.3.0 PR?\n   Do it after 1 and 2.')
+    expect(cloud).toContain("if a card can't be finished, don't start the cards that wait on it")
     expect(ids(cloud)).toEqual([])
   })
 

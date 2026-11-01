@@ -133,6 +133,8 @@ export function tacklePrompt(cards: Card[], ctx: PromptContext): string {
       cards
         .map((card, i) => {
           const lines = [`${i + 1}. ${cardHeading(card, ctx)}`]
+          const first = waitsOn(card, cards)
+          if (first) lines.push(`   Do it after ${first}.`)
           if (!ctx.cloud) lines.push(`   File: ${ctx.cardFile(card.id)}`)
           const body = card.body.trim()
           if (body) lines.push(indent(body, '   '))
@@ -154,6 +156,9 @@ export function tacklePrompt(cards: Card[], ctx: PromptContext): string {
   }
   if (ctx.workDir) parts.push(folderCheck(ctx.workDir))
   if (!one) rules.push('Work through them one at a time.')
+  if (cards.some(c => waitsOn(c, cards))) {
+    rules.push("Some of them wait on others (\"Do it after\"): if a card can't be finished, don't start the cards that wait on it; leave them in their list and tell me why.")
+  }
   if (ctx.work) {
     rules.push(workRule(cards, ctx))
   } else {
@@ -266,6 +271,16 @@ function linkLines(card: Card, ctx: PromptContext): string {
       return [`- ${id}${title ? `: ${title}` : ''}${key ? ` (${key})` : ''}`]
     })
     .join('\n')
+}
+
+/**
+ * The cards of the session a card waits on, by their number in the prompt: numbers rather than
+ * ids, so a work project's prompt says it without a card id.
+ */
+function waitsOn(card: Card, cards: Card[]): string | undefined {
+  const numbers = cards.flatMap((c, i) => (card.after.includes(c.id) && c.id !== card.id ? [String(i + 1)] : []))
+  if (!numbers.length) return undefined
+  return numbers.length === 1 ? numbers[0] : `${numbers.slice(0, -1).join(', ')} and ${numbers.at(-1)}`
 }
 
 function indent(text: string, pad: string): string {
