@@ -1,5 +1,6 @@
 // A card: read it, and change it (title and description, list, complete, archived), with the
-// question when it was edited elsewhere meanwhile; share it, and copy its id with a tap.
+// question when it was edited elsewhere meanwhile; restore it from the archive; share it, and copy
+// its id with a tap.
 
 import { useState } from 'react'
 import Markdown from 'react-markdown'
@@ -94,6 +95,7 @@ export function CardView(props: {
         <p className="card-meta">
           <CopyId id={card.id} />
           {card.jira && <CopyId id={card.jira} />}
+          {card.archived && <span className="chip">Archived</span>}
           {card.complete && <span className="chip done">Done</span>}
           {card.due && <span className="chip">Due {formatDue(card.due)}</span>}
           {card.labels.map(l => (
@@ -116,34 +118,42 @@ export function CardView(props: {
             >
               Edit
             </button>
-            <select
-              aria-label="Move to list"
-              disabled={busy}
-              value=""
-              onChange={e => e.target.value && void save({ list: e.target.value })}
-            >
-              <option value="">Move to…</option>
-              {lists
-                .filter(l => l.id !== card.list)
-                .map(l => (
-                  <option key={l.id} value={l.id}>
-                    {l.title}
-                  </option>
-                ))}
-            </select>
-            <button type="button" disabled={busy} onClick={() => save({ complete: !card.complete })}>
-              {card.complete ? 'Not complete' : 'Mark complete'}
-            </button>
-            <CardShare card={card} work={work} disabled={busy} />
-            {archiving ? (
-              <button type="button" className="danger" disabled={busy} onClick={() => save({ archived: true })}>
-                Archive it
+            {card.archived ? (
+              <button type="button" disabled={busy} onClick={() => save({ restore: true })}>
+                {listTitle ? `Restore to ${listTitle}` : 'Restore as an idea'}
               </button>
             ) : (
-              <button type="button" disabled={busy} onClick={() => setArchiving(true)}>
-                Archive
-              </button>
+              <>
+                <select
+                  aria-label="Move to list"
+                  disabled={busy}
+                  value=""
+                  onChange={e => e.target.value && void save({ list: e.target.value })}
+                >
+                  <option value="">Move to…</option>
+                  {lists
+                    .filter(l => l.id !== card.list)
+                    .map(l => (
+                      <option key={l.id} value={l.id}>
+                        {l.title}
+                      </option>
+                    ))}
+                </select>
+                <button type="button" disabled={busy} onClick={() => save({ complete: !card.complete })}>
+                  {card.complete ? 'Not complete' : 'Mark complete'}
+                </button>
+                {archiving ? (
+                  <button type="button" className="danger" disabled={busy} onClick={() => save({ archived: true })}>
+                    Archive it
+                  </button>
+                ) : (
+                  <button type="button" disabled={busy} onClick={() => setArchiving(true)}>
+                    Archive
+                  </button>
+                )}
+              </>
             )}
+            <CardShare card={card} work={work} disabled={busy} />
           </div>
         ) : (
           <>

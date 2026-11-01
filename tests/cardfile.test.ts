@@ -122,6 +122,8 @@ describe('helpers', () => {
     expect(describeCardChange('C-1', card, { ...card, list: 'done' })).toEqual(['Move C-1: todo → done'])
     expect(describeCardChange('C-1', card, { ...card, list: null })).toEqual(['Move C-1: todo → map'])
     expect(describeCardChange('C-1', card, { ...card, archived: true })).toEqual(['Archive C-1'])
+    expect(describeCardChange('C-1', { ...card, archived: true }, card)).toEqual(['Restore C-1'])
+    expect(describeCardChange('C-1', { ...card, archived: true }, { ...card, list: null })).toEqual(['Restore C-1'])
     expect(describeCardChange('C-1', card, { ...card, title: 'New' })).toEqual(['Rename C-1: New'])
     expect(describeCardChange('C-1', card, { ...card, links: ['C-2'] })).toEqual(['Link C-1 to C-2'])
     expect(describeCardChange('C-1', { ...card, links: ['C-3'] }, { ...card, links: ['C-2'] })).toEqual([

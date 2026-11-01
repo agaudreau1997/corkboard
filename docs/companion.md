@@ -6,13 +6,17 @@ It talks to GitHub, not git: it reads and writes the board repo's card files thr
 
 ## What it does today
 
-It signs in with GitHub, browses your board repos (their boards, each board's lists, and the cards in them), makes cards, and changes them: their title and description, their list, complete or not, archived. It shares a card to another app, and copies its id.
+It signs in with GitHub, browses your board repos (their boards, each board's lists, and the cards in them), makes cards, and changes them: their title and description, their list, complete or not, archived. It finds cards on a board, shows its archived ones and restores them. It shares a card to another app, and copies its id.
 
 ## Browsing
 
-The first screen lists the board repos the app can reach. A repo opens to its boards, child boards under their parents; a board opens on its first list, with the others as tabs along the top, in the board's colours. Each list is in the order the desktop shows it (by hand, or the list's *Sort cards by*), with dividers as lines; archived cards and archived lists stay hidden, and cards with no list (the map's ideas) get an *Ideas* tab of their own. A card opens to its title, labels, due date and description. Images in descriptions show as `[image]` for now, and links open in the browser. Android's back button goes up a level.
+The first screen lists the board repos the app can reach. A repo opens to its boards, child boards under their parents; a board opens on its first list, with the others as tabs along the top, in the board's colours. Each list is in the order the desktop shows it (by hand, or the list's *Sort cards by*), with dividers as lines; archived lists stay hidden, cards with no list (the map's ideas) get an *Ideas* tab of their own, and a board with archived cards gets an *Archived* tab at the end, the last changed first, each saying which list it was in. A card opens to its title, labels, due date and description. Images in descriptions show as `[image]` for now, and links open in the browser. Android's back button goes up a level.
 
 The app reopens where you left it, drawn at once from what it last read, then refreshes: pull a screen down to refresh it by hand. It reads only the files that changed since, and only the open board's cards, so a refresh is quick and offline it shows the last read. If you're signed out (the sign-in was revoked, or the app went six months unopened), it still shows what it last read, with a bar to sign in again.
+
+## Finding a card
+
+The magnifier beside a board's tabs opens a search field in their place: the board then shows every card whose id, title or description holds the text (the desktop's filter over a board), its ideas first and then list by list in the board's order, each saying its list, and the archived ones that match after them. *Close* puts the tabs back. It searches the open board only.
 
 ## Signing in
 
@@ -30,7 +34,7 @@ Until it's sent, the card waits on the phone, dashed at the end of its list: off
 
 ## Changing a card
 
-An open card has *Edit* (its title and description), *Move to…* (another list of its board; the card goes at the end), *Mark complete* and *Archive*, which asks once more and never deletes: the card is archived, as on the desktop, and the desktop can bring it back. Each change is one commit, named the way the desktop's auto-commit names it (`Move CORK-12: todo → done`, `Archive CORK-12`, `Rename CORK-12: …`), and stamps the card's `updated`, so a sync between desktops keeps it if the same card changed there too.
+An open card has *Edit* (its title and description), *Move to…* (another list of its board; the card goes at the end), *Mark complete* and *Archive*, which asks once more and never deletes: the card is archived, as on the desktop, and can be brought back. An archived card (from the *Archived* tab, or found) has *Restore* instead: it goes to the end of its list, or to the ideas when its list was archived or is gone, decided against the board as it is when the change is written. Each change is one commit, named the way the desktop's auto-commit names it (`Move CORK-12: todo → done`, `Archive CORK-12`, `Restore CORK-12`, `Rename CORK-12: …`), and stamps the card's `updated`, so a sync between desktops keeps it if the same card changed there too.
 
 If the card changed since you opened it (a desktop pushed meanwhile), the app reads it again: a move, a complete or an archive goes on top of the newer card, and so does an edit of a field nobody else touched. When its title or description was edited there too, the app says so and asks: *Overwrite with mine*, or *Keep theirs*.
 

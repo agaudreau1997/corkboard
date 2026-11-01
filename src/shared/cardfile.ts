@@ -184,6 +184,7 @@ export function newCard(
  */
 export function describeCardChange(id: string, before: Card | undefined, now: Card | undefined): string[] {
   if (!now || !before) return [`Edit ${id}`]
+  if (before.archived && !now.archived) return [`Restore ${id}`]
   if (before.list !== now.list) return [`Move ${id}: ${before.list ?? 'map'} → ${now.list ?? 'map'}`]
   if (!before.archived && now.archived) return [`Archive ${id}`]
   if (now.sessions.length > before.sessions.length) {
