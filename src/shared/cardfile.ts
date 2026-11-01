@@ -205,6 +205,14 @@ export function describeCardChange(id: string, before: Card | undefined, now: Ca
   if (before.after.join() !== now.after.join()) {
     return [now.after.length ? `Put ${id} after ${now.after.join(', ')}` : `Take ${id} out of the order`]
   }
+  if (before.labels.join() !== now.labels.join()) {
+    const added = now.labels.filter(l => !before.labels.includes(l))
+    const gone = before.labels.filter(l => !now.labels.includes(l))
+    if (added.length || gone.length) {
+      return [...(added.length ? [`Label ${id}: ${added.join(', ')}`] : []), ...(gone.length ? [`Unlabel ${id}: ${gone.join(', ')}`] : [])]
+    }
+  }
+  if ((before.due ?? '') !== (now.due ?? '')) return [now.due ? `Make ${id} due ${now.due}` : `Clear the due date of ${id}`]
   if (before.pos !== now.pos && before.body === now.body) return [`Reorder ${id}`]
   return [`Edit ${id}`]
 }

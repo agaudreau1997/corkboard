@@ -1,0 +1,185 @@
+/* A card's details under its title (CardDetails.tsx): the due date, labels, linked cards and Do
+   after, each a short section headed like the board settings'. Remove buttons are 36 px targets. */
+
+.card-details section {
+  margin-top: 14px;
+}
+
+.card-details h3 {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.detail-text {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+}
+
+.detail-note {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+p.detail-note {
+  margin: 4px 0 0;
+}
+
+.card-details button.remove {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.card-details button.remove:active {
+  background: var(--hover);
+}
+
+.card-details button:disabled,
+.card-details input:disabled,
+.card-details select:disabled {
+  opacity: 0.5;
+}
+
+.due-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.card-details input,
+.card-details select {
+  padding: 9px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--card-edit);
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+}
+
+.label-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.chip.label {
+  display: inline-flex;
+  align-items: center;
+  font-size: 13px;
+}
+
+.chip.label button.remove {
+  width: 26px;
+  height: 26px;
+  margin: -4px -8px -4px 0;
+  font-size: 16px;
+}
+
+button.chip.add,
+button.chip.offer {
+  padding: 5px 10px;
+  border: 1px dashed var(--line-2);
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13px;
+}
+
+button.chip.offer {
+  border-style: solid;
+}
+
+button.chip.add:active,
+button.chip.offer:active {
+  background: var(--hover);
+}
+
+.label-picker form {
+  display: flex;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.label-picker input {
+  flex: 1;
+  min-width: 0;
+}
+
+.label-picker button {
+  padding: 9px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--bg-3);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+}
+
+.detail-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.detail-rows li {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+}
+
+.detail-row {
+  display: flex;
+  flex: 1;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+
+.card-details .detail-row:disabled {
+  opacity: 1;
+}
+
+.detail-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 15px;
+}
+
+.detail-rows li.done .detail-title {
+  color: var(--text-2);
+  text-decoration: line-through;
+}
+
+/* A line-through doesn't reach into an inline block: "· done" itself stays unstruck. */
+.detail-rows li.done .detail-note {
+  display: inline-block;
+}
+
+select.after-pick {
+  width: 100%;
+  margin-top: 8px;
+}

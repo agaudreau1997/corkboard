@@ -1,6 +1,6 @@
-// A card: read it, and change it (title and description, list, complete, archived), with the
-// question when it was edited elsewhere meanwhile; restore it from the archive; share it, and copy
-// its id with a tap.
+// A card: read it, and change it (title and description, list, complete, archived, and its details:
+// due date, labels, Do after), with the question when it was edited elsewhere meanwhile; restore it
+// from the archive; open its linked cards; share it, and copy its id with a tap.
 
 import { useState } from 'react'
 import Markdown from 'react-markdown'
@@ -8,6 +8,8 @@ import remarkGfm from 'remark-gfm'
 import type { Card, ListDef } from '@shared/types'
 import { SignedOut } from '../github/session'
 import { Conflict, type CardChange } from '../repo/editor'
+import type { Linked } from '../repo/linked'
+import { CardDetails } from './CardDetails'
 import { CardShare, CopyId } from './CardShare'
 import { formatDue, Header, markdownParts } from './parts'
 
@@ -18,13 +20,18 @@ export function CardView(props: {
   card?: Card
   id: string
   lists: ListDef[]
+  /** The open board's cards, for the Do after's titles, done states and picker, and labels in use. */
+  cards: Card[]
+  doneList?: string
+  linked: Linked[]
   canChange: boolean
   /** A work project: what's shared names the card's Jira key, never its id. */
   work: boolean
   onBack: () => void
   onChange: ChangeCard
+  onOpen: (linked: Linked) => void
 }) {
-  const { card, id, lists, canChange, work, onBack, onChange } = props
+  const { card, id, lists, cards, doneList, linked, canChange, work, onBack, onChange, onOpen } = props
   const [editing, setEditing] = useState(false)
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
@@ -97,12 +104,6 @@ export function CardView(props: {
           {card.jira && <CopyId id={card.jira} />}
           {card.archived && <span className="chip">Archived</span>}
           {card.complete && <span className="chip done">Done</span>}
-          {card.due && <span className="chip">Due {formatDue(card.due)}</span>}
-          {card.labels.map(l => (
-            <span key={l} className="chip">
-              {l}
-            </span>
-          ))}
         </p>
         {canChange ? (
           <div className="actions">
@@ -165,6 +166,16 @@ export function CardView(props: {
         )}
         {error && <p className="note error">{error}</p>}
         {conflict && <ConflictNote conflict={conflict} busy={busy} onOverwrite={() => save(conflict.change, true)} onKeep={() => setConflict(undefined)} />}
+        <CardDetails
+          card={card}
+          cards={cards}
+          doneList={doneList}
+          linked={linked}
+          canChange={canChange && !card.archived}
+          busy={busy}
+          onChange={change => void save(change)}
+          onOpen={onOpen}
+        />
         <div className="markdown">
           {card.body.trim() ? (
             <Markdown remarkPlugins={[remarkGfm]} components={markdownParts}>
@@ -179,15 +190,25 @@ export function CardView(props: {
   )
 }
 
-/** Someone else edited the card's title or description meanwhile: overwrite it, or keep theirs. */
-function ConflictNote(props: { conflict: { theirs: Card }; busy: boolean; onOverwrite: () => void; onKeep: () => void }) {
-  const { theirs } = props.conflict
+/**
+ * Someone else changed the card's title, description or due date meanwhile: overwrite it, or keep
+ * theirs.
+ */
+function ConflictNote(props: { conflict: { theirs: Card; change: CardChange }; busy: boolean; onOverwrite: () => void; onKeep: () => void }) {
+  const { theirs, change } = props.conflict
   return (
     <div className="conflict">
-      <p>
-        {theirs.id} was edited elsewhere since you opened it. It now reads <strong>{theirs.title}</strong>
-        {theirs.body.trim() ? ', with a different description' : ''}.
-      </p>
+      {change.due !== undefined ? (
+        <p>
+          {theirs.id}’s due date was changed elsewhere since you opened it. It’s now{' '}
+          <strong>{theirs.due ? formatDue(theirs.due) : 'none'}</strong>.
+        </p>
+      ) : (
+        <p>
+          {theirs.id} was edited elsewhere since you opened it. It now reads <strong>{theirs.title}</strong>
+          {theirs.body.trim() ? ', with a different description' : ''}.
+        </p>
+      )}
       <div className="actions">
         <button type="button" disabled={props.busy} onClick={props.onOverwrite}>
           Overwrite with mine

@@ -130,6 +130,15 @@ describe('helpers', () => {
       'Link C-1 to C-2',
       'Unlink C-1 from C-3',
     ])
+    expect(describeCardChange('C-1', card, { ...card, labels: ['ui', 'bug'] })).toEqual(['Label C-1: ui, bug'])
+    expect(describeCardChange('C-1', { ...card, labels: ['ui', 'bug'] }, { ...card, labels: ['bug', 'docs'] })).toEqual([
+      'Label C-1: docs',
+      'Unlabel C-1: ui',
+    ])
+    // Only their order changed (a hand edit): an edit like any other.
+    expect(describeCardChange('C-1', { ...card, labels: ['a', 'b'] }, { ...card, labels: ['b', 'a'] })).toEqual(['Edit C-1'])
+    expect(describeCardChange('C-1', card, { ...card, due: '2026-11-05' })).toEqual(['Make C-1 due 2026-11-05'])
+    expect(describeCardChange('C-1', { ...card, due: '2026-11-05' }, card)).toEqual(['Clear the due date of C-1'])
     expect(describeCardChange('C-1', card, { ...card, pos: 99 })).toEqual(['Reorder C-1'])
     expect(describeCardChange('C-1', card, { ...card, body: 'x' })).toEqual(['Edit C-1'])
     expect(describeCardChange('C-1', undefined, card)).toEqual(['Edit C-1'])

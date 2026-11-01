@@ -1,16 +1,21 @@
 // Changing a card from the phone: a new title or description, another list of its board, archived
-// or complete, or restored from the archive. Each change is one card file written through the Contents API, one commit named the
+// or complete, restored from the archive, its due date, its labels, and the cards it waits on (its
+// *Do after*). Each change is one card file written through the Contents API, one commit named the
 // way the desktop's auto-commit names it, and it stamps `updated:` (a sync between desktops keeps
 // the side changed last). The card goes through `serializeCard`, so its unknown keys and sessions
 // survive and a move is a one-line diff.
 //
 // The file is written against the sha the card was read at. If it changed since (a desktop pushed),
 // GitHub refuses, and the card is read again: a move, an archive or a complete is applied again on
-// top of it, and so is an edit whose fields nobody else touched. An edit of a title or description
-// that was also edited elsewhere is not overwritten without asking: it ends in a Conflict, and
-// `overwrite` then writes it over the newer card.
+// top of it, and so is an edit whose fields nobody else touched. Labels and *Do after* are changed
+// as what was added and what was taken away, so they go on top of the others' changes to the same
+// keys without losing any (a card waited on that would now make a loop is refused). A title,
+// description or due date that was also changed elsewhere is not overwritten without asking: it
+// ends in a Conflict, and `overwrite` then writes it over the newer card.
 
 import { between, describeCardChange, serializeCard, sortCards } from '@shared/cardfile'
+import { pickDue } from '@shared/due'
+import { findCycle } from '@shared/tackleorder'
 import type { Card, ListDef } from '@shared/types'
 import { answerJson } from '../github/answer'
 import type { RepoCache } from './cache'
@@ -31,7 +36,15 @@ export type CardChange = {
    * ideas (no list). Decided against the board as it is when written.
    */
   restore?: boolean
+  /** A day picked for its due date (`2026-11-05`), or null to clear it: see `pickDue`. */
+  due?: string | null
+  labels?: Edits
+  /** The cards of its board it waits on. */
+  after?: Edits
 }
+
+/** Ids or names added to a card's list of them, and taken out of it. */
+export type Edits = { add?: string[]; remove?: string[] }
 
 /** The card was edited elsewhere in a way this change would overwrite. */
 export class Conflict extends Error {
@@ -62,6 +75,14 @@ export function applyChange(card: Card, change: CardChange, board: BoardNow, now
   if (change.body !== undefined) next.body = change.body
   if (change.archived !== undefined) next.archived = change.archived || undefined
   if (change.complete !== undefined) next.complete = change.complete || undefined
+  if (change.due !== undefined) next.due = pickDue(card.due, change.due ?? '')
+  if (change.labels) next.labels = edited(card.labels, change.labels)
+  if (change.after) {
+    next.after = edited(card.after, change.after).filter(id => id !== card.id)
+    const others = board.cards.filter(c => c.id !== card.id)
+    const loop = change.after.add?.length ? findCycle([...others, next]) : undefined
+    if (loop) throw new Error(`${card.id} can’t wait on that: the order would loop (${[...loop, loop[0]].join(' → ')}).`)
+  }
   if (change.list !== undefined && change.list !== card.list) {
     next.list = change.list
     next.pos = endOf(change.list)
@@ -69,14 +90,30 @@ export function applyChange(card: Card, change: CardChange, board: BoardNow, now
   return next
 }
 
+/** The list with the edits made: what's taken out goes, what's added goes at the end, once. */
+function edited(list: string[], edits: Edits): string[] {
+  const remove = new Set(edits.remove ?? [])
+  const out = list.filter(x => !remove.has(x))
+  for (const raw of edits.add ?? []) {
+    const x = raw.trim()
+    if (x && !out.includes(x)) out.push(x)
+  }
+  return out
+}
+
 /** Whether `theirs` changed a field this change sets, since the card was read as `read`. */
 function overlaps(read: Card, theirs: Card, change: CardChange): boolean {
-  return (change.title !== undefined && theirs.title !== read.title) || (change.body !== undefined && theirs.body !== read.body)
+  return (
+    (change.title !== undefined && theirs.title !== read.title) ||
+    (change.body !== undefined && theirs.body !== read.body) ||
+    (change.due !== undefined && (theirs.due ?? '') !== (read.due ?? ''))
+  )
 }
 
 /**
  * Writes the change to the card as read (`read`, at blob `sha`). Answers the card as written. With
- * `overwrite`, a title or description edited elsewhere is written over instead of asked about.
+ * `overwrite`, a title, description or due date changed elsewhere is written over instead of asked
+ * about.
  */
 export async function changeCard(
   api: Api,

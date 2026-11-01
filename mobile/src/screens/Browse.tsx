@@ -17,6 +17,7 @@ import type { RepoCache, Snapshot } from '../repo/cache'
 import { changeBoard, type BoardChange } from '../repo/boardchange'
 import { changeCard } from '../repo/editor'
 import { boardTree } from '../repo/layout'
+import { linkedCards } from '../repo/linked'
 import type { Outbox } from '../repo/outbox'
 import { boardMetas, openBoard, projectSettings, refresh, type Board } from '../repo/reader'
 import type { Draft } from '../repo/writer'
@@ -221,6 +222,9 @@ export function Browse({ session, cache, outbox, signedOut, onSignIn, onSignOut 
         card={card}
         id={place.card}
         lists={b ? b.meta.lists.filter(l => !l.archived) : []}
+        cards={b?.cards ?? []}
+        doneList={b?.meta.flow?.done}
+        linked={card ? linkedCards(cache, repo.snapshot, b, card.links) : []}
         canChange={!!api && !!card && !!b?.shas[card.id]}
         work={projectSettings(cache, repo.snapshot).work === true}
         onBack={() => go({ ...place, card: undefined })}
@@ -229,6 +233,7 @@ export function Browse({ session, cache, outbox, signedOut, onSignIn, onSignOut 
           await repo.refresh()
           if (change.archived) go({ ...place, card: undefined })
         }}
+        onOpen={l => go({ ...place, board: l.board ?? place.board, card: l.id })}
       />
     )
   }

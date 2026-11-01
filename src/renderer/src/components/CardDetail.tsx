@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Markdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Card, CodeCommit, LoadedBoard, SessionRef } from '@shared/types'
-import { dueDay } from '@shared/due'
+import { dueDay, pickDue } from '@shared/due'
 import { cardImages, imageUrl, insertAt } from '@shared/images'
 import { imageFiles, saveImage, saveImages } from '../images'
 import { discussCards, discussMode, tackleCards } from '../tackle'
@@ -200,8 +200,8 @@ function Drawer({ board, card }: { board: LoadedBoard; card: Card }) {
                 // all while a part is empty: save a whole date, or an input emptied on purpose.
                 if (value === '') {
                   if (!e.target.validity.badInput && card.due) save({ due: undefined })
-                } else if (Number(value.slice(0, 4)) >= 1000 && value !== dueDay(card.due ?? '')) {
-                  save({ due: value })
+                } else if (Number(value.slice(0, 4)) >= 1000 && pickDue(card.due, value) !== card.due) {
+                  save({ due: pickDue(card.due, value) })
                 }
               }}
               onBlur={e => {

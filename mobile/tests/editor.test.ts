@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest'
 import { parseCard } from '@shared/cardfile'
 import { RepoCache } from '../src/repo/cache'
-import { changeCard, Conflict } from '../src/repo/editor'
+import { applyChange, changeCard, Conflict } from '../src/repo/editor'
 import { openBoard, refresh } from '../src/repo/reader'
 import { card, github, MemoryStorage, meta } from './fakes'
 
@@ -128,5 +128,62 @@ describe('changing a card', () => {
     gh.put('cork/cards/CORK-3.md', card({ id: 'CORK-3', title: 'Back', list: 'todo', pos: 100, archived: true, labels: ['x'] }))
     await changeCard(gh.api, cache, at, board.cards.find(c => c.id === 'CORK-3')!, board.shas['CORK-3'], { restore: true }, options)
     expect(parseCard(gh.writes.at(-1)!.text)).toMatchObject({ list: null, labels: ['x'] })
+  })
+
+  it('sets and clears a due date, keeping a time written by hand while its day is kept', async () => {
+    const due = '2026-11-05T17:00:00.000Z'
+    for (const [picked, written, message] of [
+      ['2026-11-07', '2026-11-07', 'Make CORK-1 due 2026-11-07'],
+      [null, undefined, 'Clear the due date of CORK-1'],
+    ] as const) {
+      const gh = github({ ...files(), 'cork/cards/CORK-1.md': card({ id: 'CORK-1', title: 'Jot', list: 'todo', pos: 1024, due }) })
+      const { cache, read, sha } = await opened(gh)
+      await changeCard(gh.api, cache, at, read, sha, { due: picked }, options)
+      expect(gh.writes.at(-1)!.message).toBe(message)
+      expect(parseCard(gh.writes.at(-1)!.text).due).toBe(written)
+    }
+    const read = parseCard(card({ id: 'CORK-1', title: 'Jot', list: 'todo', pos: 1024, due }))
+    expect(applyChange(read, { due: '2026-11-05' }, { cards: [], lists: [] }, NOW).due).toBe(due)
+  })
+
+  it('asks before overwriting a due date changed elsewhere', async () => {
+    const gh = github(files())
+    const { cache, read, sha } = await opened(gh)
+    gh.put('cork/cards/CORK-1.md', card({ id: 'CORK-1', title: 'Jot', list: 'todo', pos: 1024, due: '2026-12-01' }))
+    const error = await changeCard(gh.api, cache, at, read, sha, { due: '2026-11-07' }, options).catch(e => e)
+    expect(error).toBeInstanceOf(Conflict)
+    expect(gh.writes).toHaveLength(0)
+  })
+
+  it('adds and removes labels, on top of labels changed elsewhere', async () => {
+    const gh = github(files())
+    const { cache, read, sha } = await opened(gh)
+    await changeCard(gh.api, cache, at, read, sha, { labels: { add: [' ui '] } }, options)
+    expect(gh.writes.at(-1)!.message).toBe('Label CORK-1: ui')
+    expect(parseCard(gh.writes.at(-1)!.text).labels).toEqual(['ui'])
+    // The phone still holds the card without labels; a desktop labelled it meanwhile.
+    gh.put('cork/cards/CORK-1.md', card({ id: 'CORK-1', title: 'Jot', list: 'todo', pos: 1024, labels: ['ui', 'bug'] }))
+    await changeCard(gh.api, cache, at, read, sha, { labels: { add: ['docs'], remove: ['ui'] } }, options)
+    expect(gh.writes.at(-1)!.message).toBe('Label CORK-1: docs; Unlabel CORK-1: ui')
+    expect(parseCard(gh.writes.at(-1)!.text).labels).toEqual(['bug', 'docs'])
+  })
+
+  it('puts a card after another, takes it out of the order, and refuses a loop', async () => {
+    const gh = github({ ...files(), 'cork/cards/CORK-2.md': card({ id: 'CORK-2', title: 'Already done', list: 'done', pos: 4096, after: ['CORK-1'] }) })
+    const { cache, read, sha } = await opened(gh)
+    const loop = await changeCard(gh.api, cache, at, read, sha, { after: { add: ['CORK-2'] } }, options).catch(e => e)
+    expect(loop.message).toMatch(/would loop \(CORK-1 → CORK-2 → CORK-1\)|would loop \(CORK-2 → CORK-1 → CORK-2\)/)
+    expect(gh.writes).toHaveLength(0)
+
+    gh.put('cork/cards/CORK-2.md', card({ id: 'CORK-2', title: 'Already done', list: 'done', pos: 4096 }))
+    gh.put('cork/cards/CORK-3.md', card({ id: 'CORK-3', title: 'Third', list: 'todo', pos: 2048 }))
+    const fresh = await opened(gh)
+    await changeCard(gh.api, fresh.cache, at, fresh.read, fresh.sha, { after: { add: ['CORK-2', 'CORK-3'] } }, options)
+    expect(gh.writes.at(-1)!.message).toBe('Put CORK-1 after CORK-2, CORK-3')
+    const now = parseCard(gh.writes.at(-1)!.text)
+    expect(now.after).toEqual(['CORK-2', 'CORK-3'])
+    // Against the card as first read: the write is refused, and the removal goes on top of it.
+    await changeCard(gh.api, fresh.cache, at, fresh.read, fresh.sha, { after: { remove: ['CORK-2', 'CORK-3'] } }, options)
+    expect(gh.writes.at(-1)!.message).toBe('Take CORK-1 out of the order')
   })
 })
