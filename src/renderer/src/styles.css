@@ -1098,9 +1098,13 @@ code,
   flex: none;
 }
 
+/* The scrollbar's gutter is kept whether the list scrolls or not, so a list that starts scrolling
+   (a terminal opened under it) doesn't narrow its cards and reflow their text. The gutter stands in
+   for most of the right padding; the 2px left keeps a selected card's ring clear of the clip. */
 .column-body {
   overflow-y: auto;
-  padding: 2px 8px 8px;
+  scrollbar-gutter: stable;
+  padding: 2px 2px 8px 8px;
   display: flex;
   flex-direction: column;
   gap: 6px;
