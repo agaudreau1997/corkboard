@@ -691,9 +691,9 @@ code,
   z-index: 4;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 16px;
   max-width: calc(100% - 28px);
-  padding: 3px 4px 3px 10px;
+  padding: 6px 8px 6px 14px;
   background: var(--panel);
   border: 1px solid var(--line-2);
   border-radius: var(--radius);
@@ -703,7 +703,30 @@ code,
   white-space: nowrap;
 }
 
+/* The left column: the counts over what is changed. */
+.repo-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The right column: Pull and Push over the branch, which may be long and is cut, not wrapped. */
+.repo-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.repo-buttons {
+  display: flex;
+  gap: 2px;
+}
+
 .repo-branch {
+  max-width: 100%;
   font-family: var(--mono);
   color: var(--text);
   overflow: hidden;
@@ -712,8 +735,9 @@ code,
 
 .repo-counts {
   display: inline-flex;
-  gap: 6px;
+  gap: 8px;
   font-family: var(--mono);
+  font-size: 14px;
 }
 
 .repo-counts.diverged {
@@ -729,13 +753,28 @@ code,
 }
 
 .repo-panel button {
-  padding: 2px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 48px;
+  padding: 4px 8px 3px;
   font-size: 12px;
+}
+
+.repo-panel button svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* The map's minimap sits in the same corner: it moves up over the panel. */
 .board-pane.has-repo .react-flow__panel.bottom.right {
-  margin-bottom: 52px;
+  margin-bottom: 90px;
 }
 
 .board-head {

@@ -3,7 +3,9 @@
 // project). It says the branch, how far it is ahead of and behind its upstream, and how many files
 // are changed and not committed, and pushes and pulls; the main process watches the repo, so a
 // commit made in a terminal shows here at once. It stays out of the way: one line, and nothing at
-// all for a board with no code repo on this machine.
+// all for a board with no code repo on this machine. It is two rows: the counts over what is
+// changed on the left, Pull and Push (an arrow over a word, so they read at a glance) over the
+// branch on the right.
 
 import { useEffect } from 'react'
 import { actions, useStore } from '../state'
@@ -32,41 +34,53 @@ export function RepoPanel({ path, codeRepo }: { path: string; codeRepo: string |
 
   return (
     <div className="repo-panel" role="group" aria-label="Code repo" title={status.repo}>
-      <span className="repo-branch">{branch ?? `detached at ${status.head ?? '?'}`}</span>
-      {upstream ? (
-        <span className={`repo-counts${diverged ? ' diverged' : ''}`} title={`Against ${upstream}, as of the last fetch`}>
-          <span className="repo-ahead" title={`${ahead} commit${ahead === 1 ? '' : 's'} to push`}>
-            ↑{ahead}
+      <div className="repo-state">
+        {upstream ? (
+          <span className={`repo-counts${diverged ? ' diverged' : ''}`} title={`Against ${upstream}, as of the last fetch`}>
+            <span className="repo-ahead" title={`${ahead} commit${ahead === 1 ? '' : 's'} to push`}>
+              ↑{ahead}
+            </span>
+            <span className="repo-behind" title={`${behind} commit${behind === 1 ? '' : 's'} to pull`}>
+              ↓{behind}
+            </span>
+            {diverged && <span>diverged</span>}
           </span>
-          <span className="repo-behind" title={`${behind} commit${behind === 1 ? '' : 's'} to pull`}>
-            ↓{behind}
+        ) : (
+          branch && <span className="repo-note">{status.remote ? 'no upstream' : 'no remote'}</span>
+        )}
+        {changed > 0 && (
+          <span className="repo-changed" title={`${changed} file${changed === 1 ? '' : 's'} changed and not committed`}>
+            {changed} changed
           </span>
-          {diverged && <span>diverged</span>}
-        </span>
-      ) : (
-        branch && <span className="repo-note">{status.remote ? 'no upstream' : 'no remote'}</span>
-      )}
-      {changed > 0 && (
-        <span className="repo-changed" title={`${changed} file${changed === 1 ? '' : 's'} changed and not committed`}>
-          {changed} changed
-        </span>
-      )}
-      <button
-        className="ghost"
-        title={pullTitle}
-        disabled={!!busy || !upstream || diverged}
-        onClick={() => void actions.pullRepo(path)}
-      >
-        {busy === 'pull' ? 'Pulling…' : 'Pull'}
-      </button>
-      <button
-        className="ghost"
-        title={pushTitle}
-        disabled={!!busy || !branch || !status.remote || (!!upstream && !ahead)}
-        onClick={() => void actions.pushRepo(path)}
-      >
-        {busy === 'push' ? 'Pushing…' : 'Push'}
-      </button>
+        )}
+      </div>
+      <div className="repo-actions">
+        <div className="repo-buttons">
+          <button
+            className="ghost"
+            title={pullTitle}
+            disabled={!!busy || !upstream || diverged}
+            onClick={() => void actions.pullRepo(path)}
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M8 2.5v10M3.5 8 8 12.5 12.5 8" />
+            </svg>
+            {busy === 'pull' ? 'Pulling…' : 'Pull'}
+          </button>
+          <button
+            className="ghost"
+            title={pushTitle}
+            disabled={!!busy || !branch || !status.remote || (!!upstream && !ahead)}
+            onClick={() => void actions.pushRepo(path)}
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M8 13.5v-10M3.5 8 8 3.5 12.5 8" />
+            </svg>
+            {busy === 'push' ? 'Pushing…' : 'Push'}
+          </button>
+        </div>
+        <span className="repo-branch">{branch ?? `detached at ${status.head ?? '?'}`}</span>
+      </div>
     </div>
   )
 }
