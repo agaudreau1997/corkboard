@@ -21,6 +21,7 @@ const base: Card = {
   pos: 1024,
   labels: [],
   links: [],
+  after: [],
   sessions: [],
   body: '',
   extra: {},
@@ -33,6 +34,7 @@ describe('card files', () => {
       created: '2026-09-20T12:28:50.000Z',
       complete: true,
       links: ['RS-12', 'IDEA-4'],
+      after: ['RS-880', 'RS-881'],
       cover: 'RS-886/3f2a9c01d4e5b6a7.png',
       jira: 'SPDI-42',
       sessions: [{ id: 'abc', kind: 'local', started: '2026-10-03T10:00:00.000Z', cards: ['RS-886'] }],
@@ -70,6 +72,16 @@ describe('card files', () => {
     expect(serializeCard(card)).toBe(text)
     expect(serializeCard({ ...base, cover: 'RS-886/a.png', jira: 'SPDI-7' })).toContain('\ncover: RS-886/a.png\njira: SPDI-7\n')
     expect(serializeCard({ ...card, cover: undefined })).not.toContain('cover')
+  })
+
+  it('reads the cards to do first, written by hand, and writes them after the links', () => {
+    const text = '---\nid: RS-3\ntitle: x\nlist: todo\npos: 1\nlinks:\n  - RS-9\nafter: [RS-1, RS-2]\n---\n'
+    const card = parseCard(text)
+    expect(card.after).toEqual(['RS-1', 'RS-2'])
+    expect(card.extra).toEqual({})
+    expect(serializeCard(card)).toContain('\nlinks:\n  - RS-9\nafter:\n  - RS-1\n  - RS-2\n')
+    expect(serializeCard(parseCard(serializeCard(card)))).toBe(serializeCard(card))
+    expect(serializeCard(base)).not.toContain('after')
   })
 
   it('reads a jira key written by hand and writes it among the known keys', () => {

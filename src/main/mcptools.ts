@@ -8,6 +8,7 @@
 // code repo: a work project's sessions get the same tools, and they never reach its shared repo.
 
 import { between, isDivider, sortCards } from '@shared/cardfile'
+import { findCycle } from '@shared/tackleorder'
 import type { BoardMeta, Card, CardPatch, LoadedBoard } from '@shared/types'
 import { boardKey, splitKey } from './projects'
 import type { BoardStore } from './store'
@@ -31,6 +32,7 @@ export type CardView = {
   description: string
   labels: string[]
   links: string[]
+  after?: string[]
   due?: string
   complete?: boolean
   archived?: boolean
@@ -115,6 +117,7 @@ export class BoardTools {
     description?: string
     labels?: string[]
     links?: string[]
+    after?: string[]
     due?: string | null
     complete?: boolean
     jira?: string | null
@@ -125,6 +128,7 @@ export class BoardTools {
     if (opts.description !== undefined) patch.body = opts.description.replace(/\s+$/, '')
     if (opts.labels !== undefined) patch.labels = cleanLabels(opts.labels)
     if (opts.links !== undefined) patch.links = this.cleanLinks(found, opts.links)
+    if (opts.after !== undefined) patch.after = cleanAfter(found, opts.after)
     if (opts.due !== undefined) patch.due = cleanDue(opts.due)
     if (opts.complete !== undefined) patch.complete = opts.complete || undefined
     if (opts.jira !== undefined) patch.jira = cleanJira(opts.jira)
@@ -141,6 +145,7 @@ export class BoardTools {
     description?: string
     labels?: string[]
     links?: string[]
+    after?: string[]
     due?: string
     jira?: string
   }): Promise<CardView> {
@@ -160,6 +165,7 @@ export class BoardTools {
     // Checked before anything is written, so a refused card leaves nothing behind.
     const rest: CardPatch = {}
     if (opts.labels?.length) rest.labels = cleanLabels(opts.labels)
+    if (opts.after?.length) rest.after = cleanAfter({ ...b, card: undefined }, opts.after)
     if (opts.due) rest.due = cleanDue(opts.due)
     if (opts.jira) rest.jira = cleanJira(opts.jira)
     const created = await b.project.store.createCard(b.rel, {
@@ -278,6 +284,7 @@ function view(found: Found): CardView {
     description: card.body,
     labels: card.labels,
     links: card.links,
+    ...(card.after.length ? { after: card.after } : {}),
     ...(card.due ? { due: card.due } : {}),
     ...(card.complete ? { complete: true } : {}),
     ...(card.archived ? { archived: true } : {}),
@@ -291,6 +298,29 @@ function checkList(meta: BoardMeta, list: string, board: string): void {
   if (meta.lists.some(l => l.id === list)) return
   const ids = meta.lists.map(l => l.id).join(', ')
   throw new ToolError(`The board ${board} has no list ${list}${ids ? ` (its lists: ${ids})` : ''}.`)
+}
+
+/**
+ * The cards to do before a card: cards of its own board, since a tackle covers one board, never
+ * the card itself, and never an order that loops back to it (no session could start the loop).
+ */
+function cleanAfter(at: { board: LoadedBoard; card?: Card }, ids: string[]): string[] {
+  const out: string[] = []
+  for (const raw of ids) {
+    const id = raw.trim()
+    if (!id || out.includes(id)) continue
+    if (at.card && id === at.card.id) throw new ToolError('A card cannot come after itself.')
+    if (!at.board.cards.some(c => c.id === id)) {
+      throw new ToolError(`No card ${id} on the board ${at.board.meta.title}: a card can only come after cards of its own board.`)
+    }
+    out.push(id)
+  }
+  if (at.card) {
+    const id = at.card.id
+    const loop = findCycle(at.board.cards.map(c => (c.id === id ? { id, after: out } : c)))
+    if (loop) throw new ToolError(`That order loops: ${[...loop, loop[0]].join(' → ')} (each after the next).`)
+  }
+  return out
 }
 
 function cleanTitle(title: string): string {

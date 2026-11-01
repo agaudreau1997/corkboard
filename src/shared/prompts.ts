@@ -103,8 +103,9 @@ export function discussPrompt(cards: Card[], ctx: PromptContext): string {
       ? 'Help me think it through: what is unclear or missing, the risks, the options and how you would scope or split it.'
       : 'Go through them with me: for each, whether it is still relevant, whether it is clear enough to tackle, what is missing, and whether it should be split, merged, moved to another list or archived. Propose; I decide.',
     ctx.mcp
-      ? `When we agree on something, change the card with the corkboard tools (update_card for its description, title and links, move_card for its list, archive_card, create_card for a new card), never by editing its file: those cards are the only things you may change without asking. ${MCP_NOTE} Do not commit in the board repo; the board app commits it.`
-      : 'When we agree on something, write it into the card file (description, title, links, list, or `archived: true`) and set `updated:` (now, ISO UTC): those card files are the only files you may edit without asking. Do not commit in the board repo; the board app commits it.',
+      ? `When we agree on something, change the card with the corkboard tools (update_card for its description, title, links and \`after\`, move_card for its list, archive_card, create_card for a new card), never by editing its file: those cards are the only things you may change without asking. ${MCP_NOTE} Do not commit in the board repo; the board app commits it.`
+      : 'When we agree on something, write it into the card file (description, title, links, `after`, list, or `archived: true`) and set `updated:` (now, ISO UTC): those card files are the only files you may edit without asking. Do not commit in the board repo; the board app commits it.',
+    ORDER_RULE,
   ]
   if (ctx.work) rules.push(`If I do ask you to implement something: ${workRule(cards, ctx)}`)
   parts.push(rules.map(r => `- ${r}`).join('\n'))
@@ -212,6 +213,11 @@ function workRule(cards: Card[], ctx: PromptContext): string {
     : `Name each card's Jira key in every commit message for it, in the branch name and in the PR title. A card with no Jira key yet: ask me for it before its first commit${keep}.`
   return `${name} Never write a card id of the task board (this card's or any other's) in anything that goes into the code repo or its remote: not in a commit message, a branch name, a PR title or description, code, a comment or a file. The code repo is shared with people who never see the board, and Jira tracks this work. This overrides the board repo's CLAUDE.md, which asks for \`Card:\` trailers: put none.`
 }
+
+// Recorded on the cards, an order agreed in a discussion is what a later tackle of the whole list
+// follows: the cards it joins go to one session, in that order.
+const ORDER_RULE =
+  "When we agree that a card must be done before another, record it in the later card's `after` (the ids of the cards of the same board to do before it): a tackle of several cards then keeps them in one session, in that order."
 
 // Why the tools and not the files, and what to do when the app that serves them has been closed
 // since the session started.

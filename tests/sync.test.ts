@@ -14,7 +14,7 @@ let dir: string
 const run = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd }).toString()
 
 function card(id: string, list: string, updated: string, title = id): Card {
-  return { id, title, list, pos: 1024, updated, labels: [], links: [], sessions: [], body: '', extra: {} }
+  return { id, title, list, pos: 1024, updated, labels: [], links: [], after: [], sessions: [], body: '', extra: {} }
 }
 
 function clone(name: string): string {

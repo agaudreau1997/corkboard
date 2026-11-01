@@ -14,7 +14,7 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
 const meta: BoardMeta = { key: 'G', title: 'Game', lists: [{ id: 'todo', title: 'To do' }] }
-const card: Card = { id: 'G-1', title: 'Turrets', body: '', list: 'todo', pos: 1, labels: [], links: [], sessions: [], extra: {} }
+const card: Card = { id: 'G-1', title: 'Turrets', body: '', list: 'todo', pos: 1, labels: [], links: [], after: [], sessions: [], extra: {} }
 const ctx = (guide: boolean) => ({
   meta,
   boardRoot: '/b',

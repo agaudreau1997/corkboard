@@ -68,6 +68,8 @@ export type Card = {
   labels: string[]
   /** Ids of related cards (any board): the map view's edges. */
   links: string[]
+  /** Ids of cards of its board to be done before it: a tackle of several works them first. */
+  after: string[]
   /** One of its description's images (`<ID>/<hash>.png`, relative to the card file) shown on its face. */
   cover?: string
   trello?: string

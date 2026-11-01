@@ -10,6 +10,7 @@ const card = (id: string, over: Partial<Card> = {}): Card => ({
   pos: 1,
   labels: [],
   links: [],
+  after: [],
   sessions: [],
   extra: {},
   ...over,

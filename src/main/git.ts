@@ -420,6 +420,9 @@ export class AutoCommitter {
           if (added.length) lines.push(`Link ${id} to ${added.join(', ')}`)
           if (gone.length) lines.push(`Unlink ${id} from ${gone.join(', ')}`)
         }
+        else if (before.after.join() !== now.after.join()) {
+          lines.push(now.after.length ? `Put ${id} after ${now.after.join(', ')}` : `Take ${id} out of the order`)
+        }
         else if (before.pos !== now.pos && before.body === now.body) lines.push(`Reorder ${id}`)
         else lines.push(`Edit ${id}`)
       } else if (name === 'board.json') {

@@ -40,7 +40,7 @@ const meta: BoardMeta = {
 }
 
 const card = (id: string, title: string, body = ''): Card => ({
-  id, title, body, list: 'todo', pos: 1, labels: [], links: [], sessions: [], extra: {},
+  id, title, body, list: 'todo', pos: 1, labels: [], links: [], after: [], sessions: [], extra: {},
 })
 
 describe('discuss prompts', () => {
@@ -130,6 +130,15 @@ describe('discuss prompts', () => {
     expect(work.replace('/b/game/cards/G-1.md', '')).not.toMatch(/\bG-\d+\b/)
     // Without the server, the file rules.
     expect(discussPrompt([card('G-1', 'Turrets')], ctx)).toContain('write it into the card file')
+  })
+
+  it("asks for an agreed order to go in the later card's after, with the tools or in the file", () => {
+    const cards = [card('G-1', 'Turrets'), card('G-2', 'Traps')]
+    for (const prompt of [discussPrompt(cards, ctx), discussPrompt(cards, { ...ctx, mcp: true }), discussPrompt(cards, { ...ctx, work: true })]) {
+      expect(prompt).toContain("record it in the later card's `after`")
+    }
+    expect(discussPrompt(cards, { ...ctx, mcp: true })).toContain('update_card for its description, title, links and `after`')
+    expect(discussPrompt(cards, ctx)).toContain('(description, title, links, `after`, list,')
   })
 
   it('names the session for what it is', () => {

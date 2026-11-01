@@ -391,6 +391,7 @@ export class BoardStore {
       created: new Date().toISOString(),
       labels: [],
       links: fields.links ?? [],
+      after: [],
       sessions: [],
       body: fields.body ?? '',
       extra: {},

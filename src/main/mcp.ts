@@ -162,6 +162,9 @@ const board = z.string().describe('The board key (<project>:<path>, from list_bo
 const flow = z.enum(['doing', 'done']).describe("The board's flow list instead of a list id: doing or done.")
 const labels = z.array(z.string()).describe('The labels, replacing the ones the card has.')
 const links = z.array(z.string()).describe('Ids of related cards, replacing the ones it has.')
+const after = z
+  .array(z.string())
+  .describe('Ids of cards of the same board to be done before this one (a tackle of several cards works them first), replacing the ones it has.')
 
 /** The tools on a server: each answers JSON, the card as it now is for a change. */
 export function registerTools(mcp: McpServer, tools: BoardTools): void {
@@ -183,7 +186,7 @@ export function registerTools(mcp: McpServer, tools: BoardTools): void {
   mcp.registerTool(
     'get_card',
     {
-      description: 'A card by id, on any board: title, list, description, labels, links, due, jira, updated.',
+      description: 'A card by id, on any board: title, list, description, labels, links, after (the cards to do before it), due, jira, updated.',
       inputSchema: { id, board: board.optional() },
       annotations: { readOnlyHint: true },
     },
@@ -222,6 +225,7 @@ export function registerTools(mcp: McpServer, tools: BoardTools): void {
         description: z.string().optional().describe('The Markdown description, replacing the one it has.'),
         labels: labels.optional(),
         links: links.optional(),
+        after: after.optional(),
         due: z.string().nullable().optional().describe('A date (2026-11-02) or an ISO time.'),
         complete: z.boolean().optional(),
         jira: z.string().nullable().optional().describe('The Jira issue key, e.g. SPDI-42.'),
@@ -241,6 +245,7 @@ export function registerTools(mcp: McpServer, tools: BoardTools): void {
         description: z.string().optional(),
         labels: labels.optional(),
         links: links.optional(),
+        after: after.optional(),
         due: z.string().optional(),
         jira: z.string().optional(),
       },

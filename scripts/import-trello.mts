@@ -162,6 +162,7 @@ function importBoard(exportDir: string, root: string, plan: Plan): { cards: numb
         archived: t.closed ? true : undefined,
         labels: (t.labels ?? []).map(l => l.name || l.color || '').filter(Boolean),
         links: [],
+        after: [],
         trello: t.shortUrl ?? t.url,
         sessions: [],
         body: body.join('\n\n'),

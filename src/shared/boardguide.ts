@@ -34,6 +34,7 @@ created: 2026-09-20T12:28:50.000Z
 updated: 2026-09-28T02:21:47.658Z
 labels: [ui]
 links: [TASK-3, IDEA-40]   # related cards on any board (the map's edges)
+after: [TASK-9]       # cards of this board to be done before it: a tackle of several works them first
 sessions: [...]       # Claude Code sessions the app started for it; leave as is
 ---
 Description.

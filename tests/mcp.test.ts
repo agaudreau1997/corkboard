@@ -154,6 +154,22 @@ describe('the board tools', () => {
     expect((await tools.linkCards({ id: 'G-1', to: 'G-2', board: 'game:game', unlink: true })).links).toEqual([])
     await expect(tools.linkCards({ id: 'G-1', to: 'NO-1', board: 'game:game' })).rejects.toThrow('No card NO-1')
   })
+
+  it('orders cards with after: same board only, never itself, never in a loop', async () => {
+    const { tools, store, game } = await setup()
+    expect((await tools.getCard('G-2', 'game:game')).after).toBeUndefined()
+    expect((await tools.updateCard({ id: 'G-2', board: 'game:game', after: ['G-1', ' G-1 '] })).after).toEqual(['G-1'])
+    expect(fileOf(store, game, 'G-2').after).toEqual(['G-1'])
+    const made = await tools.createCard({ board: 'game:game', title: 'Mines', after: ['G-2'] })
+    expect(made).toMatchObject({ id: 'G-3', after: ['G-2'] })
+    await expect(tools.updateCard({ id: 'G-1', board: 'game:game', after: ['G-3'] })).rejects.toThrow('That order loops: G-1 → G-3 → G-2 → G-1')
+    await expect(tools.updateCard({ id: 'G-1', board: 'game:game', after: ['G-1'] })).rejects.toThrow('cannot come after itself')
+    // The child board's card is in the project, but a tackle covers one board.
+    await expect(tools.updateCard({ id: 'G-1', board: 'game:game', after: ['ID-1'] })).rejects.toThrow('only come after cards of its own board')
+    await expect(tools.createCard({ board: 'game:game', title: 'Bad', after: ['ID-1'] })).rejects.toThrow('own board')
+    expect(fileOf(store, game, 'G-1').after).toEqual([])
+    expect((await tools.updateCard({ id: 'G-2', board: 'game:game', after: [] })).after).toBeUndefined()
+  })
 })
 
 describe('the MCP server', () => {
