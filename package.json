@@ -57,5 +57,10 @@
     "vitest": "^3.2.7",
     "zustand": "^5.0.0"
   },
-  "desktopName": "corkboard.desktop"
+  "desktopName": "corkboard.desktop",
+  "allowScripts": {
+    "esbuild": true,
+    "node-pty": true,
+    "fsevents": true
+  }
 }
