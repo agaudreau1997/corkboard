@@ -689,8 +689,8 @@ try {
   }
   const groupOne = todo.locator('.card', { hasText: 'Group one' })
   const groupTwo = todo.locator('.card', { hasText: 'Group two' })
-  await groupOne.click({ modifiers: ['Control'] })
-  await groupTwo.click({ modifiers: ['Control'] })
+  await groupOne.click({ modifiers: ['ControlOrMeta'] })
+  await groupTwo.click({ modifiers: ['ControlOrMeta'] })
   check((await todo.locator('.card.selected').count()) === 2, 'Ctrl-click selects two cards')
   const gb = await groupTwo.boundingBox()
   const doneBody = await page.locator('.column[data-list="done"] .column-body').boundingBox()
@@ -723,7 +723,7 @@ try {
     await until(async () => (await archiveSelBar.textContent().catch(() => '')) === '1 selected'),
     `archiving a selected card takes it out of the selection (${await archiveSelBar.textContent().catch(() => 'no bar')})`,
   )
-  await page.locator('.column[data-list="done"] .card', { hasText: 'Group two' }).click({ modifiers: ['Control'] })
+  await page.locator('.column[data-list="done"] .card', { hasText: 'Group two' }).click({ modifiers: ['ControlOrMeta'] })
   check((await page.locator('.selection-bar').count()) === 0, 'and the last one toggles off with Ctrl-click')
 
   // ---- lists from the board: add one, rename it, collapse it ----
@@ -734,7 +734,7 @@ try {
   check(readFileSync(path.join(root, 'scratch-board/board.json'), 'utf8').includes('"Bugs"'), 'a list added from the board lands in board.json')
   await page.keyboard.press('Escape')
   await page.locator('.column[data-list="bugs"] .column-title').dblclick()
-  await page.keyboard.press('Control+a')
+  await page.keyboard.press('ControlOrMeta+a')
   await page.keyboard.type('Known bugs\n')
   check(await until(() => readFileSync(path.join(root, 'scratch-board/board.json'), 'utf8').includes('"Known bugs"')), 'double-clicking a list title renames it')
   // The whole header answers, not only the line of the title: its padding above and the space
@@ -775,12 +775,12 @@ try {
     return { lines: el.clientHeight / parseFloat(s.lineHeight), scrolls: el.scrollHeight > el.clientHeight, resize: s.resize }
   })
   check(field.lines > 2.5 && !field.scrolls && field.resize === 'none', `a long title grows the field whole, with no scrollbar or grip (${JSON.stringify(field)})`)
-  await page.keyboard.press('Control+a')
+  await page.keyboard.press('ControlOrMeta+a')
   await page.keyboard.type('Thrown away')
   await page.keyboard.press('Escape')
   check((await renamed.locator('.rename-card').count()) === 0 && (await renamed.locator('.card-title').textContent()) === 'Drag me to done', 'Escape leaves a card title as it was')
   await renamed.locator('.card-title').dblclick()
-  await page.keyboard.press('Control+a')
+  await page.keyboard.press('ControlOrMeta+a')
   await page.keyboard.type('Drag me to done, renamed\n')
   check(
     await until(() => readFileSync(path.join(root, 'scratch-board/cards/SB-1.md'), 'utf8').includes('title: Drag me to done, renamed')),
@@ -979,14 +979,14 @@ try {
   // A selection started with a card open starts from that card; the bar's actions need two.
   const other = page.locator(`.kanban .card[data-card]:visible:not([data-card="${openId}"])`).first()
   const otherId = await other.getAttribute('data-card')
-  await other.click({ modifiers: ['Control'] })
+  await other.click({ modifiers: ['ControlOrMeta'] })
   const bar = page.locator('.selection-bar')
   check(
     (await bar.locator('span').textContent()) === '2 selected' && (await page.locator(`.card.selected[data-card="${openId}"]`).count()) === 1,
     `Ctrl+click on ${otherId} with ${openId} open selects both`,
   )
   check((await bar.getByRole('button', { name: 'Tackle ▾' }).count()) === 1, 'two selected cards offer Tackle')
-  await other.click({ modifiers: ['Control'] })
+  await other.click({ modifiers: ['ControlOrMeta'] })
   check(
     (await bar.locator('span').textContent()) === '1 selected' && (await bar.getByRole('button', { name: /Tackle|Discuss/ }).count()) === 0,
     'one selected card offers no Tackle or Discuss in the bar',
@@ -1009,7 +1009,7 @@ try {
     `Shift-click from the open ${openId} selects the cards up to ${rangeCards[rangeTo].id} as shown (${rangeGot.join(',')})`,
   )
   check(await page.evaluate(() => getSelection().toString() === ''), 'and selects no text across them')
-  await page.locator(`.kanban .card[data-card="${rangeWant[1]}"]`).click({ modifiers: ['Control'] })
+  await page.locator(`.kanban .card[data-card="${rangeWant[1]}"]`).click({ modifiers: ['ControlOrMeta'] })
   check(
     (await bar.locator('span').textContent()) === `${rangeWant.length - 1} selected` && (await page.locator(`.card.selected[data-card="${rangeWant[1]}"]`).count()) === 0,
     'Ctrl-click still toggles one card',
@@ -1554,8 +1554,11 @@ try {
   await app.evaluate(({ clipboard }) => clipboard.writeText(''))
   await shellScreen.click({ button: 'right' })
   await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Select all' }).click()
-  await page.keyboard.press('Control+C')
-  check(!!(await until(async () => (await clipboardText()).includes('corkboard-42'), 5000)), 'Ctrl+C copies the selection from a terminal')
+  // macOS copies with Cmd+C through the Edit menu, which a key Playwright sends never reaches.
+  if (process.platform !== 'darwin') {
+    await page.keyboard.press('Control+C')
+    check(!!(await until(async () => (await clipboardText()).includes('corkboard-42'), 5000)), 'Ctrl+C copies the selection from a terminal')
+  }
   await app.evaluate(({ clipboard }) => clipboard.writeText('echo pasted-$((2*3))'))
   await shellScreen.click({ button: 'right' })
   await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Paste' }).click()
@@ -1572,10 +1575,10 @@ try {
     const box = await linkRow(text).boundingBox()
     await page.mouse.move(box.x + 12, box.y + box.height / 2)
     await sleep(200) // xterm finds the link on hover
-    if (ctrl) await page.keyboard.down('Control')
+    if (ctrl) await page.keyboard.down('ControlOrMeta') // Cmd+click on macOS
     await page.mouse.down()
     await page.mouse.up()
-    if (ctrl) await page.keyboard.up('Control')
+    if (ctrl) await page.keyboard.up('ControlOrMeta')
   }
   await clickRow('https://example.com/plain', false)
   await sleep(500)
@@ -2071,7 +2074,7 @@ try {
   if (await page.locator('.drawer').count()) await page.locator('.drawer').getByRole('button', { name: 'Close', exact: true }).click()
   const tableRows = page.locator('.table-view tbody tr')
   const tableRangeIds = await tableRows.evaluateAll(rows => rows.slice(1, 5).map(r => r.querySelector('td').textContent))
-  await tableRows.nth(1).click({ modifiers: ['Control'] })
+  await tableRows.nth(1).click({ modifiers: ['ControlOrMeta'] })
   await tableRows.nth(4).click({ modifiers: ['Shift'] })
   const tableRangeGot = await page.locator('.table-view tbody tr.selected').evaluateAll(rows => rows.map(r => r.querySelector('td').textContent))
   check(
