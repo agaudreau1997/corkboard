@@ -662,6 +662,11 @@ function startUpdates(): void {
       }
     },
     nsisInstalled: () => readdirSync(path.dirname(process.execPath)).some(f => /^Uninstall .*\.exe$/i.test(f)),
+    // process.execPath is <bundle>/Contents/MacOS/Corkboard.
+    inApplications: () => {
+      const bundle = path.resolve(process.execPath, '../../..')
+      return ['/Applications', path.join(os.homedir(), 'Applications')].some(dir => bundle.startsWith(dir + path.sep))
+    },
   })
   if (mode.kind === 'off') {
     updatesOff = { ...updatesOff, message: mode.why }
