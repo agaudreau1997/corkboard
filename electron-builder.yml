@@ -7,14 +7,14 @@ files:
   - out/**
   # The window icon: index.ts loads it from ../../build/icon.png.
   - build/icon.png
-# The GPL travels with every build: Corkboard's LICENSE beside the executable, next to Electron's
-# LICENSE.electron.txt and LICENSES.chromium.html.
-extraFiles:
-  - from: LICENSE
-    to: LICENSE
+# The GPL travels with every build: Corkboard's LICENSE beside the executable on Windows and Linux,
+# next to Electron's LICENSE.electron.txt and LICENSES.chromium.html, and in Contents/Resources on
+# macOS, where codesign refuses a loose file in Contents. Each platform says so itself: a top-level
+# extraFiles would add to the Mac one, not give way to it.
 # node-pty is an N-API addon, so it never needs compiling against Electron's headers: Windows
 # and macOS use its prebuilds, Linux the pty.node that `npm install` compiled.
 npmRebuild: false
+afterSign: scripts/after-sign-mac.cjs
 # node-pty starts conpty.dll, OpenConsole.exe and winpty-agent.exe from its own folder, and a
 # native addon can't load from inside the asar archive on any platform.
 asarUnpack:
@@ -30,6 +30,9 @@ publish:
   releaseType: draft
 win:
   icon: build/icon.png
+  extraFiles:
+    - from: LICENSE
+      to: LICENSE
   target:
     - nsis
     - portable
@@ -45,6 +48,9 @@ rpm:
     - --rpm-rpmbuild-define=_build_id_links none
 linux:
   icon: build/icon.png
+  extraFiles:
+    - from: LICENSE
+      to: LICENSE
   category: Development
   # The binary, its .desktop file (corkboard.desktop) and the Wayland app id match package.json's
   # desktopName, which is how the taskbar finds the icon.
@@ -63,5 +69,36 @@ linux:
     # Linux runs the pty.node `npm install` compiled: leave out the Windows and macOS builds and
     # the Windows console sources (58 MB of node-pty's 63).
     - "!node_modules/node-pty/prebuilds/**"
+    - "!node_modules/node-pty/third_party/**"
+    - "!node_modules/node-pty/deps/**"
+mac:
+  icon: build/icon.png
+  extraResources:
+    - from: LICENSE
+      to: LICENSE
+  category: public.app-category.developer-tools
+  # The dmg is the first install; the zip is what the in-app updater (Squirrel.Mac) installs from,
+  # and latest-mac.yml lists both architectures when they are built in one run.
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
+  # No Apple Developer ID, so the app is signed ad hoc ("-"): Apple silicon runs nothing unsigned.
+  # scripts/after-sign-mac.cjs then pins the app's designated requirement to its bundle id, which
+  # Squirrel.Mac needs to accept an update; an update's integrity rests on the sha512 in
+  # latest-mac.yml, fetched over HTTPS, as for the unsigned Windows installer. Hardened runtime
+  # would refuse Electron's frameworks, which carry Electron's Team ID. Setting CSC_LINK / CSC_NAME
+  # and dropping identity switches to a real certificate.
+  identity: "-"
+  hardenedRuntime: false
+  # A platform's files take the place of the top-level ones, so they are repeated here: a list of
+  # exclusions alone means everything else, the source and the tests included.
+  files:
+    - out/**
+    - build/icon.png
+    # macOS runs node-pty's darwin prebuilds: leave out the Windows ones and the Windows console
+    # sources.
+    - "!node_modules/node-pty/prebuilds/win32-*/**"
     - "!node_modules/node-pty/third_party/**"
     - "!node_modules/node-pty/deps/**"

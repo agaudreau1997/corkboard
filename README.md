@@ -60,9 +60,10 @@ Download the newest release from the [releases page](https://github.com/agaudrea
 | | `Corkboard-<version>.exe` | Portable, no install; tells you when a new one is out. |
 | Linux | `Corkboard-<version>.AppImage` | Any distribution (needs FUSE 2); updates itself. |
 | | `corkboard-<version>.x86_64.rpm` | Fedora and friends: `sudo dnf install ./corkboard-*.rpm`; updates through dnf. |
-| macOS | | No package yet: [run it from source](docs/development.md#running-from-source). |
+| macOS | `Corkboard-<version>-arm64.dmg` | Apple silicon. Drag it to Applications; updates itself. |
+| | `Corkboard-<version>.dmg` | Intel. The same. |
 
-The Windows exes are unsigned, so SmartScreen warns on first run (*More info → Run anyway*). To tackle cards, install [Claude Code](https://docs.anthropic.com/en/docs/claude-code) too: Corkboard runs the same `claude` your terminal does.
+The Windows exes are unsigned, so SmartScreen warns on first run (*More info → Run anyway*). The Mac app isn't notarized by Apple, so macOS refuses its first open: in *System Settings → Privacy & Security*, *Open Anyway* (or `xattr -dr com.apple.quarantine /Applications/Corkboard.app`). The updates it installs itself aren't asked about. To tackle cards, install [Claude Code](https://docs.anthropic.com/en/docs/claude-code) too: Corkboard runs the same `claude` your terminal does.
 
 ## Quick start
 

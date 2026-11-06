@@ -71,3 +71,22 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: node scripts/check-packages.mjs win
+
+  mac:
+    needs: draft
+    # Apple silicon; electron-builder packages the Intel build here too, with node-pty's prebuilds.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npx electron-vite build
+      # dmg and zip for arm64 and x64 in one run, so latest-mac.yml lists both architectures.
+      - run: npx electron-builder --mac --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: node scripts/check-packages.mjs mac

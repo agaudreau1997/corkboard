@@ -4,11 +4,12 @@
 //
 // How a copy updates depends on how it was installed. The Setup exe's install runs the new
 // installer silently; an AppImage is replaced where it lies ($APPIMAGE); an rpm install hands the new
-// rpm to dnf behind a pkexec password prompt, so dnf still tracks the package. The portable exe can't
+// rpm to dnf behind a pkexec password prompt, so dnf still tracks the package; on macOS Squirrel.Mac
+// unpacks the new zip and swaps the app bundle where it lies. The portable exe can't
 // update itself, and since it is made from the same folder as the installer it carries the feed
 // too and would run the installer: it only says a newer version is out. A copy run from the build
-// folders (dist/win-unpacked, dist/linux-unpacked, which also holds the rpm's package-type) or in
-// development never looks.
+// folders (dist/win-unpacked, dist/linux-unpacked, which also holds the rpm's package-type, and
+// dist/mac*), a Mac copy outside the Applications folders, or one in development never looks.
 //
 // quitAndInstall starts the install before it quits (on Linux, the AppImage copy or dnf runs
 // right there), so the quit-time work, stopping the terminals and committing and pushing the board
@@ -33,6 +34,8 @@ export type Installation = {
   rpmOwned: () => boolean
   /** Whether the NSIS uninstaller sits beside the executable: the Setup exe installed it. */
   nsisInstalled: () => boolean
+  /** Whether the app bundle sits in /Applications or ~/Applications. */
+  inApplications: () => boolean
 }
 
 export function updateMode(i: Installation): UpdateMode {
@@ -49,6 +52,11 @@ export function updateMode(i: Installation): UpdateMode {
     if (i.env.APPIMAGE) return on('install')
     if (i.packageType === 'rpm' && i.rpmOwned()) return on('install')
     return off('neither an AppImage nor installed from the rpm (a build folder)')
+  }
+  // Squirrel.Mac replaces the bundle where it lies, which it can't on the disk image (read-only),
+  // nor in the random folder macOS runs a downloaded app from until it is moved (App Translocation).
+  if (i.platform === 'darwin') {
+    return i.inApplications() ? on('install') : off('not in an Applications folder (a build folder, or the disk image)')
   }
   return off(`no updates on ${i.platform}`)
 }

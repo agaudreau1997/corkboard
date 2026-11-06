@@ -15,6 +15,7 @@ function installation(patch: Partial<Installation>): Installation {
     releases: RELEASES,
     rpmOwned: () => false,
     nsisInstalled: () => false,
+    inApplications: () => false,
     ...patch,
   }
 }
@@ -40,6 +41,13 @@ describe('updateMode', () => {
     // The portable exe is made from the same folder as the installer, feed and all.
     expect(updateMode(installation({ ...win, env: { PORTABLE_EXECUTABLE_FILE: 'C:\\Corkboard.exe' } })).kind).toBe('notify')
     expect(updateMode(installation(win)).kind).toBe('off')
+  })
+
+  it('updates a Mac app in an Applications folder, not one in a build folder or on the disk image', () => {
+    const mac = { platform: 'darwin' as const }
+    expect(updateMode(installation({ ...mac, inApplications: () => true }))).toEqual({ kind: 'install', releases: RELEASES })
+    expect(updateMode(installation(mac)).kind).toBe('off')
+    expect(updateMode(installation({ ...mac, packaged: false, inApplications: () => true })).kind).toBe('off')
   })
 })
 
