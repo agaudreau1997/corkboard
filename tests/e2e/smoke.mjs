@@ -853,6 +853,18 @@ try {
   writeFileSync(olderFile, readFileSync(olderFile, 'utf8').replace(/^created: .*$/m, line => `${line}\nupdated: ${later}`))
   check(await until(async () => (await firstInTodo()) === 'Sorted older'), 'a card updated on disk rises to the top of its list')
 
+  // ---- the board settings save what they don't edit: a sorted, coloured list keeps both ----
+  const scratchLists = () => JSON.parse(readFileSync(path.join(root, 'scratch-board/board.json'), 'utf8')).lists
+  const todoWas = scratchLists().find(l => l.id === 'todo')
+  check(!!todoWas.color && todoWas.sort === 'updated', `To do has a colour and a sort to keep (${todoWas.color}, ${todoWas.sort})`)
+  await page.locator('.board-head').getByRole('button', { name: 'Board settings', exact: true }).click()
+  const settingsDialog = page.getByRole('dialog')
+  await settingsDialog.getByRole('textbox', { name: `List ${scratchLists().findIndex(l => l.id === 'todo') + 1} title` }).fill('To do soon')
+  await settingsDialog.getByRole('button', { name: 'Save' }).click()
+  check(await until(() => scratchLists().find(l => l.id === 'todo')?.title === 'To do soon'), 'a list renamed in the board settings is saved')
+  const todoNow = scratchLists().find(l => l.id === 'todo')
+  check(todoNow.color === todoWas.color && todoNow.sort === todoWas.sort, `and keeps its colour and its sort (${todoNow.color}, ${todoNow.sort})`)
+
   // ---- the board repo commits itself ----
   const log = await until(() => {
     const out = execFileSync('git', ['log', '--format=%B', '-5'], { cwd: root }).toString()

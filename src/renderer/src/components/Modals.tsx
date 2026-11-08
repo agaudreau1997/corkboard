@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { newListId } from '@shared/boardmeta'
+import { savedLists } from '@shared/boardmeta'
+import { freezeListColors } from '@shared/cardfile'
 import { isEmptyTheme } from '@shared/theme'
 import type { BoardMeta, CodeRepoFrom, DiscussIn, ListDef, ProjectSettingsPatch, ProjectTheme } from '@shared/types'
 import { actions, api, findNode, oneTabPerProject, projectIdOf, useStore } from '../state'
@@ -173,14 +174,16 @@ function Settings({ path }: { path: string }) {
   const counts = new Map<string, number>()
   for (const card of board.cards) if (card.list && !card.archived) counts.set(card.list, (counts.get(card.list) ?? 0) + 1)
 
+  // A list with no colour of its own shows the colour of its place, so anything that changes the
+  // places writes down what each list shows first: the lists keep their colours past the move.
   const setList = (index: number, list: ListDef | null) => {
-    const lists = [...meta.lists]
+    const lists = list ? [...meta.lists] : freezeListColors(meta.lists)
     if (list) lists[index] = list
     else lists.splice(index, 1)
     setMeta({ ...meta, lists })
   }
   const moveList = (index: number, by: number) => {
-    const lists = [...meta.lists]
+    const lists = freezeListColors(meta.lists)
     const [item] = lists.splice(index, 1)
     lists.splice(Math.max(0, Math.min(lists.length, index + by)), 0, item)
     setMeta({ ...meta, lists })
@@ -191,13 +194,9 @@ function Settings({ path }: { path: string }) {
     setMeta({ ...meta, lists: [...meta.lists, { id, title: 'New list' }] })
   }
   const save = async () => {
-    // A list added here gets its id from its title as saved; existing ids never change.
-    const known = new Set(board.meta.lists.map(l => l.id))
-    const lists: ListDef[] = []
-    for (const list of meta.lists) {
-      const id = known.has(list.id) ? list.id : newListId(list.title, [...lists, ...board.meta.lists])
-      lists.push({ id, title: list.title.trim() || id, ...(list.archived ? { archived: true } : {}) })
-    }
+    // Each list keeps every key but the ones this dialog edits: a colour or a sort it never shows
+    // is not a colour or a sort to drop. A list added here is named from its title as saved.
+    const lists = savedLists(meta.lists, board.meta.lists)
     try {
       if (localRepo.trim() !== savedLocal) {
         await api.config.setCodeRepo(path, localRepo.trim() || null)

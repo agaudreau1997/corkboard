@@ -79,3 +79,23 @@ export function describeBoardChange(dir: string, before: BoardMeta | undefined, 
   }
   return lines.length ? lines : [`Edit board ${dir}`]
 }
+
+/**
+ * The lists a board's settings dialog saves, from the ones it holds. Only the title, the order and
+ * the archive flag are the dialog's to change: every other key a list has — its colour, its sort,
+ * one a newer build or a hand edit wrote — is the list's own and comes back out untouched. A list
+ * the dialog added (one `saved` has no id for) is named here, from its title as saved; an existing
+ * id never changes, since its cards name it.
+ */
+export function savedLists(edited: ListDef[], saved: Pick<ListDef, 'id'>[]): ListDef[] {
+  const known = new Set(saved.map(l => l.id))
+  const lists: ListDef[] = []
+  for (const list of edited) {
+    const id = known.has(list.id) ? list.id : newListId(list.title, [...lists, ...saved])
+    const next: ListDef = { ...list, id, title: list.title.trim() || id }
+    // A restored list is left with no `archived` at all, not one set to nothing.
+    if (!next.archived) delete next.archived
+    lists.push(next)
+  }
+  return lists
+}

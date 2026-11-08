@@ -2,7 +2,7 @@
 // list ids slugs unique among the board's lists, and a commit line that says what changed.
 
 import { describe, expect, it } from 'vitest'
-import { describeBoardChange, metaText, newListId, parseMetaText, patchMeta, uniqueListId } from '@shared/boardmeta'
+import { describeBoardChange, metaText, newListId, parseMetaText, patchMeta, savedLists, uniqueListId } from '@shared/boardmeta'
 import type { BoardMeta } from '@shared/types'
 
 const meta: BoardMeta = {
@@ -48,6 +48,30 @@ describe('board.json', () => {
     expect(say({ flow: { doing: 'doing' } })).toEqual(['Finished cards stay where they are on cork'])
     expect(say({ promptNotes: 'x' })).toEqual(['Edit board cork'])
     expect(describeBoardChange('cork', undefined, meta)).toEqual(['Edit board cork'])
+  })
+
+  it('saves the settings dialog’s lists without dropping a key it doesn’t edit', () => {
+    const saved = [
+      { id: 'todo', title: 'To do', color: '#112233', sort: 'oldest', mood: 'kept' },
+      { id: 'doing', title: 'Doing' },
+      { id: 'old', title: 'Old', archived: true },
+    ] as BoardMeta['lists']
+    const edited = [
+      { ...saved[0], title: ' Next up ' },
+      saved[1],
+      { ...saved[2], archived: undefined },
+      { id: 'new-list', title: 'Later, maybe' },
+      { id: 'new-list-2', title: '' },
+    ]
+    expect(savedLists(edited, saved)).toEqual([
+      { id: 'todo', title: 'Next up', color: '#112233', sort: 'oldest', mood: 'kept' },
+      { id: 'doing', title: 'Doing' },
+      { id: 'old', title: 'Old' },
+      { id: 'later-maybe', title: 'Later, maybe' },
+      { id: 'list', title: 'list' },
+    ])
+    // A restored list has no `archived` key left at all, so the saved board.json drops it.
+    expect('archived' in savedLists(edited, saved)[2]).toBe(false)
   })
 
   it('doesn’t call colours written down for the lists a recolour', () => {
