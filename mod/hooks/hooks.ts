@@ -1,7 +1,7 @@
 // Corkboard's companion mod: the hooks module Claude Code loads for the sessions the app starts
 // (`--plugin-dir`, from `src/main/tackle.ts`). It works out which cards its session was started
-// for and draws them in the band above the prompt, with buttons to finish a card and to bring it
-// up in the window.
+// for, draws them in the band above the prompt with buttons to finish a card and to bring it up
+// in the window, and answers the `/card` command itself.
 //
 // Every hook is written to fail safe. The plugin API is early access and moves between Claude
 // Code releases, so a call that isn't there, a shell that won't run and a board the app no longer
@@ -10,6 +10,7 @@
 // render has a budget, and a call that overran it was dropped mid-dispatch.
 
 import { BOARD_SERVER, cardFile, cardFromFile, cardFromTool, fileCommands, type PaneCard, toolJson } from '../src/card'
+import { CARD_USAGE, NO_APP, parseCardCommand, showCards } from '../src/command'
 import { commitArgv, commitsNaming, parseCommits } from '../src/commits'
 import type { On } from '../src/engine'
 import { paneRows } from '../src/pane'
@@ -87,6 +88,56 @@ export function register(on: On): void {
       // A mod that cannot tell its cards leaves the session as it is.
     }
     return next(e)
+  })
+
+  // The `/card` command (mod/commands/card.md). The hook answers it and drops the prompt, so no
+  // turn is spent on it; every change goes through the board tools, which keep the card format
+  // and the `updated:` stamp with the app. With the app closed nothing is written, and the
+  // command says so: a card file edited behind the app's back would lose a sync conflict.
+  on('prompt.submit', async ($, e, next) => {
+    const command = parseCardCommand(e.text)
+    if (!command) return next(e)
+    const session = held
+    const ids = session?.cards ?? []
+    try {
+      if (command.kind === 'unknown') return { drop: `corkboard: ${command.said} Try: ${CARD_USAGE}` }
+      // The answer is the drop's own reason, which is what the terminal shows for a dropped
+      // prompt ($.ui.notice belongs to an open tool call, and a command has none); the pane is
+      // drawn again beside it, where the descriptions and the commits are.
+      if (command.kind === 'show') {
+        $.ui.invalidate('ui.render')
+        return { drop: showCards(shown, !!session?.work) }
+      }
+      const board = session?.board || undefined
+      if (command.kind === 'new') {
+        const made = { board, title: command.title, ...(command.list ? { list: command.list } : {}) }
+        const answer = toolJson(await $.mcp.call(BOARD_SERVER, 'create_card', made).catch(() => undefined))
+        if (!answer) return { drop: NO_APP }
+        return { drop: `corkboard: made ${String(answer.id)} — ${command.title}` }
+      }
+      if (!ids.length) return { drop: 'corkboard: this session holds no cards, so there is nothing to change.' }
+      const changed: string[] = []
+      for (const id of ids) {
+        if (command.kind === 'done') {
+          const moved = toolJson(await $.mcp.call(BOARD_SERVER, 'move_card', { id, board, flow: 'done' }).catch(() => undefined))
+          if (moved) changed.push(`${id} → ${String(moved.listTitle ?? moved.list ?? 'done')}`)
+          continue
+        }
+        // A note is appended to the description the card has now, read back first so a note never
+        // overwrites what was written in the window meanwhile.
+        const card = toolJson(await $.mcp.call(BOARD_SERVER, 'get_card', { id, board }).catch(() => undefined))
+        if (!card) continue
+        const description = `${String(card.description ?? '').trimEnd()}\n\n${command.text}\n`.trimStart()
+        const noted = toolJson(await $.mcp.call(BOARD_SERVER, 'update_card', { id, board, description }).catch(() => undefined))
+        if (noted) changed.push(id)
+      }
+      if (!changed.length) return { drop: NO_APP }
+      return { drop: command.kind === 'done' ? `corkboard: moved ${changed.join(', ')}` : `corkboard: noted on ${changed.join(', ')}` }
+    } catch {
+      // Whatever went wrong, the command is still the person's: the prompt is dropped rather than
+      // sent to the model as text it cannot act on.
+      return { drop: 'corkboard: that command could not be run.' }
+    }
   })
 
   // The band above the prompt: the cards, and what can be done to them from here. The engine's

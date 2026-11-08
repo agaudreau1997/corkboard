@@ -11,6 +11,7 @@ import { localCommand, resumeCommand, sessionEnv } from '../src/main/tackle'
 import { newCard, serializeCard } from '@shared/cardfile'
 import type { Card } from '@shared/types'
 import { cardFile, cardFromFile, cardFromTool, fileCommands, type PaneCard, toolJson } from '../mod/src/card'
+import { CARD_USAGE, NO_APP, parseCardCommand, showCards } from '../mod/src/command'
 import { commitArgv, commitsNaming, namesNeedle, parseCommits } from '../mod/src/commits'
 import { bodyLines, paneRows } from '../mod/src/pane'
 import {
@@ -414,5 +415,60 @@ describe('the pane', () => {
     const rows = paneRows([card({ title: 'x'.repeat(200) })], { columns: 40, maxRows: 8, work: false })
     expect(rows[0].text.length).toBeLessThanOrEqual(38)
     expect(rows[0].text.endsWith('…')).toBe(true)
+  })
+})
+
+describe('the /card command', () => {
+  it('is read under the plugin namespace Claude Code gives it, and bare', () => {
+    expect(parseCardCommand('/corkboard-mod:card')).toEqual({ kind: 'show' })
+    expect(parseCardCommand('/card')).toEqual({ kind: 'show' })
+    expect(parseCardCommand('  /corkboard-mod:card  ')).toEqual({ kind: 'show' })
+  })
+
+  it('leaves an ordinary prompt alone', () => {
+    for (const prompt of ['card done', 'Move the card to done', '/cards done', '/carding', 'tell me about /card', 42, undefined]) {
+      expect(parseCardCommand(prompt)).toBeUndefined()
+    }
+  })
+
+  it('reads done, note and new', () => {
+    expect(parseCardCommand('/card done')).toEqual({ kind: 'done' })
+    expect(parseCardCommand('/card note Checked on Windows too.')).toEqual({ kind: 'note', text: 'Checked on Windows too.' })
+    expect(parseCardCommand('/card new Rename the tabs')).toEqual({ kind: 'new', title: 'Rename the tabs' })
+  })
+
+  it('takes a list for a new card, before or after the title, and leaves it out of the title', () => {
+    expect(parseCardCommand('/card new Rename the tabs --list todo')).toEqual({ kind: 'new', title: 'Rename the tabs', list: 'todo' })
+    expect(parseCardCommand('/card new --list=todo Rename the tabs')).toEqual({ kind: 'new', title: 'Rename the tabs', list: 'todo' })
+  })
+
+  it('says what it takes when it was given nothing to work with', () => {
+    expect(parseCardCommand('/card note')).toMatchObject({ kind: 'unknown' })
+    expect(parseCardCommand('/card new')).toMatchObject({ kind: 'unknown' })
+    expect(parseCardCommand('/card finish')).toMatchObject({ kind: 'unknown', said: 'card does not know "finish".' })
+    expect(CARD_USAGE).toContain('card new <title>')
+  })
+
+  it('answers with one line, whatever the session holds', () => {
+    const card = (id: string, over = {}): PaneCard => ({
+      id,
+      title: 'A card pane',
+      listTitle: 'Doing',
+      description: 'Beside the chat.',
+      links: [],
+      commits: [],
+      from: 'app',
+      ...over,
+    })
+    expect(showCards([], false)).toBe('corkboard: this session holds no cards.')
+    expect(showCards([card('CORK-101')], false)).toBe('corkboard: CORK-101 · Doing · A card pane')
+    const both = showCards([card('CORK-101'), card('CORK-142')], false)
+    expect(both).toBe('corkboard: CORK-101 · Doing · A card pane | CORK-142 · Doing · A card pane')
+    expect(both.includes('\n')).toBe(false)
+    expect(showCards([card('CORK-101', { jira: 'SPDI-42' })], true)).toContain('CORK-101 (SPDI-42)')
+  })
+
+  it('has a line for a command that would write with the app closed', () => {
+    expect(NO_APP).toContain('Corkboard is closed')
   })
 })

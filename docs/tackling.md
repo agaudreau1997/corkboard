@@ -45,6 +45,17 @@ What the terminal holds, for the mod and for anything else you run in that tab:
 
 With Corkboard closed there is no server to ask: the pane reads the card file in the board repo instead, says so, and drops the buttons. It never writes a card file itself — `updated:` is the app's to stamp, and it decides which side of a sync conflict a card keeps.
 
+**The `/card` command.** `/corkboard-mod:card` in a session the mod loaded in (Claude Code puts a plugin's name in front of its commands, so that is the whole name; the terminal completes it from `/co`):
+
+| Command | What it does |
+| --- | --- |
+| `/corkboard-mod:card` | names the session's cards and draws the pane again |
+| `/corkboard-mod:card done` | moves every card of the session to the board's done list, and says what moved |
+| `/corkboard-mod:card note <text>` | appends the line to the description of every card of the session |
+| `/corkboard-mod:card new <title> [--list <id>]` | makes a card on the session's board, in the list named or the board's first |
+
+You run them yourself: the mod answers each one and drops the prompt, so none of them spends a model turn or reaches Claude at all. Each goes through the app's board tools, which check the change and stamp `updated:`; with Corkboard closed there is nothing to write through, and a command that would write says so and writes nothing — the mod never edits a card file behind the app's back. A session of several cards has them all moved or noted on together, since the cards a tackle put in one session are meant to be finished together, and being asked which would be a prompt in the middle of your own command.
+
 A Claude desktop session gets neither the mod nor the MCP server: a `claude://` link carries no arguments. A cloud session can't reach this machine either; its tab still holds the variables above.
 
 ### The desktop app's links
