@@ -23,7 +23,9 @@ const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
-async function until<T>(fn: () => T | undefined, ms = 3000): Promise<T> {
+// Waits for the recursive watch to report a change, which takes as long as the machine is busy:
+// a deadline tuned for a quiet one made the watch tests flaky on a loaded CI runner.
+async function until<T>(fn: () => T | undefined, ms = 15_000): Promise<T> {
   const end = Date.now() + ms
   for (;;) {
     const value = fn()

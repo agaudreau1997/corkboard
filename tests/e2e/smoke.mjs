@@ -1181,6 +1181,10 @@ try {
   const listed = await mcpTool(mcpUrl, mcpToken, 'list_boards', {})
   const mcpBoard = listed.flatMap(p => p.boards).find(b => b.cardPrefix === MAIN.key)
   check(!!mcpBoard && mcpBoard.flow?.done === 'done', `list_boards names ${MAIN.title} with its flow (${mcpBoard?.board})`)
+  // The card starts in done (the fixture), and a move to the list a card is already in changes
+  // nothing, its stamp included: take it out of done first, so the move back is a move.
+  const parked = await mcpTool(mcpUrl, mcpToken, 'move_card', { id: tackleId, list: 'next' })
+  check(parked.list === 'next', `move_card takes ${tackleId} out of done, by list id (${parked.list})`)
   const mcpBefore = Date.now()
   const doneByTool = await mcpTool(mcpUrl, mcpToken, 'move_card', { id: tackleId, flow: 'done' })
   check(doneByTool.list === 'done' && Date.parse(doneByTool.updated) >= mcpBefore - 1000, `move_card moved ${tackleId} to done, stamped by the app (${doneByTool.updated})`)
