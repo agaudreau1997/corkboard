@@ -4,6 +4,7 @@ import { isEmptyTheme } from '@shared/theme'
 import type { BoardMeta, CodeRepoFrom, DiscussIn, ListDef, ProjectSettingsPatch, ProjectTheme } from '@shared/types'
 import { actions, api, findNode, oneTabPerProject, projectIdOf, useStore } from '../state'
 import { iconFromFile, ProjectMark } from './ProjectMark'
+import { SuggestTheme } from './SuggestTheme'
 import { ThemeEditor } from './ThemeEditor'
 
 export function Modals() {
@@ -691,10 +692,12 @@ function ProjectSettings({ id }: { id: string }) {
   const [icon, setIcon] = useState(project?.icon)
   const iconInput = useRef<HTMLInputElement>(null)
   const [mainBoard, setMainBoard] = useState(project?.mainBoard)
-  // The window wears the theme as it is edited, and its own again once the settings close.
+  const [suggesting, setSuggesting] = useState(false)
+  // The window wears the theme as it is edited, and its own again once the settings close. A
+  // suggestion on screen shows its own theme instead, and this puts the edited one back after it.
   useEffect(() => {
-    if (themeEdited) useStore.setState({ themePreview: { projectId: id, theme } })
-  }, [id, theme, themeEdited])
+    if (themeEdited && !suggesting) useStore.setState({ themePreview: { projectId: id, theme } })
+  }, [id, theme, themeEdited, suggesting])
   useEffect(() => () => useStore.setState({ themePreview: null }), [])
   if (!project) return <p>That project is gone.</p>
   const save = async () => {
@@ -714,130 +717,165 @@ function ProjectSettings({ id }: { id: string }) {
       actions.toast((error as Error).message, 'error')
     }
   }
+  // A suggestion reads the code folder the project has on this machine, the saved one: a folder
+  // typed into the field above is not there to read until it is saved.
+  const repoSaved = !!project.codeRepo && codeRepo.trim() === project.codeRepo
   return (
-    <form
-      onSubmit={e => {
-        e.preventDefault()
-        void save()
-      }}
-    >
-      <h2>
-        Project settings <span className="modal-scope">· {project.name}</span>
-      </h2>
-      <SharedLead />
-      <label className="field">
-        <span>
-          Name <MachineOnly />
-        </span>
-        <input autoFocus value={name} onChange={e => setName(e.target.value)} />
-      </label>
-      <div className="field">
-        <span>Icon</span>
-        <div className="icon-picker">
-          <span className="icon-preview">
-            <ProjectMark project={{ icon, theme: theme ?? undefined }} always />
-          </span>
-          <button type="button" className="small" onClick={() => iconInput.current?.click()}>
-            {icon ? 'Change image…' : 'Choose an image…'}
-          </button>
-          <input
-            ref={iconInput}
-            type="file"
-            accept="image/*"
-            aria-label="Icon image"
-            hidden
-            onChange={async e => {
-              const file = e.target.files?.[0]
-              e.target.value = ''
-              if (!file) return
-              try {
-                setIcon(await iconFromFile(file))
-              } catch (error) {
-                actions.toast((error as Error).message, 'error')
-              }
-            }}
-          />
-          {icon && (
-            <button type="button" className="small" onClick={() => setIcon(undefined)}>
-              Clear
-            </button>
-          )}
-        </div>
-        <small className="muted">
-          Shown in place of the colour swatch wherever the project is named. Scaled down to 64 px and kept in{' '}
-          <code>project.json</code>, so every machine shows it.
-        </small>
-      </div>
-      <div className="field">
-        <span>Board repo</span>
-        <code className="path">{project.root}</code>
-      </div>
-      <label className="field">
-        <span>
-          Code folder on this machine <MachineOnly />
-        </span>
-        <div className="input-row">
-          <input value={codeRepo} placeholder="(none)" onChange={e => setCodeRepo(e.target.value)} />
-          <button
-            type="button"
-            className="small"
-            onClick={async () => {
-              const folder = await api.projects.pickFolder('The code folder')
-              if (folder) setCodeRepo(folder)
-            }}
-          >
-            Browse…
-          </button>
-        </div>
-        <small className="muted">
-          Every board's fallback: a board's sessions start here unless it, or a parent board, names a code repo of its
-          own that exists on this machine (Board settings, <em>Code repo</em>).
-        </small>
-      </label>
-      {project.boards.length > 0 && (
+    <>
+      {suggesting && (
+        <SuggestTheme
+          id={id}
+          name={project.name}
+          onAccept={(next, nextIcon) => {
+            setTheme(next)
+            if (nextIcon) setIcon(nextIcon)
+            setSuggesting(false)
+          }}
+          onClose={() => setSuggesting(false)}
+        />
+      )}
+      <form
+        hidden={suggesting}
+        onSubmit={e => {
+          e.preventDefault()
+          void save()
+        }}
+      >
+        <h2>
+          Project settings <span className="modal-scope">· {project.name}</span>
+        </h2>
+        <SharedLead />
         <label className="field">
-          <span>Main board</span>
-          <select value={mainBoard} onChange={e => setMainBoard(e.target.value)}>
-            {project.boards.map(b => (
-              <option key={b.path} value={b.path}>
-                {b.title}
-              </option>
-            ))}
-          </select>
+          <span>
+            Name <MachineOnly />
+          </span>
+          <input autoFocus value={name} onChange={e => setName(e.target.value)} />
+        </label>
+        <div className="field">
+          <span>Icon</span>
+          <div className="icon-picker">
+            <span className="icon-preview">
+              <ProjectMark project={{ icon, theme: theme ?? undefined }} always />
+            </span>
+            <button type="button" className="small" onClick={() => iconInput.current?.click()}>
+              {icon ? 'Change image…' : 'Choose an image…'}
+            </button>
+            <input
+              ref={iconInput}
+              type="file"
+              accept="image/*"
+              aria-label="Icon image"
+              hidden
+              onChange={async e => {
+                const file = e.target.files?.[0]
+                e.target.value = ''
+                if (!file) return
+                try {
+                  setIcon(await iconFromFile(file))
+                } catch (error) {
+                  actions.toast((error as Error).message, 'error')
+                }
+              }}
+            />
+            {icon && (
+              <button type="button" className="small" onClick={() => setIcon(undefined)}>
+                Clear
+              </button>
+            )}
+          </div>
           <small className="muted">
-            The board a click on the project opens, one of its top-level boards; its child boards and the others are
-            listed under the project. It can't be deleted or moved to another project while it is the main one.
+            Shown in place of the colour swatch wherever the project is named. Scaled down to 64 px and kept in{' '}
+            <code>project.json</code>, so every machine shows it.
+          </small>
+        </div>
+        <div className="field">
+          <span>Board repo</span>
+          <code className="path">{project.root}</code>
+        </div>
+        <label className="field">
+          <span>
+            Code folder on this machine <MachineOnly />
+          </span>
+          <div className="input-row">
+            <input value={codeRepo} placeholder="(none)" onChange={e => setCodeRepo(e.target.value)} />
+            <button
+              type="button"
+              className="small"
+              onClick={async () => {
+                const folder = await api.projects.pickFolder('The code folder')
+                if (folder) setCodeRepo(folder)
+              }}
+            >
+              Browse…
+            </button>
+          </div>
+          <small className="muted">
+            Every board's fallback: a board's sessions start here unless it, or a parent board, names a code repo of its
+            own that exists on this machine (Board settings, <em>Code repo</em>).
           </small>
         </label>
-      )}
-      <div className="field">
-        <label className="check">
-          <input type="checkbox" checked={work} onChange={e => setWork(e.target.checked)} />
-          Work mode
-        </label>
-        <small className="muted">
-          For code repos shared with teammates or clients, where Jira tracks the work. Every session of every board of
-          the project keeps the board's card ids out of the code repo (commits, branches, PRs, code) and names the
-          card's Jira key instead; a card shows the commits that name its key. Kept in <code>project.json</code> in the
-          board repo, so every machine follows it, as long as it runs a build that knows the flag.
-        </small>
-      </div>
-      <ThemeEditor
-        theme={theme}
-        onChange={next => {
-          setTheme(next)
-          setThemeEdited(true)
-        }}
-      />
-      <div className="modal-actions">
-        <button type="button" className="ghost" onClick={() => actions.setModal(null)}>
-          Cancel
-        </button>
-        <button type="submit" className="accent">
-          Save
-        </button>
-      </div>
-    </form>
+        {project.boards.length > 0 && (
+          <label className="field">
+            <span>Main board</span>
+            <select value={mainBoard} onChange={e => setMainBoard(e.target.value)}>
+              {project.boards.map(b => (
+                <option key={b.path} value={b.path}>
+                  {b.title}
+                </option>
+              ))}
+            </select>
+            <small className="muted">
+              The board a click on the project opens, one of its top-level boards; its child boards and the others are
+              listed under the project. It can't be deleted or moved to another project while it is the main one.
+            </small>
+          </label>
+        )}
+        <div className="field">
+          <label className="check">
+            <input type="checkbox" checked={work} onChange={e => setWork(e.target.checked)} />
+            Work mode
+          </label>
+          <small className="muted">
+            For code repos shared with teammates or clients, where Jira tracks the work. Every session of every board of
+            the project keeps the board's card ids out of the code repo (commits, branches, PRs, code) and names the
+            card's Jira key instead; a card shows the commits that name its key. Kept in <code>project.json</code> in the
+            board repo, so every machine follows it, as long as it runs a build that knows the flag.
+          </small>
+        </div>
+        <ThemeEditor
+          theme={theme}
+          onChange={next => {
+            setTheme(next)
+            setThemeEdited(true)
+          }}
+        />
+        <div className="field">
+          <div>
+            <button type="button" className="small" disabled={!repoSaved} onClick={() => setSuggesting(true)}>
+              Suggest from the code repo…
+            </button>
+          </div>
+          <small className="muted">
+            A Claude session reads the code folder for the colours and the logo the project already uses — CSS
+            variables, a theme file, a favicon, the README's images — and proposes a theme and an icon. Nothing is
+            written until you accept it.
+            {!project.codeRepo
+              ? ' It needs the code folder above, saved.'
+              : !repoSaved
+                ? ' Save the code folder above first.'
+                : ''}
+          </small>
+        </div>
+        <div className="modal-actions">
+          <button type="button" className="ghost" onClick={() => actions.setModal(null)}>
+            Cancel
+          </button>
+          <button type="submit" className="accent">
+            Save
+          </button>
+        </div>
+      </form>
+    </>
   )
 }
 

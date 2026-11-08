@@ -84,9 +84,27 @@ execFileSync('git', ['commit', '-qam', 'e2e: point at the scratch code repo'], {
 const fakeLog = path.join(scratch, 'claude-calls.txt')
 const urlLog = path.join(scratch, 'opened-urls.txt')
 const openedUrls = () => (existsSync(urlLog) ? readFileSync(urlLog, 'utf8').split('\n').filter(Boolean) : [])
-/** The stand-in's calls that started sessions (the app also asks it for --version). */
-const sessionCalls = () =>
-  existsSync(fakeLog) ? readFileSync(fakeLog, 'utf8').split('\n--\n').filter(c => c && !c.startsWith('--version')) : []
+const fakeCalls = () => (existsSync(fakeLog) ? readFileSync(fakeLog, 'utf8').split('\n--\n').filter(Boolean) : [])
+/** The stand-in's calls that started sessions (the app also asks it for --version, and for a theme). */
+const sessionCalls = () => fakeCalls().filter(c => !c.startsWith('--version') && !c.startsWith('-p'))
+/** Its headless calls: `claude -p`, which the project settings ask for a theme and an icon. */
+const suggestCalls = () => fakeCalls().filter(c => c.startsWith('-p'))
+// The colours and the logo the stand-in answers with, as a session that read the code repo would.
+const SUGGESTED = {
+  name: 'Lantern',
+  colors: {
+    background: '#101418',
+    surface: '#1b2027',
+    text: '#e6eaf0',
+    line: '#2a313a',
+    accent: '#f5a623',
+    link: '#5b8def',
+    success: '#4cb782',
+    danger: '#e05c5c',
+  },
+  icon: 'build/icon.png',
+  notes: 'The custom properties in src/app.css, and the favicon it points at.',
+}
 // Records its argv, then parses it the way Claude Code does (--add-dir and --mcp-config take every
 // argument up to the next option), so a prompt an option swallowed shows up on screen as "prompt=none". It is a
 // Node script so it runs on Windows too, behind a launcher the terminal's shell runs: a bash script
@@ -97,6 +115,7 @@ writeFileSync(
   fakeScript,
   [
     "import { appendFileSync } from 'node:fs'",
+    "import nodePath from 'node:path'",
     'const argv = process.argv.slice(2)',
     `appendFileSync(${JSON.stringify(fakeLog)}, argv.map(a => a + '\\0').join('') + '\\n--\\n')`,
     "const cloud = argv[0] === '--cloud'",
@@ -116,6 +135,16 @@ writeFileSync(
     '}',
     'console.log(`FAKE CLAUDE in ${process.cwd()} prompt=${prompt}`)',
     "if (cloud) console.log('Created https://claude.ai/code/session_fake123')",
+    // A headless `claude -p` (the project settings asking for a theme): the colours in a fenced
+    // block with a sentence around it, as a session answers. Run anywhere but the code repo it
+    // answers prose only, so the test sees what the modal does with an answer it cannot read.
+    `const suggested = ${JSON.stringify(JSON.stringify(SUGGESTED, null, 2))}`,
+    `const repoName = ${JSON.stringify(path.basename(codeRepo))}`,
+    "if (argv.includes('-p')) {",
+    '  if (nodePath.basename(process.cwd()) === repoName) {',
+    "    console.log('Here is what this repo paints itself in:\\n\\n```json\\n' + suggested + '\\n```\\n')",
+    "  } else console.log('I had a look around, but this folder has no colours of its own.')",
+    '}',
     '',
   ].join('\n'),
 )
@@ -1765,6 +1794,65 @@ try {
   await dialog.getByRole('button', { name: 'Save' }).click()
   check(!!(await until(() => !existsSync(projectFile))), 'clearing the icon takes it out of project.json (and the file, with nothing else in it)')
   check(!!(await until(async () => (await page.locator('.project-row .theme-swatch').count()) === 1)), 'and the swatch is back')
+
+  // ---- colours and an icon suggested from the code repo, by a headless `claude -p` ----
+  // A logo in the code repo for the stand-in to name, as a repo's own favicon or build icon is.
+  mkdirSync(path.join(codeRepo, 'build'), { recursive: true })
+  writeFileSync(path.join(codeRepo, 'build', 'icon.png'), iconPng)
+  const themeBefore = readFileSync(themeFile, 'utf8')
+  await openProjectSettings()
+  const suggestButton = dialog.getByRole('button', { name: /Suggest from the code repo/ })
+  const codeFolder = dialog.getByLabel(/Code folder on this machine/)
+  check(await suggestButton.isDisabled(), 'with no code folder saved for the project, Suggest from the code repo is off')
+  // A repo that is not this project's code repo: the stand-in answers prose, which is no answer.
+  await codeFolder.fill(otherMachine)
+  await dialog.getByRole('button', { name: 'Save' }).click()
+  await openProjectSettings()
+  check(await suggestButton.isEnabled(), 'with one, it is on')
+  await suggestButton.click()
+  check(!!(await until(async () => (await dialog.locator('.suggest-spinner').count()) === 1)), 'it waits for Claude with a spinner')
+  check(
+    !!(await until(async () => (await dialog.locator('.suggest-error').count()) === 1, 30000)),
+    'an answer it cannot read is said so in the modal',
+  )
+  check(readFileSync(themeFile, 'utf8') === themeBefore && !existsSync(projectFile), 'and nothing is written')
+  await dialog.getByRole('button', { name: 'Close' }).click()
+  await codeFolder.fill(codeRepo)
+  await dialog.getByRole('button', { name: 'Save' }).click()
+  await openProjectSettings()
+  await suggestButton.click()
+  const accept = dialog.getByRole('button', { name: 'Accept' })
+  check(!!(await until(async () => (await accept.count()) === 1, 30000)), 'in the code repo, the answer comes back as a preview')
+  check((await dialog.locator('.suggest-colors .suggest-color').count()) === 8, 'of every base colour')
+  check((await dialog.locator('.suggest .icon-preview .project-icon').count()) === 1, 'with the icon it named in the repo')
+  check((await dialog.locator('.suggest-notes').textContent()).includes('app.css'), 'and where it says the colours came from')
+  check((await rootToken('--accent')) === SUGGESTED.colors.accent, 'the window wears them while they are only proposed')
+  check(readFileSync(themeFile, 'utf8') === themeBefore, 'and still nothing is written')
+  await shot('19b-suggest-theme')
+  await accept.click()
+  const suggestedTheme = await until(() => {
+    const theme = JSON.parse(readFileSync(themeFile, 'utf8'))
+    return theme.colors?.accent === SUGGESTED.colors.accent && theme
+  })
+  check(suggestedTheme?.name === SUGGESTED.name, `Accept writes the theme to theme.json (${JSON.stringify(suggestedTheme)})`)
+  const suggestedIcon = await until(() => existsSync(projectFile) && JSON.parse(readFileSync(projectFile, 'utf8')).icon)
+  check(
+    typeof suggestedIcon === 'string' && suggestedIcon.startsWith('data:image/png;base64,'),
+    'and the image it found to project.json, scaled down as a picked one is',
+  )
+  check(!!(await until(async () => (await dialog.locator('.icon-preview .project-icon').count()) === 1)), 'the settings are back, showing it')
+  check(
+    suggestCalls().length === 2 && suggestCalls().every(c => c.includes('Answer with one JSON object')),
+    `both tries ran \`claude -p\` for JSON (${suggestCalls().length})`,
+  )
+  // The rest of the run expects this project in its Cork colours, with no icon and no code folder
+  // of its own: put all three back.
+  await dialog.getByRole('button', { name: 'Clear', exact: true }).click()
+  await codeFolder.fill('')
+  await dialog.getByRole('button', { name: 'Save' }).click()
+  await until(() => !existsSync(projectFile))
+  writeFileSync(themeFile, themeBefore)
+  await until(async () => (await rootToken('--bg')) === '#1f1610')
 
   // ---- projects: add one, move a board into it, delete a board with cards ----
   // The side panel's own space has a menu: below the projects, and its header. A row keeps its own.

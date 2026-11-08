@@ -23,6 +23,7 @@ import type {
   SyncStatus,
   TackleRequest,
   TerminalStatus,
+  ThemeSuggestion,
   UpdateStatus,
 } from './types'
 
@@ -62,6 +63,12 @@ export type CorkboardApi = {
      * given, `null` clearing one. Nothing left set removes the file.
      */
     setSettings(id: string, patch: ProjectSettingsPatch): Promise<void>
+    /**
+     * Asks a headless `claude -p` in the project's code repo for the colours and icon the repo
+     * itself uses, for the settings to preview; nothing is written until it is accepted. Throws
+     * when the project has no code repo here, or when no answer in the right shape comes back.
+     */
+    suggestTheme(id: string): Promise<ThemeSuggestion>
     /** Writes the board repo's CLAUDE.md (the card format) when it has none. */
     addGuide(id: string): Promise<void>
     /** Takes the cards a sync renumbered off its sync status (the notice was read). */
