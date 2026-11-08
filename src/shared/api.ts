@@ -174,6 +174,8 @@ export type CorkboardApi = {
     ptyStatus(cb: (id: string, status: TerminalStatus) => void): () => void
     /** A desktop notification about a terminal was clicked: show that tab. */
     ptyShow(cb: (id: string) => void): () => void
+    /** A session asked for a card (the `show_card` tool): open its board and its drawer. */
+    showCard(cb: (boardPath: string, id: string) => void): () => void
     updateStatus(cb: (status: UpdateStatus) => void): () => void
     /** Mouse 4 or 5 on Windows, which reaches main as an app command rather than the page. */
     navigate(cb: (dir: 'back' | 'forward') => void): () => void

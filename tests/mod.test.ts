@@ -8,6 +8,11 @@ import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { modDir } from '../src/main/mod'
 import { localCommand, resumeCommand, sessionEnv } from '../src/main/tackle'
+import { newCard, serializeCard } from '@shared/cardfile'
+import type { Card } from '@shared/types'
+import { cardFile, cardFromFile, cardFromTool, fileCommands, type PaneCard, toolJson } from '../mod/src/card'
+import { commitArgv, commitsNaming, namesNeedle, parseCommits } from '../mod/src/commits'
+import { bodyLines, paneRows } from '../mod/src/pane'
 import {
   CARDS_VAR,
   describeSession,
@@ -235,5 +240,179 @@ describe('the mod itself', () => {
       if (/not recognized|not found|command not found/i.test(said)) return
       throw new Error(`claude plugin validate said: ${said}`)
     }
+  })
+})
+
+describe('the cards the pane shows', () => {
+  const answer = (card: unknown) => ({ content: [{ type: 'text', text: JSON.stringify(card) }] })
+
+  it('reads what a board tool answered out of its MCP result', () => {
+    const card = { id: 'CORK-101', title: 'A pane', listTitle: 'Doing', description: 'Beside the chat.', links: ['CORK-142'] }
+    expect(cardFromTool(toolJson(answer(card))!)).toEqual({
+      id: 'CORK-101',
+      title: 'A pane',
+      listTitle: 'Doing',
+      description: 'Beside the chat.',
+      links: ['CORK-142'],
+      commits: [],
+      from: 'app',
+    })
+  })
+
+  it('takes a refusal, a missing text block and broken JSON as no answer at all', () => {
+    expect(toolJson({ isError: true, content: [{ type: 'text', text: 'No card CORK-999.' }] })).toBeUndefined()
+    expect(toolJson({ content: [] })).toBeUndefined()
+    expect(toolJson({ content: [{ type: 'text', text: '{' }] })).toBeUndefined()
+    expect(toolJson(undefined)).toBeUndefined()
+  })
+
+  it('finds the card file under the board folder, in either kind of path', () => {
+    expect(cardFile('/boards/cork', 'CORK-101')).toBe('/boards/cork/cards/CORK-101.md')
+    expect(cardFile('/boards/cork/', 'CORK-101')).toBe('/boards/cork/cards/CORK-101.md')
+    expect(cardFile('D:\\boards\\cork', 'CORK-101')).toBe('D:\\boards\\cork\\cards\\CORK-101.md')
+  })
+
+  it('prints the card file with a shell, then cmd.exe, the path an argument in both', () => {
+    const [unix, windows] = fileCommands('D:\boards\my cork\cards\CORK-101.md')
+    expect(unix.slice(0, 3)).toEqual(['sh', '-c', 'cat -- "$1"'])
+    expect(unix.at(-1)).toBe('D:\boards\my cork\cards\CORK-101.md')
+    expect(windows.slice(0, 3)).toEqual(['cmd', '/c', 'type'])
+    expect(windows.at(-1)).toBe('D:\boards\my cork\cards\CORK-101.md')
+  })
+
+  it('reads a card file the app wrote, for a session whose Corkboard is closed', () => {
+    const card: Card = {
+      ...newCard([], { id: 'CORK-101', uid: 'u1', created: '2026-11-01T00:00:00.000Z', title: 'A pane: read-only', list: 'doing' }),
+      links: ['CORK-142'],
+      jira: 'SPDI-42',
+      body: 'Beside the chat.\n\nA second paragraph.\n',
+    }
+    const read = cardFromFile(serializeCard(card), 'CORK-101')
+    expect(read).toMatchObject({
+      id: 'CORK-101',
+      title: 'A pane: read-only',
+      listTitle: 'doing',
+      links: ['CORK-142'],
+      jira: 'SPDI-42',
+      from: 'file',
+    })
+    expect(read.description.startsWith('Beside the chat.')).toBe(true)
+  })
+
+  it('reads a card with no list and no links as an idea with neither', () => {
+    const card = newCard([], { id: 'CORK-9', uid: 'u2', created: '2026-11-01T00:00:00.000Z', title: 'An idea', list: null })
+    const read = cardFromFile(serializeCard(card), 'CORK-9')
+    expect({ list: read.listTitle, links: read.links, jira: read.jira }).toEqual({ list: '', links: [], jira: undefined })
+  })
+})
+
+describe("a card's commits", () => {
+  const log = (records: { sha: string; subject: string; message: string }[]) =>
+    records.map(r => `${r.sha}\x1f${r.subject}\x1f${r.message}\x1e`).join('\n')
+
+  it('asks git for the trailer in a personal project and for the key in a work one', () => {
+    const personal = commitArgv('/repo', 'CORK-101', false)
+    expect(personal.slice(0, 6)).toEqual(['git', '-C', '/repo', 'log', '--all', '-i'])
+    expect(personal).toContain('--grep=^Card:.*CORK-101')
+    expect(personal).toContain('-E')
+    const work = commitArgv('/repo', 'SPDI-42', true)
+    expect(work).toContain('--grep=SPDI-42')
+    expect(work).toContain('-F')
+    expect(work).not.toContain('--grep=^Card:.*SPDI-42')
+  })
+
+  it('keeps the commits whose trailer names the card, one trailer naming several included', () => {
+    const out = log([
+      { sha: 'aaa1111', subject: 'Draw the pane', message: 'Draw the pane\n\nCard: CORK-101\n' },
+      { sha: 'bbb2222', subject: 'Both at once', message: 'Both at once\n\nCard: CORK-101, CORK-142\n' },
+      { sha: 'ccc3333', subject: 'Merge branch', message: 'Merge branch CORK-101-pane\n' },
+    ])
+    expect(commitsNaming(parseCommits(out), 'CORK-101', false)).toEqual([
+      { sha: 'aaa1111', subject: 'Draw the pane' },
+      { sha: 'bbb2222', subject: 'Both at once' },
+    ])
+  })
+
+  it('does not find CORK-10 in CORK-101', () => {
+    const out = log([{ sha: 'aaa1111', subject: 'The pane', message: 'The pane\n\nCard: CORK-101\n' }])
+    expect(commitsNaming(parseCommits(out), 'CORK-10', false)).toEqual([])
+  })
+
+  it('names the key anywhere in a work project, and only between non-alphanumerics', () => {
+    const out = log([
+      { sha: 'aaa1111', subject: 'SPDI-42 fix the form', message: 'SPDI-42 fix the form\n' },
+      { sha: 'bbb2222', subject: 'Part of SPDI-420', message: 'Part of SPDI-420\n' },
+    ])
+    expect(commitsNaming(parseCommits(out), 'SPDI-42', true)).toEqual([{ sha: 'aaa1111', subject: 'SPDI-42 fix the form' }])
+    expect(namesNeedle('see SPDI-42.', 'SPDI-42')).toBe(true)
+    expect(namesNeedle('SPDI-421', 'SPDI-42')).toBe(false)
+  })
+
+  it('reads nothing out of an empty log', () => {
+    expect(parseCommits('')).toEqual([])
+    expect(commitsNaming([], 'CORK-101', false)).toEqual([])
+  })
+})
+
+describe('the pane', () => {
+  const card = (over: Partial<PaneCard> = {}): PaneCard => ({
+    id: 'CORK-101',
+    title: 'A card pane for the sessions Corkboard starts',
+    listTitle: 'Doing',
+    description: 'A pane beside the chat showing the cards the session was started for.\n\nRead-only.',
+    links: ['CORK-142'],
+    commits: [],
+    from: 'app',
+    ...over,
+  })
+
+  it('names the card, its list and its title, then its description and its links', () => {
+    const rows = paneRows([card({ commits: [{ sha: '7c47485', subject: 'Give the sessions a mod' }] })], {
+      columns: 90,
+      maxRows: 8,
+      work: false,
+    })
+    expect(rows[0]).toMatchObject({ tone: 'head' })
+    expect(rows[0].text).toBe('▣ CORK-101 · Doing · A card pane for the sessions Corkboard starts')
+    expect(rows[1]).toMatchObject({ tone: 'body' })
+    expect(rows[1].text.startsWith('A pane beside the chat')).toBe(true)
+    expect(rows.at(-1)).toMatchObject({ tone: 'dim', text: 'links CORK-142 · 7c47485 Give the sessions a mod' })
+  })
+
+  it('says when it is reading the card file, because Corkboard is closed', () => {
+    const rows = paneRows([card({ from: 'file', links: [] })], { columns: 90, maxRows: 8, work: false })
+    expect(rows.at(-1)?.text).toBe('from the card file (Corkboard is closed)')
+  })
+
+  it('names the Jira key beside the id in a work project', () => {
+    const rows = paneRows([card({ jira: 'SPDI-42' })], { columns: 90, maxRows: 8, work: true })
+    expect(rows[0].text.startsWith('▣ CORK-101 (SPDI-42) · Doing')).toBe(true)
+    expect(rows.at(-1)?.text).toContain('SPDI-42')
+  })
+
+  it('shows every card of a session of several', () => {
+    const rows = paneRows([card(), card({ id: 'CORK-142', title: 'The mod' })], { columns: 90, maxRows: 20, work: false })
+    expect(rows.filter(r => r.tone === 'head').map(r => r.text.split(' · ')[0])).toEqual(['▣ CORK-101', '▣ CORK-142'])
+    expect(new Set(rows.map(r => r.key)).size).toBe(rows.length)
+  })
+
+  it('keeps inside the rows the band allows, the card at hand last', () => {
+    const rows = paneRows([card(), card({ id: 'CORK-142' })], { columns: 90, maxRows: 3, work: false })
+    expect(rows.length).toBe(3)
+    expect(rows.at(-1)?.tone).toBe('dim')
+  })
+
+  it('folds the description to the width and ends it in an ellipsis', () => {
+    const lines = bodyLines('one two three four five six seven eight nine ten', 20, 2)
+    expect(lines.length).toBe(2)
+    for (const line of lines) expect(line.length).toBeLessThanOrEqual(20)
+    expect(lines[1].endsWith('…')).toBe(true)
+    expect(bodyLines('', 20)).toEqual([])
+  })
+
+  it('clips a long head row to the width', () => {
+    const rows = paneRows([card({ title: 'x'.repeat(200) })], { columns: 40, maxRows: 8, work: false })
+    expect(rows[0].text.length).toBeLessThanOrEqual(38)
+    expect(rows[0].text.endsWith('…')).toBe(true)
   })
 })

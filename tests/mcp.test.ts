@@ -155,6 +155,20 @@ describe('the board tools', () => {
     await expect(tools.linkCards({ id: 'G-1', to: 'NO-1', board: 'game:game' })).rejects.toThrow('No card NO-1')
   })
 
+  it('shows a card in the window, and says so when there is no window to show it in', async () => {
+    const { projects, game } = await setup()
+    const shown: [string, string][] = []
+    const withWindow = new BoardTools(() => projects, (board, id) => shown.push([board, id]))
+    const card = await withWindow.showCard('G-1', 'game:game')
+    expect(shown).toEqual([['game:game', 'G-1']])
+    expect(card).toMatchObject({ id: 'G-1', board: 'game:game' })
+    // It only shows: the card is as it was.
+    expect(fileOf(projects[0].store, game, 'G-1').list).toBe('todo')
+    const noWindow = new BoardTools(() => projects)
+    await expect(noWindow.showCard('G-1', 'game:game')).rejects.toThrow('no window open')
+    await expect(withWindow.showCard('G-404', 'game:game')).rejects.toThrow('No card')
+  })
+
   it('orders cards with after: same board only, never itself, never in a loop', async () => {
     const { tools, store, game } = await setup()
     expect((await tools.getCard('G-2', 'game:game')).after).toBeUndefined()
@@ -202,7 +216,17 @@ describe('the MCP server', () => {
       const client = new Client({ name: 'test', version: '1' })
       await client.connect(new StreamableHTTPClientTransport(new URL(host.url), { requestInit: { headers: { Authorization: 'Bearer secret' } } }))
       const names = (await client.listTools()).tools.map(t => t.name).sort()
-      expect(names).toEqual(['archive_card', 'create_card', 'get_card', 'link_cards', 'list_boards', 'move_card', 'search_cards', 'update_card'])
+      expect(names).toEqual([
+        'archive_card',
+        'create_card',
+        'get_card',
+        'link_cards',
+        'list_boards',
+        'move_card',
+        'search_cards',
+        'show_card',
+        'update_card',
+      ])
       const moved = await client.callTool({ name: 'move_card', arguments: { id: 'G-1', board: 'game:game', flow: 'done' } })
       expect(JSON.parse((moved.content as { text: string }[])[0].text)).toMatchObject({ id: 'G-1', list: 'done' })
       expect(fileOf(store, game, 'G-1').list).toBe('done')

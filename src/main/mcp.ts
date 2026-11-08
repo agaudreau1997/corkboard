@@ -25,7 +25,7 @@ import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import path from 'node:path'
 import { z } from 'zod'
-import { BoardTools, type ToolProjects } from './mcptools'
+import { BoardTools, type ShowCard, type ToolProjects } from './mcptools'
 
 /** The port of the installed app's server, and of an unpackaged (dev) build's. */
 export const MCP_PORT = 47823
@@ -71,8 +71,9 @@ export class McpHost {
     projects: ToolProjects,
     private token: string,
     private version = '0',
+    show?: ShowCard,
   ) {
-    this.tools = new BoardTools(projects)
+    this.tools = new BoardTools(projects, show)
     this.digest = sha256(`Bearer ${token}`)
   }
 
@@ -191,6 +192,15 @@ export function registerTools(mcp: McpServer, tools: BoardTools): void {
       annotations: { readOnlyHint: true },
     },
     a => run(() => tools.getCard(a.id, a.board)),
+  )
+  mcp.registerTool(
+    'show_card',
+    {
+      description: "Brings a card up in Corkboard's window: its board in front and its drawer open. Changes nothing about the card.",
+      inputSchema: { id, board: board.optional() },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    a => run(() => tools.showCard(a.id, a.board)),
   )
   mcp.registerTool(
     'search_cards',

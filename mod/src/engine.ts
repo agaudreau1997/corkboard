@@ -31,7 +31,10 @@ export type Engine = {
     status(text: string): Promise<void>
     notice(text: string): Promise<void>
     toast(text: string): Promise<void>
-    invalidate(): Promise<void>
+    /** Asks for the event's sites to be drawn again; it answers nothing, and throws on a bad name. */
+    invalidate(event: 'ui.render' | 'prompt.section' | 'prompt.context' | 'tool.describe'): void
+    /** The elements of the surface the render event is on, as JSX tags. */
+    resolve(e: unknown): Promise<Elements>
   }
   session: {
     id(): Promise<string>
@@ -52,8 +55,34 @@ export type Engine = {
   }
 }
 
+/**
+ * The elements a surface draws, which `$.ui.resolve` answers. The terminal's table holds Box,
+ * Button, Input, Link, Select, Svg, Text, b, div and span; the mod draws with three of them. A
+ * Button is `{ key, label, onPress }` and keeps its handler here, which the engine says in so
+ * many words when one is drawn without it.
+ */
+export type Elements = {
+  Box: unknown
+  Text: unknown
+  Button: unknown
+}
+
+declare global {
+  /** The JSX factory a hooks module is given as a global; the mod calls it rather than writing JSX. */
+  const h: (type: unknown, props?: Record<string, unknown> | null, ...children: unknown[]) => unknown
+}
+
 /** The session the hooks run in, as `session.start` describes it. */
 export type SessionStart = { cwd: string; surface: string | null; interactive: boolean }
+
+/** What a `ui.render` hook is handed: which component is being drawn, and where. */
+export type UiRender = {
+  component: string
+  surface: 'terminal' | 'desktop'
+  requestId?: string
+  props?: Record<string, unknown>
+  viewport?: { columns: number; rows: number }
+}
 
 /** A hook: answer for itself by returning, or call `next` to let the rest of the chain run. */
 export type Hook<Event, Result = Event> = (
@@ -65,5 +94,6 @@ export type Hook<Event, Result = Event> = (
 /** What `register` is handed: `on(event, hook)` adds a hook. */
 export type On = {
   (event: 'session.start', hook: Hook<SessionStart>): void
+  (event: 'ui.render', hook: Hook<UiRender, unknown>): void
   (event: string, hook: Hook<Record<string, unknown>, unknown>): void
 }

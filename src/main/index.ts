@@ -763,6 +763,15 @@ let mcp: McpHost | undefined
 /** The config file the sessions get, once the server listens; undefined when it could not start. */
 let mcpReady: Promise<string | undefined> = Promise.resolve(undefined)
 
+/** The `show_card` tool: raise the window, as a clicked notification does, and open the card. */
+function showCard(key: string, id: string): void {
+  if (!win || win.isDestroyed()) return
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
+  send('card:show', key, id)
+}
+
 /**
  * Starts the MCP server for the sessions the app starts. Without it they still run, told to edit
  * the card files as before.
@@ -774,7 +783,7 @@ async function startMcp(): Promise<string | undefined> {
       await openProjects()
       return [...projects.values()]
     }
-    const host = new McpHost(projectsNow, await mcpToken(userData), app.getVersion())
+    const host = new McpHost(projectsNow, await mcpToken(userData), app.getVersion(), showCard)
     await host.start(mcpPort(app.isPackaged))
     mcp = host
     console.log(`MCP server on ${host.url}`)

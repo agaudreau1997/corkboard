@@ -1214,6 +1214,13 @@ try {
   const mcpBoard = listed.flatMap(p => p.boards).find(b => b.cardPrefix === MAIN.key)
   check(!!mcpBoard && mcpBoard.flow?.done === 'done', `list_boards names ${MAIN.title} with its flow (${mcpBoard?.board})`)
   check(mcpBoard?.board === tackleEnv.CORKBOARD_BOARD, 'under the key the session got in CORKBOARD_BOARD')
+  // show_card, which the mod's pane presses: the window comes up with the card's drawer open.
+  const showed = await mcpTool(mcpUrl, mcpToken, 'show_card', { id: tackleId, board: mcpBoard?.board })
+  check(showed.id === tackleId, `show_card answers the card it is showing (${showed.id})`)
+  check(
+    !!(await until(async () => (await page.locator('.drawer .card-id').textContent())?.trim() === tackleId)),
+    'and the window opens its drawer',
+  )
   // The card starts in done (the fixture), and a move to the list a card is already in changes
   // nothing, its stamp included: take it out of done first, so the move back is a move.
   const parked = await mcpTool(mcpUrl, mcpToken, 'move_card', { id: tackleId, list: 'next' })
