@@ -92,6 +92,21 @@ const sessionCalls = () =>
 // Node script so it runs on Windows too, behind a launcher the terminal's shell runs: a bash script
 // on Unix, a .ps1 on Windows (PowerShell runs that itself, so a prompt's quotes and newlines reach
 // Node intact; a .cmd would go through cmd.exe, which mangles them).
+const envLog = path.join(scratch, 'fake-claude-env.txt')
+/** The environment of each session the stand-in was started for, in sessionCalls() order. */
+const sessionEnvs = () =>
+  existsSync(envLog) ? readFileSync(envLog, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line)) : []
+// A stand-in companion mod (CORKBOARD_MOD_DIR), so the test never hands a session the real one:
+// a plugin folder of the same shape, whose hooks module does nothing.
+const standInMod = path.join(scratch, 'mod')
+mkdirSync(path.join(standInMod, '.claude-plugin'), { recursive: true })
+mkdirSync(path.join(standInMod, 'hooks'), { recursive: true })
+writeFileSync(
+  path.join(standInMod, '.claude-plugin', 'plugin.json'),
+  JSON.stringify({ name: 'corkboard-mod-stand-in', version: '0.0.0', description: 'a stand-in' }, null, 2),
+)
+writeFileSync(path.join(standInMod, 'hooks', 'hooks.json'), JSON.stringify({ modules: ['./hooks.ts'] }, null, 2))
+writeFileSync(path.join(standInMod, 'hooks', 'hooks.ts'), 'export function register() {}\n')
 const fakeScript = path.join(scratch, 'fake-claude.mjs')
 writeFileSync(
   fakeScript,
@@ -99,12 +114,16 @@ writeFileSync(
     "import { appendFileSync } from 'node:fs'",
     'const argv = process.argv.slice(2)',
     `appendFileSync(${JSON.stringify(fakeLog)}, argv.map(a => a + '\\0').join('') + '\\n--\\n')`,
+    // The session's own environment, for the companion mod's variables. Written for the calls
+    // sessionCalls() keeps, so the two files line up.
+    "const mine = Object.fromEntries(Object.entries(process.env).filter(([k]) => k.startsWith('CORKBOARD_') || k === 'CLAUDE_CODE_ENABLE_FUNCTION_HOOKS'))",
+    `if (argv[0] !== '--version') appendFileSync(${JSON.stringify(envLog)}, JSON.stringify(mine) + '\\n')`,
     "const cloud = argv[0] === '--cloud'",
     "let prompt = 'none'",
     'for (let i = 0; i < argv.length; ) {',
     '  const a = argv[i]',
     "  if (a === '--add-dir' || a === '--mcp-config') for (i++; i < argv.length && !argv[i].startsWith('-'); i++);",
-    "  else if (['-n', '--session-id', '-w', '--resume'].includes(a)) i += 2",
+    "  else if (['-n', '--session-id', '-w', '--resume', '--plugin-dir'].includes(a)) i += 2",
     "  else if (a === '--cloud') {",
     "    if (i + 1 < argv.length) prompt = 'given'",
     '    i += 2',
@@ -252,6 +271,7 @@ const launchApp = () => electron.launch({
     CORKBOARD_COMMIT_DELAY_MS: '600',
     CORKBOARD_SYNC_INTERVAL_MS: '0',
     CORKBOARD_CLAUDE_BIN: fakeClaude,
+    CORKBOARD_MOD_DIR: standInMod,
     CORKBOARD_MCP_PORT: String(mcpPort),
     // The settings' Browse… for the notification program answers the stand-in.
     CORKBOARD_PICK_FILE: fakeNotify,
@@ -1165,6 +1185,18 @@ try {
   const tackled = readFileSync(path.join(root, MAIN.path, 'cards', `${tackleId}.md`), 'utf8')
   check(tackled.includes('sessions:') && tackled.includes('kind: local'), 'the session is recorded on the card')
 
+  // ---- the companion mod: the folder on the argv, and the cards in the environment ----
+  const pluginArg = args.indexOf('--plugin-dir')
+  check(pluginArg > 0 && args[pluginArg + 1] === standInMod, `the session got the mod's folder (${args[pluginArg + 1]})`)
+  check(pluginArg < args.indexOf('-n'), 'before the options that take one value, as --mcp-config is')
+  const tackleEnv = sessionEnvs()[0] ?? {}
+  check(tackleEnv.CORKBOARD_CARDS === tackleId, `and an environment naming its cards (${tackleEnv.CORKBOARD_CARDS})`)
+  check(tackleEnv.CORKBOARD_BOARD?.endsWith(`:${MAIN.path}`) ?? false, `the board they are on (${tackleEnv.CORKBOARD_BOARD})`)
+  check(tackleEnv.CORKBOARD_BOARD_DIR === path.join(root, MAIN.path), `the board's folder (${tackleEnv.CORKBOARD_BOARD_DIR})`)
+  check(tackleEnv.CORKBOARD_CARD_PREFIX === MAIN.key, `its card prefix (${tackleEnv.CORKBOARD_CARD_PREFIX})`)
+  check(tackleEnv.CORKBOARD_WORK === '0', 'and no work mode in a personal project')
+  check(tackleEnv.CLAUDE_CODE_ENABLE_FUNCTION_HOOKS === '1', 'with the plugin API the mod needs turned on')
+
   // ---- the MCP server: the session got its config, and its tools change the card ----
   const mcpArg = args.indexOf('--mcp-config')
   const mcpFile = mcpArg > 0 ? args[mcpArg + 1] : ''
@@ -1181,6 +1213,7 @@ try {
   const listed = await mcpTool(mcpUrl, mcpToken, 'list_boards', {})
   const mcpBoard = listed.flatMap(p => p.boards).find(b => b.cardPrefix === MAIN.key)
   check(!!mcpBoard && mcpBoard.flow?.done === 'done', `list_boards names ${MAIN.title} with its flow (${mcpBoard?.board})`)
+  check(mcpBoard?.board === tackleEnv.CORKBOARD_BOARD, 'under the key the session got in CORKBOARD_BOARD')
   // The card starts in done (the fixture), and a move to the list a card is already in changes
   // nothing, its stamp included: take it out of done first, so the move back is a move.
   const parked = await mcpTool(mcpUrl, mcpToken, 'move_card', { id: tackleId, list: 'next' })
@@ -1950,6 +1983,8 @@ try {
   const keyedCall = await until(() => sessionCalls()[callsBeforeWork], 15000)
   const keyedArgs = keyedCall.split('\0')
   check(keyedArgs[keyedArgs.indexOf('-w') + 1] === KEYED.jira, `the worktree is named ${KEYED.jira}, the key in its own case (got ${keyedArgs[keyedArgs.indexOf('-w') + 1]})`)
+  check(keyedArgs.includes('--plugin-dir'), "a work project's session gets the mod too")
+  check((sessionEnvs()[callsBeforeWork] ?? {}).CORKBOARD_WORK === '1', 'and an environment saying it is a work one')
   const keyedPrompt = keyedArgs.at(-2) ?? ''
   check(keyedPrompt.startsWith(`Tackle ${KEYED.jira} from the task board: ${KEYED.title}`), 'the prompt opens with the Jira key')
   check(keyedPrompt.includes(`Name the Jira key ${KEYED.jira} in every commit message`) && keyedPrompt.includes('Never write a card id of the task board'), 'and carries the work-mode rule')

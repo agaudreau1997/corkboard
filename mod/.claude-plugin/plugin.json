@@ -1,0 +1,10 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "corkboard-mod",
+  "version": "0.1.0",
+  "description": "The cards a Corkboard session was started for, inside the session",
+  "author": {
+    "name": "agaudreau1997",
+    "email": "alexpwnser@live.ca"
+  }
+}

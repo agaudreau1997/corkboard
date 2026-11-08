@@ -13,7 +13,7 @@ From a card: *Tackle locally*, *In a worktree* or *Claude Cloud*. From a list he
 | Button | Runs |
 | --- | --- |
 | Claude desktop | opens `claude://code/new?q=<prompt>&folder=<code repo>`: a new Code session in the Claude desktop app, in the code repo once you trust it (the app asks each time), the prompt filled in (a prompt over 14,000 characters goes in a temporary file the link points to). The link can't pick a branch, and a draft sent with its branch blank starts with no folder: pick the branch before sending. The prompt names the code repo, and a session that started anywhere else moves itself there with the desktop app's `change_directory` tool (you approve the folder), or stops and says so |
-| Terminal | `claude --add-dir <board repo> --mcp-config <file> -n "<ID> <title>" --session-id <uuid> "<prompt>"` in the board's code repo (`--add-dir` and `--mcp-config` first: each takes every argument up to the next option, and placed last `--add-dir` swallowed the prompt). `--mcp-config` hands the session the app's [MCP server](#the-apps-mcp-server); it is left out when the server isn't running |
+| Terminal | `claude --add-dir <board repo> --mcp-config <file> --plugin-dir <mod> -n "<ID> <title>" --session-id <uuid> "<prompt>"` in the board's code repo (`--add-dir` and `--mcp-config` first: each takes every argument up to the next option, and placed last `--add-dir` swallowed the prompt). `--mcp-config` hands the session the app's [MCP server](#the-apps-mcp-server) and `--plugin-dir` the [companion mod](#the-companion-mod); each is left out when there is none to give |
 | In a worktree | the same plus `-w card-<id>` (Claude Code makes `.claude/worktrees/card-<id>` on branch `worktree-card-<id>`); in a work project `-w <Jira key>`, or a slug of the title without one |
 | Claude Cloud | `claude --cloud "<prompt>"`: a claude.ai/code session on GitHub's copy of the current branch (push first); the URL it prints is saved on the card |
 
@@ -26,6 +26,22 @@ The prompt carries the card's title, description and linked cards, the path of i
 While Corkboard runs, it serves an MCP server to the sessions it starts in a terminal or a worktree (a resumed one gets it again). Through it a session reads the boards and changes cards the way the window does: the app checks the change (a list that exists, a link to a card that exists, an `after` that names cards of the same board and makes no loop, a date, a Jira key) and stamps `updated:` from its own clock, which decides a sync conflict; a session editing the file has to keep the format and look the time up. The tools: `list_boards` (projects, boards with their keys, lists and flow), `get_card` (by id, on any board), `search_cards` (by id or title, board, list), `move_card` (to a list id, or the board's flow `doing` / `done`), `update_card` (title, description, labels, links, `after`, due, complete, `jira`), `create_card`, `archive_card` (cards are never deleted) and `link_cards`. Each answers with the card as it now is. None of them commits, syncs or touches a code repo: the app commits the board repo as it does any change, and a work project's sessions get the same tools.
 
 The server is MCP over HTTP at `http://127.0.0.1:47823/mcp` for the installed app and `http://127.0.0.1:47824/mcp` for one run from the source (`npm run dev`, `npm start`), so the two run side by side. It listens on this machine only, and every request needs the token the app made once and keeps in its user data (`mcp-token`); a request naming another host, or from a web page's origin, is turned away. When the port is taken the app uses a free one: the sessions it starts are told that one. A session gets the URL and token in a file of the user data (`mcp-config-<port>.json`, readable by you only), so the token is in no command line. A cloud session can't reach this machine, and a Claude desktop session or one you start yourself doesn't get the server yet.
+
+### The companion mod
+
+A session started in a terminal or a worktree is also handed Corkboard's companion mod (`--plugin-dir`), a small Claude Code plugin that ships with the app. It knows which cards the session was started for: the app puts them in the terminal's environment, and the session says so in its own window. A resumed session gets the mod and the same environment again, so it knows its cards as the first one did. Nothing is lost when it doesn't load — Claude Code's plugin API is early access, and a session without the mod is the session as it was.
+
+What the terminal holds, for the mod and for anything else you run in that tab:
+
+| Variable | What |
+| --- | --- |
+| `CORKBOARD_CARDS` | the session's card ids, comma-separated (`CORK-142,CORK-101`), in the order the tackle works them |
+| `CORKBOARD_BOARD` | the board's key, `<project id>:<path>` — what the MCP tools take |
+| `CORKBOARD_BOARD_DIR` | that board's folder on this machine, which holds its `cards/` |
+| `CORKBOARD_CARD_PREFIX` | the prefix every card id of the board carries (`CORK`) |
+| `CORKBOARD_WORK` | `1` in a [work project](work-mode.md), `0` otherwise |
+
+A Claude desktop session gets neither the mod nor the MCP server: a `claude://` link carries no arguments. A cloud session can't reach this machine either; its tab still holds the variables above.
 
 ### The desktop app's links
 
@@ -59,7 +75,7 @@ When Claude finishes a turn while Corkboard's window is in the background, the s
 
 ## A program of yours runs when a tab changes state
 
-*Corkboard settings* (the gear in the side panel's header) also takes a notification program (a script or an executable, no arguments; on Windows a `.ps1`, `.cmd` or `.bat` works too), kept on this machine, and *Try it* runs it with a `test` event. The app runs it on every change: `working` when Claude starts a turn, `waiting` when it stops (your turn), `shell` once it left, `exit` when the tab's shell ends. The event, the status before it and the tab's title come as arguments, and everything in variables: `CORKBOARD_EVENT`, `CORKBOARD_PREVIOUS`, `CORKBOARD_TITLE`, `CORKBOARD_CARDS` (the tab's card ids, space-separated), `CORKBOARD_CWD`, `CORKBOARD_TERMINAL`, `CORKBOARD_KIND` (`shell`, `local`, `local-worktree` or `cloud`), `CORKBOARD_RESUMED` (`1`, for a resumed session) and, on `exit`, `CORKBOARD_EXIT_CODE`. The title is the session's name alone: a cloud or resumed tab's no longer starts with `☁ ` or `↻ `, the two variables say it instead. A sound, a lamp or a push to your phone is a two-line script: `[ "$CORKBOARD_EVENT" = waiting ] && paplay ~/ding.oga`; a program that showed a desktop notification of its own is no longer needed. A program that fails is logged, not shown; one that runs for more than 30 seconds is stopped.
+*Corkboard settings* (the gear in the side panel's header) also takes a notification program (a script or an executable, no arguments; on Windows a `.ps1`, `.cmd` or `.bat` works too), kept on this machine, and *Try it* runs it with a `test` event. The app runs it on every change: `working` when Claude starts a turn, `waiting` when it stops (your turn), `shell` once it left, `exit` when the tab's shell ends. The event, the status before it and the tab's title come as arguments, and everything in variables: `CORKBOARD_EVENT`, `CORKBOARD_PREVIOUS`, `CORKBOARD_TITLE`, `CORKBOARD_CARDS` (the tab's card ids, space-separated here; the session's own terminal holds the same name comma-separated, for the [companion mod](#the-companion-mod)), `CORKBOARD_CWD`, `CORKBOARD_TERMINAL`, `CORKBOARD_KIND` (`shell`, `local`, `local-worktree` or `cloud`), `CORKBOARD_RESUMED` (`1`, for a resumed session) and, on `exit`, `CORKBOARD_EXIT_CODE`. The title is the session's name alone: a cloud or resumed tab's no longer starts with `☁ ` or `↻ `, the two variables say it instead. A sound, a lamp or a push to your phone is a two-line script: `[ "$CORKBOARD_EVENT" = waiting ] && paplay ~/ding.oga`; a program that showed a desktop notification of its own is no longer needed. A program that fails is logged, not shown; one that runs for more than 30 seconds is stopped.
 
 ## Which Claude Code
 
