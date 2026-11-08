@@ -56,6 +56,10 @@ With Corkboard closed there is no server to ask: the pane reads the card file in
 
 You run them yourself: the mod answers each one and drops the prompt, so none of them spends a model turn or reaches Claude at all. Each goes through the app's board tools, which check the change and stamp `updated:`; with Corkboard closed there is nothing to write through, and a command that would write says so and writes nothing — the mod never edits a card file behind the app's back. A session of several cards has them all moved or noted on together, since the cards a tackle put in one session are meant to be finished together, and being asked which would be a prompt in the middle of your own command.
 
+**The commit guard.** The mod also reads the Bash calls the session makes, and refuses the ones that break the card-id rule its prompt was given, so the rule holds mechanically instead of by good behaviour. In a personal project a `git commit` of the session's own repo must carry a `Card: <ID>` trailer naming one of its cards; without one the call never reaches git and the reason says which trailer to add, so Claude adds it and commits again. In a [work project](work-mode.md) it is the other way round: a commit message, a branch or tag name, or a `gh pr create` / `gh pr edit` title or body that holds any card id of the board is refused, and the reason names the Jira key to use instead — a card id pushed to a client's repo can't be taken back, which is why it refuses rather than warns.
+
+It is a guard against mistakes, not a wall: it reads only the session's own calls, only in the code repo the session runs in (a command on another repo, and anything in the board repo, are left alone), and what it cannot read it lets through — a message from a `$(…)`, a file it cannot open, or a commit whose message git writes itself (a merge, a revert, a `rebase --continue`, an `--amend` that keeps the message it has).
+
 A Claude desktop session gets neither the mod nor the MCP server: a `claude://` link carries no arguments. A cloud session can't reach this machine either; its tab still holds the variables above.
 
 ### The desktop app's links

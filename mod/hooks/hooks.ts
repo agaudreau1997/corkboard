@@ -1,7 +1,7 @@
 // Corkboard's companion mod: the hooks module Claude Code loads for the sessions the app starts
 // (`--plugin-dir`, from `src/main/tackle.ts`). It works out which cards its session was started
 // for, draws them in the band above the prompt with buttons to finish a card and to bring it up
-// in the window, and answers the `/card` command itself.
+// in the window, answers the `/card` command itself, and holds its Bash calls to the card-id rule.
 //
 // Every hook is written to fail safe. The plugin API is early access and moves between Claude
 // Code releases, so a call that isn't there, a shell that won't run and a board the app no longer
@@ -13,6 +13,7 @@ import { BOARD_SERVER, cardFile, cardFromFile, cardFromTool, fileCommands, type 
 import { CARD_USAGE, NO_APP, parseCardCommand, showCards } from '../src/command'
 import { commitArgv, commitsNaming, parseCommits } from '../src/commits'
 import type { On } from '../src/engine'
+import { guard, guardFiles, isInside } from '../src/guard'
 import { paneRows } from '../src/pane'
 import { describeSession, envCommands, parseEnv, type SessionCards, sessionFromEnv } from '../src/session'
 
@@ -138,6 +139,42 @@ export function register(on: On): void {
       // sent to the model as text it cannot act on.
       return { drop: 'corkboard: that command could not be run.' }
     }
+  })
+
+  // The card-id rule on the Bash calls this session makes (mod/src/guard.ts): a personal
+  // project's commits carry a `Card:` trailer, and a work project's repo never sees a card id.
+  // Only the session's own code repo is judged — a command on another repo, and anything in the
+  // board repo, are left alone — and a `{ deny }` goes back to the model as the reason to fix the
+  // command and run it again.
+  on('tool.call', async ($, e, next) => {
+    const session = held
+    const command = typeof e.command === 'string' ? e.command : ''
+    if (e.tool !== 'Bash' || !command || !session || !session.cards.length) return next(e)
+    try {
+      const repo = await $.session.cwd().catch(() => '')
+      // A session of a board with no code repo on this machine runs in the board repo itself:
+      // the rule is about what reaches a code repo, so there is nothing to guard there.
+      if (!repo || (session.boardDir && isInside(session.boardDir, repo))) return next(e)
+      const files: Record<string, string> = {}
+      for (const file of guardFiles(command)) {
+        const text = await $.fs.readFile(file).catch(() => undefined)
+        if (typeof text === 'string') files[file] = text
+      }
+      const verdict = guard(command, {
+        cards: session.cards,
+        prefix: session.prefix,
+        work: session.work,
+        keys: shown.flatMap(card => (card.jira ? [card.jira] : [])),
+        repo,
+      }, files)
+      if (verdict) {
+        await $.ui.log(`corkboard: refused a command — ${verdict.deny.split('\n')[0]}`)
+        return verdict
+      }
+    } catch {
+      // A guard that cannot read the command does not stand in its way.
+    }
+    return next(e)
   })
 
   // The band above the prompt: the cards, and what can be done to them from here. The engine's
