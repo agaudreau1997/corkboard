@@ -788,11 +788,16 @@ code,
   flex: none;
   /*
    * One line whatever the width: a wrap would change the header's height as the selection bar
-   * comes and goes, and shift the board under the pointer. On a narrow pane the title and the
-   * filter give way first, then the settings buttons drop their second word (below).
+   * comes and goes, and shift the board under the pointer. On a narrow pane its parts give way in
+   * turn (all below): the title and the filter shrink, the settings buttons drop their second
+   * word, then the key chip and the buttons go, and the title last.
    */
   container-type: inline-size;
   min-width: 0;
+  /* Past all of that — a selection bar on a pane squeezed to its narrowest — what is left over is
+     cut, never drawn outside the pane: the pane is positioned and the card drawer beside it is
+     not, so anything spilling from here would paint over the open card. */
+  overflow: hidden;
 }
 
 .head-settings,
@@ -879,6 +884,29 @@ code,
   background: var(--select-bg);
   border: 1px solid var(--select-line);
   color: var(--accent);
+}
+
+/* Narrower than the shortened buttons and the view switcher together (a card open beside a small
+   window): the settings buttons leave the header, and the key chip with them, so what only the
+   header offers — the views and the filter — keeps its room. Both dialogs stay a right-click away
+   in the side panel, which the header's buttons only save a step on. */
+@container (max-width: 500px) {
+  .board-head > .board-key,
+  .board-head > .head-settings {
+    display: none;
+  }
+
+  .segmented button {
+    padding: 4px 8px;
+  }
+}
+
+/* The last of the room: what is left of the title is a sliver of its first letter rather than
+   anything to read, and the tab above names the board. */
+@container (max-width: 360px) {
+  .board-head > h2 {
+    display: none;
+  }
 }
 
 /* ---- kanban ------------------------------------------------------------------------------ */
