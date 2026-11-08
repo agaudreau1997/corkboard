@@ -32,6 +32,7 @@ import { desktopAvailable, openUrl } from './desktop'
 import { codeCommits, CodeRepoWatch, commitFiles, pullRepo, pushRepo } from './git'
 import { serveImage } from './images'
 import { McpHost, mcpPort, mcpToken } from './mcp'
+import { modDir } from './mod'
 import { desktopNotice, notify } from './notify'
 import { boardKey, hasBoards, prepareBoardRepo, Project, projectId, splitKey } from './projects'
 import { PtyManager } from './pty'
@@ -596,7 +597,7 @@ function registerIpc(): void {
   const open = (url: string) => shell.openExternal(url)
   ipcMain.handle('tackle:start', async (_e, req: TackleRequest) => {
     const { project, rel } = projectOf(req.boardPath)
-    return tackle({ ...req, boardPath: rel }, project.store, ptys, open, req.boardPath, await mcpReady)
+    return tackle({ ...req, boardPath: rel }, project.store, ptys, open, req.boardPath, await mcpReady, companionMod)
   })
   ipcMain.handle('tackle:prompt', (_e, req: TackleRequest) => {
     const { project, rel } = projectOf(req.boardPath)
@@ -604,7 +605,7 @@ function registerIpc(): void {
   })
   ipcMain.handle('tackle:resume', async (_e, key: string, ref: SessionRef) => {
     const { project, rel } = projectOf(key)
-    return resume(project.store, ptys, rel, ref, open, key, await mcpReady)
+    return resume(project.store, ptys, rel, ref, open, key, await mcpReady, companionMod)
   })
   ipcMain.handle('tackle:openInDesktop', (_e, ref: SessionRef) => openInDesktop(ref, open))
 
@@ -762,6 +763,15 @@ let mcp: McpHost | undefined
 /** The config file the sessions get, once the server listens; undefined when it could not start. */
 let mcpReady: Promise<string | undefined> = Promise.resolve(undefined)
 
+/** The `show_card` tool: raise the window, as a clicked notification does, and open the card. */
+function showCard(key: string, id: string): void {
+  if (!win || win.isDestroyed()) return
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
+  send('card:show', key, id)
+}
+
 /**
  * Starts the MCP server for the sessions the app starts. Without it they still run, told to edit
  * the card files as before.
@@ -773,7 +783,7 @@ async function startMcp(): Promise<string | undefined> {
       await openProjects()
       return [...projects.values()]
     }
-    const host = new McpHost(projectsNow, await mcpToken(userData), app.getVersion())
+    const host = new McpHost(projectsNow, await mcpToken(userData), app.getVersion(), showCard)
     await host.start(mcpPort(app.isPackaged))
     mcp = host
     console.log(`MCP server on ${host.url}`)
@@ -784,10 +794,17 @@ async function startMcp(): Promise<string | undefined> {
   }
 }
 
+// ---- the companion mod -----------------------------------------------------------------------
+
+/** The mod's folder, when this build ships one: the sessions in a terminal are handed it. */
+let companionMod: string | undefined
+
 app.whenReady().then(() => {
   // Windows shows a notification under the app's id, the one the installer registers.
   if (process.platform === 'win32') app.setAppUserModelId('com.corkboard.app')
   mcpReady = startMcp()
+  companionMod = modDir({ packaged: app.isPackaged, appPath: app.getAppPath(), resourcesPath: process.resourcesPath })
+  if (!companionMod) console.log('No companion mod in this build: the sessions it starts get none.')
   registerIpc()
   protocol.handle(IMAGE_SCHEME, request => serveImage(request.url, id => projects.get(id)?.root))
   createWindow()

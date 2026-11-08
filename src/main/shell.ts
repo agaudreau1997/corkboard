@@ -48,10 +48,16 @@ export type ShellLaunch = { file: string; args: string[]; env: Record<string, st
 /**
  * An interactive shell that first runs `command` (if any) and stays open afterwards, so the tab
  * remains a usable terminal once Claude exits. Unix shells start as login shells, which is what
- * puts nvm's `claude` on the PATH when the app was started from a desktop menu.
+ * puts nvm's `claude` on the PATH when the app was started from a desktop menu. `extra` goes into
+ * the environment the shell starts with: what the tab holds, for the companion mod.
  */
-export function shellLaunch(command?: string[]): ShellLaunch {
-  const env: Record<string, string> = { ...(process.env as Record<string, string>), TERM: 'xterm-256color', COLORTERM: 'truecolor' }
+export function shellLaunch(command?: string[], extra?: Record<string, string>): ShellLaunch {
+  const env: Record<string, string> = {
+    ...(process.env as Record<string, string>),
+    ...extra,
+    TERM: 'xterm-256color',
+    COLORTERM: 'truecolor',
+  }
   if (WINDOWS) {
     const file = powershell()
     if (!command) return { file, args: ['-NoLogo'], env }

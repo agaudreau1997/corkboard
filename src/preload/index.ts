@@ -109,6 +109,7 @@ const api: CorkboardApi = {
     ptyExit: cb => subscribe('pty:exit', cb),
     ptyStatus: cb => subscribe('pty:status', cb),
     ptyShow: cb => subscribe('pty:show', cb),
+    showCard: cb => subscribe('card:show', cb),
     updateStatus: cb => subscribe('updates:changed', cb),
     navigate: cb => subscribe('nav:step', cb),
     repoStatus: cb => subscribe('git:repoStatus', cb),

@@ -8,6 +8,7 @@ For a project whose code repos are shared with teammates or clients and whose wo
 - **A worktree** is named after the key as written (`-w SPDI-42`, branch `worktree-SPDI-42`), or after the title.
 - **Copy** offers the *Jira key* in place of the *Commit trailer*, and its *Markdown* names the key or the title alone. The [companion](companion.md)'s *Share* and copy items follow the same rule.
 - **Commits**: the card shows the code repo's commits whose message names its key, whole (`SPDI-12` is not found in `SPDI-123`), teammates' included.
+- **The guard**: the [companion mod](tackling.md#the-companion-mod) refuses a Bash call of the session that would put a card id of the board into the code repo — a commit message, a branch or tag name, a pull request's title or body — and names the Jira key instead. It reads the session's own calls only, and what it cannot read it lets through.
 - **The board guide**: a board repo's `CLAUDE.md` added while work mode is on carries the same rule in place of the trailer one; an existing one is never rewritten.
 
 Every machine that tackles the project needs a build that knows the flag: an older one ignores it and asks sessions for `Card:` trailers.

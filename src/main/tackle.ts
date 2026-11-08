@@ -29,7 +29,8 @@ export type OpenExternal = (url: string) => Promise<void>
 
 /**
  * Starts sessions for `req`'s cards; `boardKey` is the board's key in the window, for its
- * terminals, and `mcpConfig` the MCP server's config file, when the server runs.
+ * terminals, `mcpConfig` the MCP server's config file, when the server runs, and `pluginDir` the
+ * companion mod's folder, when this build ships one.
  */
 export async function tackle(
   req: TackleRequest,
@@ -38,6 +39,7 @@ export async function tackle(
   open: OpenExternal,
   boardKey?: string,
   mcpConfig?: string,
+  pluginDir?: string,
 ): Promise<PtyInfo[]> {
   const board = store.board(req.boardPath)
   const cards = req.cardIds
@@ -67,9 +69,11 @@ export async function tackle(
   for (const group of groups) {
     const ids = group.map(c => c.id)
     const cloud = req.mode === 'cloud'
-    // Only a session in a terminal or a worktree can be handed the server: the cloud can't reach
-    // this machine, and a claude:// link carries no MCP config.
-    const mcp = req.mode === 'local' || req.mode === 'local-worktree' ? mcpConfig : undefined
+    // Only a session in a terminal or a worktree can be handed the server or the mod: the cloud
+    // can't reach this machine, and a claude:// link carries neither an MCP config nor an argv.
+    const here = req.mode === 'local' || req.mode === 'local-worktree'
+    const mcp = here ? mcpConfig : undefined
+    const mod = here ? pluginDir : undefined
     const prompt = buildPrompt(store, req, group, !!mcp)
     const name = sessionName(group, groupTitle, purpose)
     const recorded = purpose === 'tackle' ? {} : { purpose }
@@ -96,12 +100,13 @@ export async function tackle(
     } else {
       const id = randomUUID()
       const worktree = req.mode === 'local-worktree' ? worktreeName(group, groupTitle && req.listTitle, !!store.settings.work) : undefined
-      command = localCommand({ claude: CLAUDE, boardRoot: store.root, name, sessionId: id, worktree, mcpConfig: mcp, prompt })
+      command = localCommand({ claude: CLAUDE, boardRoot: store.root, name, sessionId: id, worktree, mcpConfig: mcp, pluginDir: mod, prompt })
       worktreeDir = worktree ? path.join(cwd, '.claude', 'worktrees', worktree) : undefined
       ref = { id, kind: req.mode, started, cwd: worktreeDir ?? cwd, cards: ids, name, ...recorded }
     }
 
-    const info = ptys.create({ title: name, cwd, command, cardIds: ids, kind: req.mode, worktree: worktreeDir, boardKey })
+    const env = envFor(store, req.boardPath, ids, boardKey, !!mod)
+    const info = ptys.create({ title: name, cwd, command, env, cardIds: ids, kind: req.mode, worktree: worktreeDir, boardKey })
     opened.push(info)
     await recordSession(store, req.boardPath, group, ref)
 
@@ -163,8 +168,8 @@ function sessionDir(store: BoardStore, boardPath: string): string {
 /**
  * The argv of a local session. `--add-dir` and `--mcp-config` take lists and swallow every
  * argument up to the next option, so they come first: placed last, `--add-dir` ate the prompt,
- * and Claude started with no prompt at all. The prompt is last, after options that take exactly
- * one value.
+ * and Claude started with no prompt at all. `--plugin-dir` takes one path but is repeatable, so
+ * it keeps their company. The prompt is last, after options that take exactly one value.
  */
 export function localCommand(opts: {
   claude: string
@@ -174,20 +179,88 @@ export function localCommand(opts: {
   worktree?: string
   /** The MCP server's config (a file), when the session gets it. */
   mcpConfig?: string
+  /** The companion mod's folder (mod.ts), when this build has one. */
+  pluginDir?: string
   prompt: string
 }): string[] {
   const command = [opts.claude, '--add-dir', opts.boardRoot]
   if (opts.mcpConfig) command.push('--mcp-config', opts.mcpConfig)
+  if (opts.pluginDir) command.push('--plugin-dir', opts.pluginDir)
   command.push('-n', opts.name, '--session-id', opts.sessionId)
   if (opts.worktree) command.push('-w', opts.worktree)
   command.push(opts.prompt)
   return command
 }
 
+/** The argv that opens a recorded session again, with the same server and mod as a new one. */
+export function resumeCommand(opts: {
+  claude: string
+  sessionId: string
+  mcpConfig?: string
+  pluginDir?: string
+}): string[] {
+  const command = [opts.claude]
+  if (opts.mcpConfig) command.push('--mcp-config', opts.mcpConfig)
+  if (opts.pluginDir) command.push('--plugin-dir', opts.pluginDir)
+  command.push('--resume', opts.sessionId)
+  return command
+}
+
+/**
+ * The environment a session's terminal gets on top of the app's own: the cards it was started
+ * for, the board they are on (the key the board tools take), that board's folder, the prefix
+ * every card id of the board carries, and whether the project is a work one. The companion mod
+ * reads these (`mod/src/session.ts`); nothing else does, and a session started without the mod
+ * gets them all the same.
+ *
+ * `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS` turns on the plugin API the mod is written against: it is
+ * early access, and off by default unless Claude Code's own rollout has reached this machine.
+ */
+export function sessionEnv(opts: {
+  cards: string[]
+  /** The board's key in the window, `<project id>:<path>`. */
+  boardKey?: string
+  boardDir: string
+  prefix: string
+  work: boolean
+  /** The mod is being handed to this session. */
+  mod: boolean
+}): Record<string, string> {
+  const env: Record<string, string> = {
+    CORKBOARD_CARDS: opts.cards.join(','),
+    CORKBOARD_BOARD: opts.boardKey ?? '',
+    CORKBOARD_BOARD_DIR: opts.boardDir,
+    CORKBOARD_CARD_PREFIX: opts.prefix,
+    CORKBOARD_WORK: opts.work ? '1' : '0',
+  }
+  if (opts.mod) env.CLAUDE_CODE_ENABLE_FUNCTION_HOOKS = '1'
+  return env
+}
+
+/** That environment for a board of a store, which knows its folder and its card prefix. */
+function envFor(
+  store: BoardStore,
+  boardPath: string,
+  cards: string[],
+  boardKey: string | undefined,
+  mod: boolean,
+): Record<string, string> {
+  return sessionEnv({
+    cards,
+    boardKey,
+    boardDir: path.join(store.root, boardPath),
+    prefix: store.board(boardPath).meta.key,
+    work: !!store.settings.work,
+    mod,
+  })
+}
+
 /**
  * Opens a recorded session again: a desktop one in the desktop app, the others in a terminal.
  * Answers the terminal it opened, or null when the desktop app took it. A local session gets the
- * MCP server again: its prompt may have told it to use the tools.
+ * MCP server again (its prompt may have told it to use the tools), the companion mod, and the
+ * same environment a new session gets, so a resumed session needs no way of its own to work out
+ * which cards it holds.
  */
 export async function resume(
   store: BoardStore,
@@ -197,6 +270,7 @@ export async function resume(
   open: OpenExternal,
   boardKey?: string,
   mcpConfig?: string,
+  pluginDir?: string,
 ): Promise<PtyInfo | null> {
   if (ref.kind === 'desktop') {
     if (ref.desktopId) await openUrl(continueUrl(ref.desktopId), open)
@@ -205,16 +279,19 @@ export async function resume(
     return null
   }
   const cwd = ref.cwd && existsSync(ref.cwd) ? ref.cwd : sessionDir(store, boardPath)
-  const tab = { title: ref.cards?.join(' ') ?? 'session', cwd, cardIds: ref.cards, kind: ref.kind, resumed: true, boardKey }
+  const cards = ref.cards ?? []
+  const tab = { title: cards.join(' ') || 'session', cwd, cardIds: ref.cards, kind: ref.kind, resumed: true, boardKey }
   if (ref.kind === 'cloud') {
     const target = ref.id ?? ref.url
     if (!target) throw new Error('This cloud session never printed its id or URL.')
-    return ptys.create({ ...tab, command: [CLAUDE, '--cloud', target] })
+    const env = envFor(store, boardPath, cards, boardKey, false)
+    return ptys.create({ ...tab, env, command: [CLAUDE, '--cloud', target] })
   }
   if (!ref.id) throw new Error('No session id recorded.')
   const worktree = ref.kind === 'local-worktree' ? ref.cwd : undefined
-  const mcp = mcpConfig ? ['--mcp-config', mcpConfig] : []
-  return ptys.create({ ...tab, worktree, command: [CLAUDE, ...mcp, '--resume', ref.id] })
+  const env = envFor(store, boardPath, cards, boardKey, !!pluginDir)
+  const command = resumeCommand({ claude: CLAUDE, sessionId: ref.id, mcpConfig, pluginDir })
+  return ptys.create({ ...tab, worktree, env, command })
 }
 
 /** Opens a terminal session in the Claude desktop app (it imports the CLI session by id). */

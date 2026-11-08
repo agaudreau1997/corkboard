@@ -44,6 +44,10 @@ The drawer shows a card's description in Markdown, its links to cards on any boa
 
 Each session runs in a tab of the terminal panel. A spinner means Claude is working, a green dot means it's your turn, and a turn that ends in a tab you aren't looking at says so. When Claude finishes a turn while the window is in the background, a desktop notification says so, and a program of yours can run on every change, for a sound or a lamp.
 
+### The session knows its card
+
+Every session Corkboard starts in a terminal is handed a small Claude Code plugin of the app's. Above the prompt it draws the card the session is for — its list, its description, the cards it links to, the commits that name it — with buttons to move it to Done or bring it up in the window, and `/corkboard-mod:card` finishes a card, notes on it or makes a new one without spending a turn. It also holds the session to the card-id rule: a commit with no `Card:` trailer is refused, and in a [work project](docs/work-mode.md) so is anything that would write a card id into the code repo.
+
 ### Colours per project
 
 ![The same board in the Cork colours](docs/images/colours.png)

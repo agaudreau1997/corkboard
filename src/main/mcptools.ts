@@ -19,6 +19,12 @@ export type ToolProject = { id: string; name: string; store: BoardStore }
 /** The open projects, read on every call (one may open or close while the app runs). */
 export type ToolProjects = () => Promise<ToolProject[]> | ToolProject[]
 
+/**
+ * Brings a card up in the window: its board in front and its drawer open. Absent when there is no
+ * window to show it in, which is what `show_card` then says.
+ */
+export type ShowCard = (board: string, id: string) => void
+
 /** A request the tools refuse: its message goes back to the session as the tool's error. */
 export class ToolError extends Error {}
 
@@ -47,7 +53,10 @@ const JIRA_KEY = /^[A-Z][A-Z0-9_]*-\d+$/
 const SEARCH_LIMIT = 50
 
 export class BoardTools {
-  constructor(private projects: ToolProjects) {}
+  constructor(
+    private projects: ToolProjects,
+    private show?: ShowCard,
+  ) {}
 
   /** Every project and board, with what a session needs to name them: keys, lists and flow. */
   async listBoards() {
@@ -71,6 +80,17 @@ export class BoardTools {
 
   async getCard(id: string, board?: string): Promise<CardView> {
     const found = await this.find(id, board)
+    return view(found)
+  }
+
+  /**
+   * Brings a card up in the window, for a session that wants to show it to the person at the
+   * keyboard (the companion mod's pane does). It changes nothing about the card.
+   */
+  async showCard(id: string, board?: string): Promise<CardView> {
+    const found = await this.find(id, board)
+    if (!this.show) throw new ToolError('This Corkboard has no window open to show the card in.')
+    this.show(key(found), found.card.id)
     return view(found)
   }
 

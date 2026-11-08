@@ -33,11 +33,12 @@ export class PtyManager {
 
   /**
    * Opens a terminal in `cwd`. With `command`, the shell runs it first (argv, never re-parsed
-   * by a shell, so a prompt needs no quoting) and then stays open.
+   * by a shell, so a prompt needs no quoting) and then stays open. `env` is added to the app's
+   * own environment, for what the tab holds (the companion mod reads it).
    */
-  create(opts: Omit<PtyInfo, 'id'> & { command?: string[] }): PtyInfo {
-    const { command, ...rest } = opts
-    const { file, args, env } = shellLaunch(command)
+  create(opts: Omit<PtyInfo, 'id'> & { command?: string[]; env?: Record<string, string> }): PtyInfo {
+    const { command, env: extra, ...rest } = opts
+    const { file, args, env } = shellLaunch(command, extra)
     const proc = pty.spawn(file, args, { name: 'xterm-256color', cols: 120, rows: 30, cwd: opts.cwd, env })
     const info: PtyInfo = { id: randomUUID(), ...rest }
     const entry: Entry = { proc, info, listeners: [], status: 'shell', titleCarry: '' }

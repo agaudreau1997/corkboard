@@ -1,0 +1,243 @@
+// Corkboard's companion mod: the hooks module Claude Code loads for the sessions the app starts
+// (`--plugin-dir`, from `src/main/tackle.ts`). It works out which cards its session was started
+// for, draws them in the band above the prompt with buttons to finish a card and to bring it up
+// in the window, answers the `/card` command itself, and holds its Bash calls to the card-id rule.
+//
+// Every hook is written to fail safe. The plugin API is early access and moves between Claude
+// Code releases, so a call that isn't there, a shell that won't run and a board the app no longer
+// serves all end the same way: the hook calls `next` and the session goes on exactly as it would
+// without the mod. The drawing itself only ever reads what the timer has already fetched: a
+// render has a budget, and a call that overran it was dropped mid-dispatch.
+
+import { BOARD_SERVER, cardFile, cardFromFile, cardFromTool, fileCommands, type PaneCard, toolJson } from '../src/card'
+import { CARD_USAGE, NO_APP, parseCardCommand, showCards } from '../src/command'
+import { commitArgv, commitsNaming, parseCommits } from '../src/commits'
+import type { On } from '../src/engine'
+import { guard, guardFiles, isInside } from '../src/guard'
+import { paneRows } from '../src/pane'
+import { describeSession, envCommands, parseEnv, type SessionCards, sessionFromEnv } from '../src/session'
+
+/** How often the cards are read again: the app may have moved or changed one meanwhile. */
+const REFRESH_MS = 8000
+/** The board tools are not connected yet when session.start runs; the first read waits for them. */
+const FIRST_MS = 2000
+
+/** What this session holds, once session.start has read its environment. */
+let held: SessionCards | undefined
+/** The cards as the pane last drew them. */
+let shown: PaneCard[] = []
+
+export function register(on: On): void {
+  on('session.start', async ($, e, next) => {
+    try {
+      for (const argv of envCommands()) {
+        const run = await $.process.run(argv).catch(() => undefined)
+        if (!run || run.exitCode !== 0) continue
+        held = sessionFromEnv(parseEnv(run.stdout))
+        break
+      }
+      const session = held
+      if (!session) {
+        await $.ui.log('corkboard: no shell answered, so this session knows no cards')
+        return next(e)
+      }
+      await $.ui.log(`corkboard: ${describeSession(session)}`)
+      if (!session.cards.length) return next(e)
+      await $.ui.status(`▣ ${session.cards.join(' ')}`)
+
+      // Read the cards and keep reading them. The board tools answer while the app runs; with it
+      // closed the card files still do, and the pane says which it is showing.
+      const refresh = async () => {
+        const repo = await $.session.cwd().catch(() => '')
+        const cards: PaneCard[] = []
+        for (const id of session.cards) {
+          const answered = await $.mcp.call(BOARD_SERVER, 'get_card', { id, board: session.board || undefined }).catch(() => undefined)
+          const json = toolJson(answered)
+          let card: PaneCard | undefined
+          if (json) card = cardFromTool(json)
+          else if (session.boardDir) {
+            // The app is closed, so the card file is the only copy left. $.fs reads inside the
+            // project only, which a session running in the code repo is not: it is tried first
+            // for the board a session does run in, then a host command prints the file.
+            const file = cardFile(session.boardDir, id)
+            let text = await $.fs.readFile(file).catch(() => undefined)
+            for (const argv of fileCommands(file)) {
+              if (text) break
+              const printed = await $.process.run(argv).catch(() => undefined)
+              if (printed?.exitCode === 0 && printed.stdout.includes('---')) text = printed.stdout
+            }
+            if (text) card = cardFromFile(text, id)
+          }
+          if (!card) continue
+          const needle = session.work ? card.jira : card.id
+          if (needle && repo) {
+            const log = await $.process.run(commitArgv(repo, needle, session.work)).catch(() => undefined)
+            if (log?.exitCode === 0) card.commits = commitsNaming(parseCommits(log.stdout), needle, session.work).slice(0, 2)
+          }
+          cards.push(card)
+        }
+        if (JSON.stringify(cards) === JSON.stringify(shown)) return
+        shown = cards
+        // The band is drawn again with what was just read; a quiet session redraws nothing of
+        // its own, so without this the pane would only appear at the next turn.
+        $.ui.invalidate('ui.render')
+      }
+
+      await $.clock.after(FIRST_MS, refresh)
+      await $.clock.every(REFRESH_MS, refresh)
+    } catch {
+      // A mod that cannot tell its cards leaves the session as it is.
+    }
+    return next(e)
+  })
+
+  // The `/card` command (mod/commands/card.md). The hook answers it and drops the prompt, so no
+  // turn is spent on it; every change goes through the board tools, which keep the card format
+  // and the `updated:` stamp with the app. With the app closed nothing is written, and the
+  // command says so: a card file edited behind the app's back would lose a sync conflict.
+  on('prompt.submit', async ($, e, next) => {
+    const command = parseCardCommand(e.text)
+    if (!command) return next(e)
+    const session = held
+    const ids = session?.cards ?? []
+    try {
+      if (command.kind === 'unknown') return { drop: `corkboard: ${command.said} Try: ${CARD_USAGE}` }
+      // The answer is the drop's own reason, which is what the terminal shows for a dropped
+      // prompt ($.ui.notice belongs to an open tool call, and a command has none); the pane is
+      // drawn again beside it, where the descriptions and the commits are.
+      if (command.kind === 'show') {
+        $.ui.invalidate('ui.render')
+        return { drop: showCards(shown, !!session?.work) }
+      }
+      const board = session?.board || undefined
+      if (command.kind === 'new') {
+        const made = { board, title: command.title, ...(command.list ? { list: command.list } : {}) }
+        const answer = toolJson(await $.mcp.call(BOARD_SERVER, 'create_card', made).catch(() => undefined))
+        if (!answer) return { drop: NO_APP }
+        return { drop: `corkboard: made ${String(answer.id)} — ${command.title}` }
+      }
+      if (!ids.length) return { drop: 'corkboard: this session holds no cards, so there is nothing to change.' }
+      const changed: string[] = []
+      for (const id of ids) {
+        if (command.kind === 'done') {
+          const moved = toolJson(await $.mcp.call(BOARD_SERVER, 'move_card', { id, board, flow: 'done' }).catch(() => undefined))
+          if (moved) changed.push(`${id} → ${String(moved.listTitle ?? moved.list ?? 'done')}`)
+          continue
+        }
+        // A note is appended to the description the card has now, read back first so a note never
+        // overwrites what was written in the window meanwhile.
+        const card = toolJson(await $.mcp.call(BOARD_SERVER, 'get_card', { id, board }).catch(() => undefined))
+        if (!card) continue
+        const description = `${String(card.description ?? '').trimEnd()}\n\n${command.text}\n`.trimStart()
+        const noted = toolJson(await $.mcp.call(BOARD_SERVER, 'update_card', { id, board, description }).catch(() => undefined))
+        if (noted) changed.push(id)
+      }
+      if (!changed.length) return { drop: NO_APP }
+      return { drop: command.kind === 'done' ? `corkboard: moved ${changed.join(', ')}` : `corkboard: noted on ${changed.join(', ')}` }
+    } catch {
+      // Whatever went wrong, the command is still the person's: the prompt is dropped rather than
+      // sent to the model as text it cannot act on.
+      return { drop: 'corkboard: that command could not be run.' }
+    }
+  })
+
+  // The card-id rule on the Bash calls this session makes (mod/src/guard.ts): a personal
+  // project's commits carry a `Card:` trailer, and a work project's repo never sees a card id.
+  // Only the session's own code repo is judged — a command on another repo, and anything in the
+  // board repo, are left alone — and a `{ deny }` goes back to the model as the reason to fix the
+  // command and run it again.
+  on('tool.call', async ($, e, next) => {
+    const session = held
+    const command = typeof e.command === 'string' ? e.command : ''
+    if (e.tool !== 'Bash' || !command || !session || !session.cards.length) return next(e)
+    try {
+      const repo = await $.session.cwd().catch(() => '')
+      // A session of a board with no code repo on this machine runs in the board repo itself:
+      // the rule is about what reaches a code repo, so there is nothing to guard there.
+      if (!repo || (session.boardDir && isInside(session.boardDir, repo))) return next(e)
+      const files: Record<string, string> = {}
+      for (const file of guardFiles(command)) {
+        const text = await $.fs.readFile(file).catch(() => undefined)
+        if (typeof text === 'string') files[file] = text
+      }
+      const verdict = guard(command, {
+        cards: session.cards,
+        prefix: session.prefix,
+        work: session.work,
+        keys: shown.flatMap(card => (card.jira ? [card.jira] : [])),
+        repo,
+      }, files)
+      if (verdict) {
+        await $.ui.log(`corkboard: refused a command — ${verdict.deny.split('\n')[0]}`)
+        return verdict
+      }
+    } catch {
+      // A guard that cannot read the command does not stand in its way.
+    }
+    return next(e)
+  })
+
+  // The band above the prompt: the cards, and what can be done to them from here. The engine's
+  // own band is kept below the pane, so nothing it draws is lost.
+  on('ui.render', async ($, e, next) => {
+    const session = held
+    if (e.component !== 'AbovePrompt' || !shown.length || !session) return next(e)
+    // The chain runs once, whatever happens next: its result is the engine's own band, which the
+    // pane keeps below itself, and what the pane falls back to when anything here goes wrong.
+    const below = await next(e)
+    try {
+      const el = await $.ui.resolve(e)
+      const maxRows = Number(e.props?.maxRows ?? 8)
+      const rows = paneRows(shown, {
+        columns: e.viewport?.columns ?? 80,
+        maxRows: Math.max(1, Math.min(shown.length * 4, maxRows - 2)),
+        work: session.work,
+      })
+      const lines = rows.map(row =>
+        h(
+          el.Text,
+          row.tone === 'head'
+            ? { key: row.key, color: 'cyan', bold: true }
+            : row.tone === 'dim'
+              ? { key: row.key, dimColor: true }
+              : { key: row.key },
+          row.text,
+        ),
+      )
+      // With the app closed the pane is a read-only one: the tools are what move a card, and the
+      // mod never edits a card file behind the app's back.
+      const live = shown.every(card => card.from === 'app')
+      const buttons = live
+        ? h(
+            el.Box,
+            { flexDirection: 'row', gap: 1 },
+            h(el.Button, {
+              key: 'done',
+              label: shown.length > 1 ? `Move ${shown.length} cards to Done` : 'Move to Done',
+              onPress: async () => {
+                const moved: string[] = []
+                for (const card of shown) {
+                  const move = { id: card.id, board: session.board || undefined, flow: 'done' }
+                  const answer = await $.mcp.call(BOARD_SERVER, 'move_card', move).catch(() => undefined)
+                  if (toolJson(answer)) moved.push(card.id)
+                }
+                await $.ui.toast(moved.length ? `Moved ${moved.join(', ')} to Done` : 'Corkboard did not take the move')
+              },
+            }),
+            h(el.Button, {
+              key: 'open',
+              label: 'Open in Corkboard',
+              onPress: async () => {
+                const card = shown[0]
+                const answer = await $.mcp.call(BOARD_SERVER, 'show_card', { id: card.id, board: session.board || undefined }).catch(() => undefined)
+                if (!toolJson(answer)) await $.ui.toast('Corkboard has no window open for that card')
+              },
+            }),
+          )
+        : undefined
+      return h(el.Box, { flexDirection: 'column', paddingLeft: 1 }, ...lines, buttons, below)
+    } catch {
+      return below
+    }
+  })
+}

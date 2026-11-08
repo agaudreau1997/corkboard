@@ -279,6 +279,10 @@ export const actions = {
     api.on.ptyShow(id => {
       if (get().terminals.some(t => t.id === id)) set({ activeTerminal: id, terminalOpen: true })
     })
+    api.on.showCard(async (boardPath, id) => {
+      await actions.openBoard(boardPath)
+      actions.openCard(boardPath, id)
+    })
     api.on.ptyExit((id, code) => {
       set(s => ({ exited: { ...s.exited, [id]: code }, attention: s.attention.filter(t => t !== id) }))
       // `claude update` finished: show the version it left.

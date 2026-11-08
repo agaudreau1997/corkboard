@@ -7,6 +7,12 @@ files:
   - out/**
   # The window icon: index.ts loads it from ../../build/icon.png.
   - build/icon.png
+# The companion mod (mod/) is handed to the sessions the app starts with `--plugin-dir`, so it
+# ships as a folder beside the app rather than bundled: Claude Code loads it from disk, asar or
+# not. A platform's own extraResources take the place of these, so mac repeats it.
+extraResources:
+  - from: mod
+    to: mod
 # The GPL travels with every build: Corkboard's LICENSE beside the executable on Windows and Linux,
 # next to Electron's LICENSE.electron.txt and LICENSES.chromium.html, and in Contents/Resources on
 # macOS, where codesign refuses a loose file in Contents. Each platform says so itself: a top-level
@@ -76,6 +82,8 @@ mac:
   extraResources:
     - from: LICENSE
       to: LICENSE
+    - from: mod
+      to: mod
   category: public.app-category.developer-tools
   # The dmg is the first install; the zip is what the in-app updater (Squirrel.Mac) installs from,
   # and latest-mac.yml lists both architectures when they are built in one run.
