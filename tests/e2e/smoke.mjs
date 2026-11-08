@@ -910,6 +910,29 @@ try {
   const openId = (await page.locator('.drawer .card-id').textContent()).trim()
   check(openId.startsWith(`${MAIN.key}-`), `drawer opened for ${openId}`)
   await shot('04-drawer')
+
+  // At the narrowest the app opens to (its window's minWidth), the drawer squeezes the board pane
+  // to its own floor; the header gives its parts up one by one rather than hanging out of the
+  // pane, which is positioned where the drawer is not, so a spill would draw over the open card
+  // (CORK-138).
+  await page.setViewportSize({ width: 900, height: 940 }).catch(() => {})
+  await sleep(100)
+  const narrowHead = await page.evaluate(() => {
+    const edge = document.querySelector('.board-pane').getBoundingClientRect().right
+    return {
+      out: [...document.querySelectorAll('.board-head > *')]
+        .filter(el => el.getBoundingClientRect().right > edge + 0.5)
+        .map(el => String(el.className || el.tagName)),
+      views: document.querySelectorAll('.board-head .segmented button').length,
+      filter: Math.round(document.querySelector('.board-head .filter').getBoundingClientRect().width),
+    }
+  })
+  check(
+    narrowHead.out.length === 0 && narrowHead.views === 3 && narrowHead.filter > 60,
+    `a narrow board header stays in its pane, views and filter and all (${JSON.stringify(narrowHead)})`,
+  )
+  await page.setViewportSize({ width: 1500, height: 940 }).catch(() => {})
+
   // Its id copies itself on a click.
   await app.evaluate(({ clipboard }) => clipboard.writeText(''))
   await page.locator('.drawer').getByRole('button', { name: openId, exact: true }).click()
