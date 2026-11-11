@@ -1740,6 +1740,10 @@ try {
   if (process.platform !== 'win32') {
     // Windows has no foreground job to ask the shell about: only a working Claude asks there.
     const tabs = await tabCount()
+    // show_card's drawer took the focus and Escape handed it back to no one, so the shell takes
+    // it itself: its own textarea rather than a click on the screen, which would clear the
+    // selection the check below needs.
+    await page.locator('.xterm-host:visible .xterm-helper-textarea').focus()
     await page.keyboard.type('sleep 60\n')
     await sleep(800)
     await shellTab.click({ button: 'middle' })
