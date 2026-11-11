@@ -1741,14 +1741,17 @@ try {
     // Windows has no foreground job to ask the shell about: only a working Claude asks there.
     const tabs = await tabCount()
     // show_card's drawer took the focus and the Escape that closed it handed it to no one, so
-    // typing would reach no shell. The command goes in through the terminal's own menu, whose
-    // Paste hands the terminal its focus back as it runs: a left click on its screen would do
-    // that too, but it would collapse the selection the paste check below reads, and the panel
-    // focuses a tab on a frame, which an offscreen window hardly draws.
-    await app.evaluate(({ clipboard }) => clipboard.writeText('sleep 60'))
-    await shellScreen.click({ button: 'right' })
-    await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Paste' }).click()
-    await page.keyboard.press('Enter')
+    // the keys below would reach no shell. Ctrl+` folds the panel and opens it again, which is
+    // how the app gives the tab in front its focus: on a frame, which an offscreen window is
+    // slow to draw, so this waits for the terminal to hold it rather than count on one. (A
+    // click on the terminal would focus it at once, but collapse the selection the check below
+    // reads, and its menu's Paste arrives bracketed, which the shell here takes literally.)
+    await page.keyboard.press('Control+Backquote')
+    await page.keyboard.press('Control+Backquote')
+    const shellFocused = () =>
+      page.evaluate(() => document.activeElement?.classList.contains('xterm-helper-textarea') ?? false)
+    check(!!(await until(shellFocused, 10000)), 'the panel gives the terminal in front its focus back')
+    await page.keyboard.type('sleep 60\n')
     await sleep(800)
     await shellTab.click({ button: 'middle' })
     const closeButton = page.getByRole('dialog').getByRole('button', { name: 'Close terminal' })
