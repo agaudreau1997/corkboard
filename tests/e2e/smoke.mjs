@@ -1740,16 +1740,20 @@ try {
   if (process.platform !== 'win32') {
     // Windows has no foreground job to ask the shell about: only a working Claude asks there.
     const tabs = await tabCount()
-    // show_card's drawer took the focus and Escape handed it back to no one, so the shell takes
-    // it itself: its own textarea rather than a click on the screen, which would clear the
-    // selection the check below needs.
-    await page.locator('.xterm-host:visible .xterm-helper-textarea').focus()
+    // show_card's drawer took the focus and the Escape that closed it handed it to no one, so
+    // the keys below would reach no shell. Ctrl+` folds the panel and opens it again, which is
+    // what gives the tab in front the focus (a click on its screen would do it too, but it
+    // would clear the selection the paste check below needs).
+    await page.keyboard.press('Control+Backquote')
+    await page.keyboard.press('Control+Backquote')
+    await sleep(300)
     await page.keyboard.type('sleep 60\n')
     await sleep(800)
     await shellTab.click({ button: 'middle' })
     const closeButton = page.getByRole('dialog').getByRole('button', { name: 'Close terminal' })
     check(!!(await until(async () => (await closeButton.count()) === 1, 5000)), 'middle-clicking a busy tab asks first')
-    check((await page.getByRole('dialog').textContent()).includes('sleep'), 'and names what runs in it')
+    const busyText = (await page.getByRole('dialog').textContent()) ?? ''
+    check(busyText.includes('sleep'), `and names what runs in it (${busyText})`)
     // Copy › Identifier left a card id in the selection that a middle click pastes on Linux.
     await sleep(300)
     const shellText = (await page.locator('.xterm-host:visible .xterm-rows').textContent()) ?? ''
