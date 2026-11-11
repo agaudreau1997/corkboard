@@ -1741,13 +1741,14 @@ try {
     // Windows has no foreground job to ask the shell about: only a working Claude asks there.
     const tabs = await tabCount()
     // show_card's drawer took the focus and the Escape that closed it handed it to no one, so
-    // the keys below would reach no shell. Ctrl+` folds the panel and opens it again, which is
-    // what gives the tab in front the focus (a click on its screen would do it too, but it
-    // would clear the selection the paste check below needs).
-    await page.keyboard.press('Control+Backquote')
-    await page.keyboard.press('Control+Backquote')
-    await sleep(300)
-    await page.keyboard.type('sleep 60\n')
+    // typing would reach no shell. The command goes in through the terminal's own menu, whose
+    // Paste hands the terminal its focus back as it runs: a left click on its screen would do
+    // that too, but it would collapse the selection the paste check below reads, and the panel
+    // focuses a tab on a frame, which an offscreen window hardly draws.
+    await app.evaluate(({ clipboard }) => clipboard.writeText('sleep 60'))
+    await shellScreen.click({ button: 'right' })
+    await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Paste' }).click()
+    await page.keyboard.press('Enter')
     await sleep(800)
     await shellTab.click({ button: 'middle' })
     const closeButton = page.getByRole('dialog').getByRole('button', { name: 'Close terminal' })
