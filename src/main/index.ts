@@ -37,6 +37,7 @@ import { desktopNotice, notify } from './notify'
 import { boardKey, hasBoards, prepareBoardRepo, Project, projectId, splitKey } from './projects'
 import { PtyManager } from './pty'
 import { shellProbe } from './shell'
+import { suggestTheme } from './suggest'
 import { CLAUDE, openInDesktop, promptFor, resume, stopDesktopWatches, tackle } from './tackle'
 import { releasesPage, updateMode, Updates } from './updates'
 
@@ -379,6 +380,15 @@ function registerIpc(): void {
     if (!project) throw new Error(`No project ${id}`)
     await project.store.saveSettings(patchSettings(project.store.settings, patch))
     commitCache.clear()
+  })
+  ipcMain.handle('projects:suggestTheme', async (_e, id: string) => {
+    const project = projects.get(id)
+    if (!project) throw new Error(`No project ${id}`)
+    const repo = project.codeRepo
+    if (!repo || !existsSync(repo)) {
+      throw new Error(`${project.name} has no code folder on this machine to read: set one in its project settings.`)
+    }
+    return suggestTheme(repo, project.name)
   })
   ipcMain.handle('projects:addGuide', async (_e, id: string) => {
     const project = projects.get(id)

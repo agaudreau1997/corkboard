@@ -1,4 +1,5 @@
-// The shell the terminals run, per platform. A command (argv) must reach the program unchanged
+// The shell the terminals run, per platform, and the one-off runs beside them (`claude --version`,
+// the headless `claude -p` of a suggestion). A command (argv) must reach the program unchanged
 // whatever it holds (a prompt has quotes, backticks and newlines), so it is never pasted into a
 // shell line: bash gets it as "$@", PowerShell as a JSON array in an environment variable.
 //
@@ -74,6 +75,21 @@ export function shellLaunch(command?: string[], extra?: Record<string, string>):
     args: ['-l', '-i', '-c', `"$@"; exec "${userShell}" -l -i`, 'corkboard', ...command],
     env,
   }
+}
+
+/**
+ * The same shell, running `command` (argv) once and exiting, for a `claude -p` the app reads the
+ * output of: its prompt holds quotes and newlines, so it goes through the same env the terminals
+ * use rather than a shell line, and a login shell still finds an nvm `claude` on the PATH.
+ */
+export function shellRun(command: string[]): ShellLaunch {
+  const env: Record<string, string> = { ...(process.env as Record<string, string>) }
+  if (WINDOWS) {
+    env.CORKBOARD_ARGS = JSON.stringify(command)
+    env.CORKBOARD_ARGS_LEGACY = JSON.stringify([command[0], ...command.slice(1).map(legacyArg)])
+    return { file: powershell(), args: ['-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', RUN_ARGS], env }
+  }
+  return { file: '/bin/bash', args: ['-lic', '"$@"', 'corkboard', ...command], env }
 }
 
 /** A one-off script in the same shell, for `claude --version`. */

@@ -27,6 +27,7 @@ const api: CorkboardApi = {
     update: (id, patch) => invoke('projects:update', id, patch),
     setTheme: (id, theme) => invoke('projects:setTheme', id, theme),
     setSettings: (id, patch) => invoke('projects:setSettings', id, patch),
+    suggestTheme: id => invoke('projects:suggestTheme', id),
     addGuide: id => invoke('projects:addGuide', id),
     dismissRenumbered: id => invoke('projects:dismissRenumbered', id),
     remove: id => invoke('projects:remove', id),

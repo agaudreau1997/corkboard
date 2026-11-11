@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { legacyArg, shellLaunch } from '../src/main/shell'
+import { legacyArg, shellLaunch, shellRun } from '../src/main/shell'
 
 describe('legacyArg', () => {
   it('leaves an argument with no quote alone, but doubles a trailing backslash it will quote', () => {
@@ -71,5 +71,45 @@ describe.runIf(process.platform === 'win32')('shellLaunch on Windows', () => {
         expect(JSON.parse(readFileSync(got(), 'utf8'))).toEqual(args)
       })
     }
+  }
+})
+
+// The one-off runs whose output the app reads (`claude -p`): every argument has to reach the
+// program through this platform's own shell, and what it printed has to come back.
+describe('shellRun', () => {
+  let dir: string
+  let echo: string
+  let forward: string
+  const got = () => path.join(dir, 'run-argv.json')
+
+  beforeAll(() => {
+    dir = mkdtempSync(path.join(os.tmpdir(), 'corkboard-run-'))
+    echo = path.join(dir, 'echo.mjs')
+    writeFileSync(
+      echo,
+      `import { writeFileSync } from 'node:fs'\nwriteFileSync(${JSON.stringify(got())}, JSON.stringify(process.argv.slice(2)))\nconsole.log('{"colors":{"accent":"#f5a623"}}')\n`,
+    )
+    const psQuote = (s: string) => `'${s.replaceAll("'", "''")}'`
+    forward = path.join(dir, 'forward.ps1')
+    writeFileSync(forward, `& ${psQuote(process.execPath)} ${psQuote(echo)} @args\r\n`)
+  })
+
+  afterAll(() => rmSync(dir, { recursive: true, force: true }))
+
+  // A prompt as a suggestion sends one: quotes, backticks, a newline and shell punctuation.
+  const prompt = 'Answer with JSON and nothing else:\n\n{ "colors": { "accent": "#rrggbb" } }\n\n- `background` is the window; $HOME & %PATH% mean nothing here.'
+  // On Windows the end-to-end test's stand-in `claude` is a .ps1, as npm's own `claude` is.
+  const forms = process.platform === 'win32' ? (['a program', 'a .ps1'] as const) : (['a program'] as const)
+
+  for (const via of forms) {
+    it(`hands every argument to ${via} intact, and answers what it printed`, () => {
+      const args = ['-p', prompt]
+      const command = via === 'a program' ? [process.execPath, echo, ...args] : [forward, ...args]
+      const launch = shellRun(command)
+      rmSync(got(), { force: true })
+      const out = execFileSync(launch.file, launch.args, { env: launch.env, stdio: 'pipe' }).toString()
+      expect(JSON.parse(readFileSync(got(), 'utf8'))).toEqual(args)
+      expect(out).toContain('"accent":"#f5a623"')
+    })
   }
 })

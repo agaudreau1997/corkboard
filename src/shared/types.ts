@@ -368,6 +368,22 @@ export type ProjectTheme = {
   tokens?: Record<string, string>
 }
 
+/**
+ * A project's colours and icon as a headless Claude session read them out of its code repo, for
+ * the settings to preview before anything is written (`src/shared/suggest.ts`, `src/main/suggest.ts`).
+ */
+export type ThemeSuggestion = {
+  theme: ProjectTheme
+  /** Where the colours came from, in the session's own words. */
+  notes?: string
+  /** The image file it named, as a path in the code repo. */
+  iconPath?: string
+  /** That file as a data URI, when the app could read it; the window scales it down to an icon. */
+  icon?: string
+  /** Why the file it named could not be read, when it named one. */
+  iconError?: string
+}
+
 export type SyncStatus = {
   state: 'idle' | 'local' | 'syncing' | 'synced' | 'offline' | 'conflict'
   /** When the last sync went through. */

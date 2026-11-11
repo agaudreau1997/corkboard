@@ -244,6 +244,11 @@ export function attachTerminalSink(id: string, sink: (data: string) => void): ()
   }
 }
 
+/** A main process error as it reads on screen: Electron prefixes it with where it came from. */
+export function errorText(error: unknown): string {
+  return (error as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
+}
+
 // ---- actions -----------------------------------------------------------------------------------
 
 export const actions = {
@@ -602,8 +607,7 @@ export const actions = {
       mark({ status, busy: undefined })
     } catch (error) {
       mark({ busy: undefined })
-      // Electron prefixes a handler's error with where it came from: only git's own words are shown.
-      actions.toast((error as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), 'error')
+      actions.toast(errorText(error), 'error')
     }
   },
 

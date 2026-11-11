@@ -1,7 +1,8 @@
 // How a project is marked wherever it is named (its row in the side panel, tab names, terminal tabs,
 // the board header and the board dialog): its icon when `project.json` has one, else its colour
-// swatch. The icon is picked in the project settings and scaled down here, in the window, so the
-// file keeps a small data URI that every machine gets with the repo and the CSP lets show.
+// swatch. The icon is picked in the project settings (or found in the code repo by a suggestion)
+// and scaled down here, in the window, so the file keeps a small data URI that every machine gets
+// with the repo and the CSP lets show.
 
 import type { ProjectNode } from '@shared/types'
 import { ThemeSwatch } from './ThemeEditor'
@@ -36,10 +37,18 @@ export async function iconFromFile(file: File): Promise<string> {
     reader.onerror = () => reject(new Error(`Could not read ${file.name}`))
     reader.readAsDataURL(file)
   })
+  return iconFromData(source, file.name)
+}
+
+/**
+ * An image already read as a data URI as an icon, scaled the same way: the file a suggestion from
+ * the code repo named, which the main process read (`src/main/suggest.ts`).
+ */
+export async function iconFromData(source: string, name: string): Promise<string> {
   const image = new Image()
   await new Promise<void>((resolve, reject) => {
     image.onload = () => resolve()
-    image.onerror = () => reject(new Error(`${file.name} is not an image this window can show`))
+    image.onerror = () => reject(new Error(`${name} is not an image this window can show`))
     image.src = source
   })
   const scale = Math.min(1, ICON_SIZE / Math.max(image.naturalWidth || 1, image.naturalHeight || 1))
